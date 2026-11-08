@@ -308,4 +308,13 @@ void main() {
     expect(ob.all().single.state, OutboxState.sent);
     ob.close();
   });
+
+  test('un reloj absurdo (antes de 1970 o más allá de 2106) no impide guardar el SOS: la hora se acota al rango del protocolo', () {
+    final ob = Outbox.open(path, key: key);
+    final early = ob.enqueueSos(sos(), now: DateTime.fromMillisecondsSinceEpoch(-5000000));
+    final late = ob.enqueueSos(sos(), now: DateTime.fromMillisecondsSinceEpoch(5000000000000));
+    expect(decodeReportFrame(early.frame, key).capturedAt, 0);
+    expect(decodeReportFrame(late.frame, key).capturedAt, 4294967295);
+    ob.close();
+  });
 }

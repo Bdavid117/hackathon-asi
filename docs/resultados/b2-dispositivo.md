@@ -35,12 +35,16 @@ bash tool/android_battery_check.sh                  # batería real 100 / 15 / 3
 
 - **Coalescencia de envíos.** `SendScheduler.pump()` y `PumpTrigger` ya no *descartan* un disparo que llega mientras hay un envío en curso: lo anotan y hacen **una** ronda de seguimiento al terminar (conservando la liberación de esperas de una reconexión). Antes, con un nodo lento (hasta 5 s por intento), un SOS o una reconexión podían esperar al siguiente temporizador. Pruebas: envío solapado atendido al terminar, coalescencia de seis disparos en una ronda, reconexión a mitad de envío (`pump → release → pump`).
 - **El toque de SOS pasa por `PumpTrigger.onNewReport`:** no intenta enviar sin red (sin bloquearse en plazos inútiles) y nunca se descarta por el filtro anti-parpadeo.
-- **Filtro anti-pánico:** varios toques en menos de 2 s son el mismo SOS (antes, 5 toques daban 5 reportes, contra «un reporte vivo por incidente»). Pasado el plazo, otro toque es otro reporte.
+- **Reporte vivo y filtro anti-pánico:** varios toques en menos de 2 s son el mismo SOS (antes, 5 toques daban 5 reportes, contra «un reporte vivo por incidente»). Si el toque trae **banderas nuevas** (p. ej. «Atrapado» después del SOS), sale como **revisión del mismo reporte con la unión de banderas**; si no trae nada nuevo, no hace nada. Pasado el plazo, otro toque es otro reporte.
+- **El reloj del teléfono no puede silenciar un SOS:** los plazos anti-pánico y anti-parpadeo tratan un tiempo transcurrido negativo (corrección de hora hacia atrás) como «hueco superado», y la hora de captura se acota al rango del protocolo (un reloj reiniciado a 1970 o desfasado ya no impide guardar). Antes, un reloj atrasado dejaba un SOS sin guardar.
+- **Si guardar falla, se avisa** («No se pudo guardar el reporte. Vuelve a tocar SOS.») y el reintento inmediato **no** se descarta como duplicado de algo que nunca llegó a guardarse (probado con un bloqueo real de la base de datos).
+- **Un disparo de envío descartado por el filtro anti-parpadeo se repite una vez** al terminar el hueco (con su liberación de esperas), en vez de perderse.
 - **Modo «sólo SOS»:** sin lista, la pantalla confirma el estado del último reporte («Guardado en tu teléfono»).
 - **Envejecimiento con tope en P2:** un caso leve muy antiguo ya no iguala a un P1 (la cuota 1 de cada 5 garantiza igualmente que no muera de inanición).
 - **T04 medido con el coste real de un nodo inalcanzable:** ver `b2.md`. Con la red bien detectada el 100 % de los SOS sale en la primera ventana de 3 s; si el sistema dice que hay red pero el nodo no responde (intentos de 5 s), **baja al 20 %** (todos acaban saliendo en ventanas posteriores). El 100 % de antes era el caso ideal.
 - Tras estos cambios se repitieron las 3 pruebas en Android y en iOS, la de sin red y la de batería: todas en verde.
-- **Un fallo único sin explicar:** durante estos cambios una ejecución de `location_flow_test` falló una vez y no volvió a fallar (12 repeticiones aisladas y 3 de la suite completa, todas en verde). No tengo causa demostrada.
+- **Un fallo único sin explicar:** durante estos cambios una ejecución de `location_flow_test` falló una vez y no volvió a fallar (12 repeticiones aisladas y varias de la suite completa, todas en verde). **No se encontró la causa.**
+- **Lo que NO se verificó en dispositivo:** la detección de red sólo se comprobó para «ningún transporte activo» (Wi-Fi y datos apagados). No se probó «Wi-Fi conectado pero el nodo no responde» ni una Wi-Fi local sin Internet, que es justo el escenario del peor caso de T04.
 
 ## Limitaciones declaradas
 

@@ -81,6 +81,8 @@ Future<void> main(List<String> args) async {
     ..writeln('- Los canales son simulados: pérdida independiente por trama y ventanas ideales. Una radio real pierde en ráfagas y las ventanas no son tan limpias.')
     ..writeln('- «Libera esperas = no» muestra lo que se perdería si el reintento de un reporte cayera fuera de la ventana: por eso la app libera las esperas al volver la conectividad.')
     ..writeln('- **El resultado depende mucho de detectar bien la red.** En el peor caso sólo una minoría de los SOS sale en la primera ventana (aunque todos acaban saliendo): por eso la app no intenta enviar sin red y por eso un plazo de intento más corto cuando acaba de volver la señal sería una mejora a medir.')
+    ..writeln('- **El «plazo 5 s» es optimista para varios nodos:** `FailoverChannel` prueba los nodos uno tras otro, así que con dos nodos caídos cada intento cuesta 10 s.')
+    ..writeln('- **Lo verificado en dispositivo** (`docs/resultados/b2-dispositivo.md`) es el caso «sin ningún transporte» (Wi-Fi y datos apagados → no se intenta nada → sale 1 s después de volver la red). **No** se ha verificado el caso «Wi-Fi conectado pero el nodo no responde» ni una Wi-Fi local sin Internet, que es justo el escenario de la cifra del peor caso.')
     ..writeln('- Los disparos de envío (tocar SOS, abrirse la ventana, temporizador) los modela el simulador sin fallos; en la app real los gestiona `PumpTrigger` con la red que detecta el sistema.');
   final f = File(out)..parent.createSync(recursive: true);
   f.writeAsStringSync(b.toString());

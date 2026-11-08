@@ -32,6 +32,8 @@ void main() {
     );
   });
 
+  tearDown(() => trigger.dispose());
+
   test('al volver la red libera las esperas y envía de inmediato, en ese orden', () async {
     await trigger.onConnectivity(false);
     now = now.add(const Duration(seconds: 5));
@@ -117,6 +119,57 @@ void main() {
     await trigger.onConnectivity(false);
     await trigger.onNewReport();
     expect(calls, isEmpty);
+  });
+
+  test('si el reloj del teléfono retrocede (corrección de hora al volver la red) no se descarta la reconexión', () async {
+    await trigger.onEvent();
+    calls.clear();
+    now = now.subtract(const Duration(hours: 1)); // el teléfono corrige su hora hacia atrás
+    await trigger.onConnectivity(true);
+    expect(calls, ['release', 'pump'], reason: 'una diferencia negativa cuenta como hueco superado, no como «muy reciente»');
+  });
+
+  test('si el reloj retrocede tampoco se descarta un evento del temporizador', () async {
+    await trigger.onEvent();
+    calls.clear();
+    now = now.subtract(const Duration(minutes: 30));
+    await trigger.onEvent();
+    expect(calls, ['pump']);
+  });
+
+  test('un disparo descartado por minGap no se pierde: se repite una vez al terminar el hueco', () async {
+    final real = PumpTrigger(
+      pump: pump,
+      releaseBackoff: () => calls.add('release'),
+      minGap: const Duration(milliseconds: 120),
+    );
+    await real.onConnectivity(true);
+    expect(calls, ['release', 'pump']);
+    await real.onConnectivity(true); // dentro del hueco: no se envía ahora…
+    expect(calls, ['release', 'pump']);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(calls, ['release', 'pump', 'release', 'pump'], reason: '…pero se repite al terminar el hueco, con su liberación de esperas');
+    real.dispose();
+  });
+
+  test('varios disparos descartados dentro del mismo hueco dan una sola repetición', () async {
+    final real = PumpTrigger(pump: pump, releaseBackoff: () => calls.add('release'), minGap: const Duration(milliseconds: 120));
+    await real.onConnectivity(true);
+    for (var i = 0; i < 5; i++) {
+      await real.onConnectivity(true);
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(calls.where((c) => c == 'pump').length, 2);
+    real.dispose();
+  });
+
+  test('dispose cancela la repetición pendiente', () async {
+    final real = PumpTrigger(pump: pump, releaseBackoff: () => calls.add('release'), minGap: const Duration(milliseconds: 120));
+    await real.onConnectivity(true);
+    await real.onConnectivity(true);
+    real.dispose();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(calls.where((c) => c == 'pump').length, 1);
   });
 
   test('tras una caída, el siguiente evento del temporizador ya no envía hasta que vuelva la red', () async {

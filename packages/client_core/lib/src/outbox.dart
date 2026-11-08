@@ -155,7 +155,8 @@ class Outbox {
         locQuality: r.locQuality,
         lat: r.lat,
         lon: r.lon,
-        capturedAt: now.millisecondsSinceEpoch ~/ 1000,
+        // Un reloj absurdo (reiniciado a 1970, desfasado) no puede impedir guardar un SOS: se acota.
+        capturedAt: (now.millisecondsSinceEpoch ~/ 1000).clamp(0, 4294967295),
         batteryQ: r.batteryQ,
         text: r.text,
       ),

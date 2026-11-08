@@ -1,9 +1,13 @@
+import 'dart:async';
+
 /// Decide cuándo lanzar un envío: al volver la conectividad (liberando antes las esperas de
 /// reintento, porque una señal nueva merece un intento inmediato) y con el temporizador
 /// mientras haya red. Sin red no se gasta batería intentando.
 ///
-/// Nunca solapa dos envíos y descarta los disparos que lleguen demasiado seguidos
-/// ([minGap]), de modo que una red que parpadea no martillea al nodo.
+/// Nunca solapa dos envíos. Los disparos que llegan demasiado seguidos ([minGap]) no se envían
+/// en el acto —una red que parpadea no martillea al nodo— pero **tampoco se pierden**: se
+/// repiten una sola vez al terminar el hueco (con la liberación de esperas si alguno la pedía).
+/// Un reloj que retrocede (corrección de hora al volver la red) cuenta como hueco superado.
 class PumpTrigger {
   PumpTrigger({
     required Future<int> Function() pump,
@@ -24,6 +28,8 @@ class PumpTrigger {
   bool _running = false;
   bool _pending = false;
   bool _pendingRelease = false;
+  Timer? _trailing;
+  bool _trailingRelease = false;
 
   /// El sistema informa de un cambio de conectividad.
   Future<void> onConnectivity(bool online) async {
@@ -56,7 +62,17 @@ class PumpTrigger {
     }
     final now = _clock();
     final last = _lastRun;
-    if (!force && last != null && now.difference(last) < minGap) return;
+    if (!force && last != null) {
+      final elapsed = now.difference(last);
+      // Un reloj que retrocede da una diferencia negativa: el hueco ya pasó, no «es muy reciente».
+      if (!elapsed.isNegative && elapsed < minGap) {
+        _scheduleTrailing(minGap - elapsed, release);
+        return;
+      }
+    }
+    _trailing?.cancel();
+    _trailing = null;
+    _trailingRelease = false;
     _running = true;
     _lastRun = now;
     try {
@@ -74,5 +90,23 @@ class PumpTrigger {
       _pending = false;
       _pendingRelease = false;
     }
+  }
+
+  /// Anota que hay que repetir el disparo descartado cuando termine el hueco anti-parpadeo.
+  void _scheduleTrailing(Duration delay, bool release) {
+    _trailingRelease = _trailingRelease || release;
+    if (_trailing != null) return; // ya hay una repetición programada: se coalescen
+    _trailing = Timer(delay, () {
+      final rel = _trailingRelease;
+      _trailing = null;
+      _trailingRelease = false;
+      unawaited(_run(release: rel, force: true));
+    });
+  }
+
+  /// Cancela la repetición pendiente (al cerrar la app o en las pruebas).
+  void dispose() {
+    _trailing?.cancel();
+    _trailing = null;
   }
 }

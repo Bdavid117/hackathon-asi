@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:sard_client_core/sard_client_core.dart';
 import 'package:sard_mobile/app.dart';
 import 'package:sard_mobile/state_labels.dart';
 import 'package:sard_protocol/sard_protocol.dart';
+import 'package:sqlite3/sqlite3.dart' as sql;
 
 final Uint8List key = Uint8List.fromList(utf8.encode('clave-de-ejemplo'));
 final DateTime t0 = DateTime.fromMillisecondsSinceEpoch(1000000);
@@ -142,6 +144,107 @@ void main() {
       ); // pánico: no cuenta
       await tester.pump();
       expect(requests, 1);
+    },
+  );
+
+  testWidgets(
+    'si el reloj del teléfono retrocede (corrección de hora), el siguiente toque es un SOS nuevo, no «muy reciente»',
+    (tester) async {
+      await boot(tester);
+      await tester.tap(find.byKey(const Key('sos_button')));
+      now = now.subtract(const Duration(hours: 1));
+      await tester.tap(find.byKey(const Key('sos_button')));
+      await tester.pump();
+      expect(outbox.all().length, 2);
+    },
+  );
+
+  testWidgets(
+    'banderas nuevas dentro de la ventana: una revisión del MISMO reporte con la unión de banderas',
+    (tester) async {
+      await boot(tester);
+      await tester.tap(find.byKey(const Key('sos_button')));
+      now = now.add(const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(const Key('flag_atrapado')));
+      await tester.tap(find.byKey(const Key('sos_button')));
+      now = now.add(const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(const Key('flag_herido')));
+      await tester.tap(find.byKey(const Key('sos_button')));
+      await tester.pump();
+      final fs = [
+        for (final e in outbox.all()) decodeReportFrame(e.frame, key),
+      ];
+      expect(fs.length, 3);
+      expect(
+        fs.map((f) => f.reportKey).toSet().length,
+        1,
+        reason: 'todo es un solo reporte',
+      );
+      expect(fs.map((f) => f.rev), [0, 1, 2]);
+      expect(fs[1].flags, SituationFlags.atrapado);
+      expect(
+        fs[2].flags,
+        SituationFlags.atrapado | SituationFlags.herido,
+        reason: 'la revisión lleva la unión, no sólo lo último',
+      );
+    },
+  );
+
+  testWidgets(
+    'repetir las mismas banderas dentro de la ventana no genera nada',
+    (tester) async {
+      await boot(tester);
+      await tester.tap(find.byKey(const Key('flag_atrapado')));
+      await tester.tap(find.byKey(const Key('sos_button')));
+      now = now.add(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const Key('flag_atrapado')));
+      await tester.tap(find.byKey(const Key('sos_button')));
+      await tester.pump();
+      expect(outbox.all().length, 1);
+    },
+  );
+
+  testWidgets(
+    'si guardar falla se avisa, y un reintento inmediato NO se descarta como duplicado',
+    (tester) async {
+      final dir = Directory.systemTemp.createTempSync('sard-sosfail-');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final path = '${dir.path}/outbox.db';
+      final locked = Outbox.open(path, key: key);
+      final blocker = sql.sqlite3.open(path);
+      addTearDown(() {
+        blocker.close();
+        locked.close();
+      });
+      await tester.pumpWidget(
+        SardApp(outbox: locked, refreshEvery: null, clock: () => now),
+      );
+      await tester.pumpAndSettle();
+
+      blocker.execute(
+        'BEGIN EXCLUSIVE',
+      ); // otra conexión retiene el bloqueo de escritura (disco ocupado)
+      await tester.tap(find.byKey(const Key('sos_button')));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('save_error')),
+        findsOneWidget,
+        reason: 'no se debe fingir que se guardó',
+      );
+      expect(locked.all(), isEmpty);
+
+      blocker.execute('COMMIT'); // se libera el bloqueo
+      now = now.add(
+        const Duration(milliseconds: 500),
+      ); // dentro de los 2 s anti-pánico
+      await tester.tap(find.byKey(const Key('sos_button')));
+      await tester.pump();
+      expect(
+        locked.all().length,
+        1,
+        reason: 'un SOS que no llegó a guardarse no cuenta como «ya enviado»',
+      );
+      expect(find.byKey(const Key('save_error')), findsNothing);
     },
   );
 

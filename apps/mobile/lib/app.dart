@@ -50,7 +50,12 @@ class _SardAppState extends State<SardApp> {
   int _selected = 0;
   int? _percent;
   LocationFix? _cachedFix;
-  DateTime? _lastSosAt;
+  // El «reporte vivo»: el último SOS y sus banderas. Dentro de [sosDebounce] los toques siguientes
+  // lo completan en vez de crear otro reporte.
+  String? _liveKey;
+  int _liveFlags = 0;
+  DateTime? _liveAt;
+  bool _saveError = false;
 
   /// Pánico: toques repetidos en menos de este plazo son el mismo SOS, no uno por toque.
   static const Duration sosDebounce = Duration(seconds: 2);
@@ -136,27 +141,87 @@ class _SardAppState extends State<SardApp> {
   /// Guarda el SOS al instante. Usa la posición conocida sólo si es reciente y utilizable;
   /// si no, el reporte sale sin ubicación y se pide una lectura nueva en segundo plano que,
   /// si llega, se envía como **revisión del mismo reporte** (nunca como un reporte nuevo).
+  /// La posición conocida, si es reciente y tiene precisión utilizable.
+  LocationFix? _usableFix(DateTime now) {
+    final cached = _cachedFix;
+    if (cached != null &&
+        cached.isFresh(now) &&
+        locQualityFromAccuracy(cached.accuracyMeters).hasCoordinates) {
+      return cached;
+    }
+    return null;
+  }
+
+  /// ¿Estamos dentro de la ventana del reporte vivo? Un reloj que retrocede (corrección de hora
+  /// al volver la red) da un tiempo transcurrido negativo y NO cuenta como «dentro»: un SOS no
+  /// puede quedar silenciado por un cambio de hora.
+  bool _isLive(DateTime now) {
+    final at = _liveAt;
+    if (_liveKey == null || at == null) return false;
+    final elapsed = now.difference(at);
+    return !elapsed.isNegative && elapsed < sosDebounce;
+  }
+
+  void _saveFailed() {
+    if (mounted) setState(() => _saveError = true);
+  }
+
+  /// Guarda el SOS al instante. Usa la posición conocida sólo si es reciente y utilizable;
+  /// si no, el reporte sale sin ubicación y se pide una lectura nueva en segundo plano que,
+  /// si llega, se envía como **revisión del mismo reporte** (nunca como un reporte nuevo).
+  ///
+  /// Toques repetidos en menos de [sosDebounce] son el mismo SOS: si traen banderas nuevas se
+  /// envían como revisión del mismo reporte con la **unión** de banderas; si no, no hacen nada.
+  /// Si guardar falla, se avisa y el reintento inmediato no se descarta.
   void _sos() {
     final now = (widget.clock ?? DateTime.now)();
-    final last = _lastSosAt;
-    if (last != null && now.difference(last) < sosDebounce) return;
-    _lastSosAt = now;
     final flags = _selected;
-    final cached = _cachedFix;
-    final usable =
-        cached != null &&
-        cached.isFresh(now) &&
-        locQualityFromAccuracy(cached.accuracyMeters).hasCoordinates;
-    final report = _report(flags: flags, fix: usable ? cached : null);
-    final entry = widget.outbox.enqueueSos(report, now: now);
-    setState(() => _selected = 0);
+
+    if (_isLive(now)) {
+      final union = _liveFlags | flags;
+      if (union == _liveFlags) return; // el mismo SOS: nada que añadir
+      try {
+        widget.outbox.enqueueRevision(
+          _liveKey!,
+          _report(flags: union, fix: _usableFix(now)),
+          now: now,
+        );
+      } on Object {
+        _saveFailed();
+        return;
+      }
+      _liveFlags = union;
+      _liveAt = now;
+      setState(() {
+        _selected = 0;
+        _saveError = false;
+      });
+      _requestSend();
+      return;
+    }
+
+    final report = _report(flags: flags, fix: _usableFix(now));
+    final OutboxEntry entry;
+    try {
+      entry = widget.outbox.enqueueSos(report, now: now);
+    } on Object {
+      _saveFailed(); // no se fija _liveAt: el siguiente toque es un reintento real
+      return;
+    }
+    _liveKey = entry.reportKey;
+    _liveFlags = flags;
+    _liveAt = now;
+    setState(() {
+      _selected = 0;
+      _saveError = false;
+    });
     _requestSend();
     if (!report.locQuality.hasCoordinates && widget.location != null) {
-      unawaited(_refineLocation(entry.reportKey, flags));
+      unawaited(_refineLocation(entry.reportKey));
     }
   }
 
-  Future<void> _refineLocation(String reportKey, int flags) async {
+  Future<void> _refineLocation(String reportKey) async {
     LocationFix? fix;
     try {
       fix = await widget.location!.fresh(timeout: const Duration(seconds: 8));
@@ -169,6 +234,8 @@ class _SardAppState extends State<SardApp> {
     }
     _cachedFix = fix;
     try {
+      // Las banderas vigentes (si entretanto se añadieron otras, la revisión las lleva).
+      final flags = reportKey == _liveKey ? _liveFlags : 0;
       widget.outbox.enqueueRevision(
         reportKey,
         _report(flags: flags, fix: fix),
@@ -199,6 +266,24 @@ class _SardAppState extends State<SardApp> {
         body: SafeArea(
           child: Column(
             children: [
+              if (_saveError)
+                Container(
+                  key: const Key('save_error'),
+                  width: double.infinity,
+                  color: const Color(0xFFC0392B),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 12,
+                  ),
+                  child: const Text(
+                    'No se pudo guardar el reporte. Vuelve a tocar SOS.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               if (_mode != PowerMode.normal)
                 Container(
                   key: const Key('power_banner'),

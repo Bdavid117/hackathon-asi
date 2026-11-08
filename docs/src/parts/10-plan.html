@@ -122,5 +122,5 @@
   <li><strong>Confirmar el plazo disponible</strong>: es el dato que falta para dimensionar el recorte de {{ref:s10-3}} para los bloques B3 a B6.</li>
   <li><strong>Bloque B3 · agentes y deduplicación:</strong> correlación con puntaje y tres estados, generador sintético con verdad de referencia y puerto del modelo de lenguaje con respaldo de reglas.</li>
   <li><strong>Probar en hardware real:</strong> B2 se verificó en el emulador de Android y el simulador de iOS (ubicación y batería simuladas); falta un teléfono real, un servicio en primer plano de Android y, si se quiere, un canal de baja capacidad.</li>
-  <li><strong>Mejora detectada en B2:</strong> reintentar enseguida mientras el enlace responde (con 30 % de pérdida dentro de una ventana de 3 s sólo el 69 % de los SOS sale en la primera ventana).</li>
+  <li><strong>Hallazgo de B2 sin resolver:</strong> en ventanas de 3 s cada 60 s, el 100 % de los SOS sale en la primera ventana <em>sólo si el sistema avisa bien de cuándo hay red</em>; si dice que hay red pero el nodo no responde (intentos de 5 s) baja al <strong>20 %</strong> (todos acaban saliendo después). Mejoras a medir: un plazo de intento corto justo tras volver la señal y reintentar enseguida mientras el enlace responde.</li>
 </ol>
