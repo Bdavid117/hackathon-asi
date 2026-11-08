@@ -165,4 +165,108 @@ void main() {
     other.close();
     ob.close();
   });
+
+  group('envejecimiento y cuota anti-inanición', () {
+    final base = DateTime.fromMillisecondsSinceEpoch(1000000000); // lejos de 1970: permite restar minutos
+    const flagsP1 = SituationFlags.atrapado | SituationFlags.herido; // prioHint 0
+    const flagsP3 = SituationFlags.viaBloqueada; // prioHint 2
+    const flagsP4 = 0; // prioHint 3
+    const never = Duration(days: 1000);
+
+    test('el envejecimiento sube la prioridad de lo que espera', () {
+      final ob = Outbox.open(path, key: key);
+      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 35)));
+      ob.enqueueSos(sos(flags: flagsP3), now: base);
+      expect(ob.due(base, limit: 1).single.frameSeq, old.frameSeq);
+      ob.close();
+    });
+
+    test('sin envejecer, un P4 reciente va detrás de un P3', () {
+      final ob = Outbox.open(path, key: key);
+      ob.enqueueSos(sos(flags: flagsP4), now: base);
+      final p3 = ob.enqueueSos(sos(flags: flagsP3), now: base);
+      expect(ob.due(base, limit: 1).single.frameSeq, p3.frameSeq);
+      ob.close();
+    });
+
+    test('la cuota hace salir al más antiguo aunque haya una avalancha de P1', () {
+      final ob = Outbox.open(path, key: key);
+      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 5)));
+      for (var i = 0; i < 30; i++) {
+        ob.enqueueSos(sos(flags: flagsP1), now: base);
+      }
+      final batch = ob.due(base, limit: 5, agingStep: never);
+      expect(batch.length, 5);
+      expect(batch.map((e) => e.frameSeq), contains(old.frameSeq));
+      expect(batch.last.frameSeq, old.frameSeq, reason: 'ocupa la quinta posición');
+      ob.close();
+    });
+
+    test('sin la cuota (lote de 4) sólo salen P1', () {
+      final ob = Outbox.open(path, key: key);
+      ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 5)));
+      for (var i = 0; i < 30; i++) {
+        ob.enqueueSos(sos(flags: flagsP1), now: base);
+      }
+      expect(ob.due(base, limit: 4, agingStep: never).every((e) => e.prioHint == 0), isTrue);
+      ob.close();
+    });
+
+    test('un lote de 10 reserva dos posiciones: los dos más antiguos', () {
+      final ob = Outbox.open(path, key: key);
+      final a = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 9)));
+      final b = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 8)));
+      for (var i = 0; i < 30; i++) {
+        ob.enqueueSos(sos(flags: flagsP1), now: base);
+      }
+      final seqs = ob.due(base, limit: 10, agingStep: never).map((e) => e.frameSeq).toList();
+      expect(seqs.length, 10);
+      expect(seqs[4], a.frameSeq);
+      expect(seqs[9], b.frameSeq);
+      ob.close();
+    });
+
+    test('no repite entradas ni excede el límite', () {
+      final ob = Outbox.open(path, key: key);
+      for (var i = 0; i < 25; i++) {
+        ob.enqueueSos(sos(flags: [flagsP1, flagsP3, flagsP4][i % 3]), now: base.subtract(Duration(minutes: i)));
+      }
+      final seqs = ob.due(base, limit: 8).map((e) => e.frameSeq).toList();
+      expect(seqs.length, 8);
+      expect(seqs.toSet().length, 8);
+      ob.close();
+    });
+
+    test('lo que aún no venció su espera no entra por la cuota', () {
+      final ob = Outbox.open(path, key: key);
+      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 5)));
+      ob.markSending(old.frameSeq);
+      ob.markFailed(old.frameSeq, nextTryAt: base.add(const Duration(hours: 1)));
+      for (var i = 0; i < 30; i++) {
+        ob.enqueueSos(sos(flags: flagsP1), now: base);
+      }
+      expect(ob.due(base, limit: 5, agingStep: never).map((e) => e.frameSeq), isNot(contains(old.frameSeq)));
+      ob.close();
+    });
+
+    test('con muchas esperas, al cabo de varias rondas todo el mundo sale (sin inanición)', () {
+      final ob = Outbox.open(path, key: key);
+      final old = ob.enqueueSos(sos(flags: flagsP4), now: base);
+      var now = base;
+      var round = 0;
+      var sent = false;
+      while (!sent && round < 20) {
+        ob.enqueueSos(sos(flags: flagsP1), now: now); // llegan P1 sin parar
+        for (final e in ob.due(now, limit: 5, agingStep: never)) {
+          ob.markSending(e.frameSeq);
+          ob.applyAck(Ack(deviceId: ob.deviceId, ackSeq: e.frameSeq, bitmap: 0));
+          if (e.frameSeq == old.frameSeq) sent = true;
+        }
+        now = now.add(const Duration(seconds: 1));
+        round++;
+      }
+      expect(sent, isTrue);
+      ob.close();
+    });
+  });
 }

@@ -187,15 +187,55 @@ class Outbox {
         createdAt: DateTime.fromMillisecondsSinceEpoch(r['created_at'] as int),
       );
 
-  /// Entradas listas para enviar: `queued` cuyo `nextTryAt` ya venció; menor `prioHint` primero.
-  List<OutboxEntry> due(DateTime now, {int limit = 8}) => _db
-      .select(
-        "SELECT * FROM outbox WHERE state = 'queued' AND (next_try_at IS NULL OR next_try_at <= ?) "
-        'ORDER BY prio_hint, created_at, frame_seq LIMIT ?',
-        [now.millisecondsSinceEpoch, limit],
-      )
-      .map(_entry)
-      .toList();
+  /// Entradas listas para enviar: `queued` cuyo `nextTryAt` ya venció.
+  ///
+  /// Orden: prioridad efectiva (la del reporte menos un nivel por cada [agingStep] que lleva
+  /// esperando, mínimo 0), luego antigüedad. **Cuota anti-inanición:** cada [quotaEvery]
+  /// posiciones del lote (la 5.ª, la 10.ª…) se reservan para los pendientes más antiguos que
+  /// aún no estén en él, de modo que la urgencia nunca deja morir a los casos leves.
+  List<OutboxEntry> due(
+    DateTime now, {
+    int limit = 8,
+    Duration agingStep = const Duration(minutes: 10),
+    int quotaEvery = 5,
+  }) {
+    final ready = _db
+        .select(
+          "SELECT * FROM outbox WHERE state = 'queued' AND (next_try_at IS NULL OR next_try_at <= ?)",
+          [now.millisecondsSinceEpoch],
+        )
+        .map(_entry)
+        .toList();
+    int effective(OutboxEntry e) {
+      final waited = now.difference(e.createdAt).inMicroseconds;
+      final levels = waited <= 0 ? 0 : waited ~/ agingStep.inMicroseconds;
+      return max(0, e.prioHint - levels);
+    }
+
+    ready.sort((a, b) {
+      final p = effective(a).compareTo(effective(b));
+      if (p != 0) return p;
+      final c = a.createdAt.compareTo(b.createdAt);
+      return c != 0 ? c : a.frameSeq.compareTo(b.frameSeq);
+    });
+    final batch = ready.take(limit).toList();
+    if (quotaEvery > 0) {
+      final oldest = [...ready]..sort((a, b) {
+          final c = a.createdAt.compareTo(b.createdAt);
+          return c != 0 ? c : a.frameSeq.compareTo(b.frameSeq);
+        });
+      final included = {for (final e in batch) e.frameSeq};
+      for (var pos = quotaEvery; pos <= limit && pos <= batch.length; pos += quotaEvery) {
+        // Si el que ocupa la posición ya es de los más antiguos, no hace falta tocarla.
+        final candidate = oldest.where((e) => !included.contains(e.frameSeq)).firstOrNull;
+        if (candidate == null) break;
+        included.remove(batch[pos - 1].frameSeq);
+        batch[pos - 1] = candidate;
+        included.add(candidate.frameSeq);
+      }
+    }
+    return batch;
+  }
 
   void markSending(int frameSeq) =>
       _db.execute("UPDATE outbox SET state = 'sending' WHERE frame_seq = ? AND state = 'queued'", [frameSeq]);
