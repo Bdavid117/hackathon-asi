@@ -1,0 +1,13 @@
+name: sard_client_core
+description: "Bandeja de salida, planificador de envío y canales HTTP del cliente (Dart puro)."
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.11.0
+dependencies:
+  http: ^1.6.0
+  sard_protocol: any
+  sqlite3: ^3.5.2
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.30.0
