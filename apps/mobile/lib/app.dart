@@ -16,6 +16,7 @@ class SardApp extends StatefulWidget {
     this.refreshEvery = const Duration(seconds: 1),
     this.clock,
     this.battery,
+    this.location,
   });
 
   final Outbox outbox;
@@ -31,6 +32,9 @@ class SardApp extends StatefulWidget {
   /// se comporta en modo normal y marca la batería con el valor «desconocido» de la trama.
   final Future<int?> Function()? battery;
 
+  /// Fuente de ubicación. Sin ella (o sin permiso) los reportes salen con ubicación «ninguna».
+  final LocationProvider? location;
+
   @override
   State<SardApp> createState() => _SardAppState();
 }
@@ -38,6 +42,7 @@ class SardApp extends StatefulWidget {
 class _SardAppState extends State<SardApp> {
   int _selected = 0;
   int? _percent;
+  LocationFix? _cachedFix;
   Timer? _timer;
   Timer? _batteryTimer;
 
@@ -48,6 +53,7 @@ class _SardAppState extends State<SardApp> {
     super.initState();
     _applyTimers();
     unawaited(_readBattery());
+    unawaited(_readLocationCache());
   }
 
   @override
@@ -73,6 +79,17 @@ class _SardAppState extends State<SardApp> {
     );
   }
 
+  /// Memoriza la última posición conocida para poder usarla al instante al tocar SOS.
+  Future<void> _readLocationCache() async {
+    final p = widget.location;
+    if (p == null) return;
+    try {
+      _cachedFix = await p.lastKnown();
+    } on Object {
+      _cachedFix = null; // sin permiso o GPS apagado: el SOS sale sin ubicación
+    }
+  }
+
   Future<void> _readBattery() async {
     final read = widget.battery;
     if (read == null) return;
@@ -90,20 +107,64 @@ class _SardAppState extends State<SardApp> {
 
   void _toggle(int bit) => setState(() => _selected ^= bit);
 
+  NewReport _report({required int flags, LocationFix? fix}) {
+    final q = fix == null
+        ? LocQuality.none
+        : locQualityFromAccuracy(fix.accuracyMeters);
+    return NewReport(
+      incidentType: 1, // SOS genérico
+      flags: flags,
+      peopleBucket: 0,
+      batteryQ: batteryQFromPercent(_percent),
+      locQuality: q,
+      lat: q.hasCoordinates ? fix!.lat : null,
+      lon: q.hasCoordinates ? fix!.lon : null,
+    );
+  }
+
+  /// Guarda el SOS al instante. Usa la posición conocida sólo si es reciente y utilizable;
+  /// si no, el reporte sale sin ubicación y se pide una lectura nueva en segundo plano que,
+  /// si llega, se envía como **revisión del mismo reporte** (nunca como un reporte nuevo).
   void _sos() {
     final now = (widget.clock ?? DateTime.now)();
-    widget.outbox.enqueueSos(
-      // incidentType 1 = SOS genérico; la ubicación llega en la Tarea 23.
-      NewReport(
-        incidentType: 1,
-        flags: _selected,
-        peopleBucket: 0,
-        batteryQ: batteryQFromPercent(_percent),
-        locQuality: LocQuality.none,
-      ),
-      now: now,
-    );
+    final flags = _selected;
+    final cached = _cachedFix;
+    final usable =
+        cached != null &&
+        cached.isFresh(now) &&
+        locQualityFromAccuracy(cached.accuracyMeters).hasCoordinates;
+    final report = _report(flags: flags, fix: usable ? cached : null);
+    final entry = widget.outbox.enqueueSos(report, now: now);
     setState(() => _selected = 0);
+    final s = widget.scheduler;
+    if (s != null) unawaited(s.pump());
+    if (!report.locQuality.hasCoordinates && widget.location != null) {
+      unawaited(_refineLocation(entry.reportKey, flags));
+    }
+  }
+
+  Future<void> _refineLocation(String reportKey, int flags) async {
+    LocationFix? fix;
+    try {
+      fix = await widget.location!.fresh(timeout: const Duration(seconds: 8));
+    } on Object {
+      fix = null;
+    }
+    if (fix == null ||
+        !locQualityFromAccuracy(fix.accuracyMeters).hasCoordinates) {
+      return;
+    }
+    _cachedFix = fix;
+    try {
+      widget.outbox.enqueueRevision(
+        reportKey,
+        _report(flags: flags, fix: fix),
+        now: (widget.clock ?? DateTime.now)(),
+      );
+    } on Object {
+      return; // la bandeja pudo cerrarse mientras tanto
+    }
+    if (mounted) setState(() {});
     final s = widget.scheduler;
     if (s != null) unawaited(s.pump());
   }

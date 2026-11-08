@@ -6,3 +6,4 @@ export 'src/http_channel.dart';
 export 'src/send_scheduler.dart';
 export 'src/transport_stats.dart';
 export 'src/power_mode.dart';
+export 'src/location.dart';

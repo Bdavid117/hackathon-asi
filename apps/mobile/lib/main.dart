@@ -10,21 +10,31 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sard_client_core/sard_client_core.dart';
 
 import 'app.dart';
+import 'location_geolocator.dart';
 
 /// Nodos a los que enviar, separados por comas. En el emulador de Android `10.0.2.2` es el
 /// equipo anfitrión: `--dart-define=NODES=http://10.0.2.2:8081,http://10.0.2.2:8082`.
-const String _nodes = String.fromEnvironment('NODES', defaultValue: 'http://10.0.2.2:8081');
-const String _keyText = String.fromEnvironment('KEY', defaultValue: 'clave-de-ejemplo');
+const String _nodes = String.fromEnvironment(
+  'NODES',
+  defaultValue: 'http://10.0.2.2:8081',
+);
+const String _keyText = String.fromEnvironment(
+  'KEY',
+  defaultValue: 'clave-de-ejemplo',
+);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await GeolocatorLocationProvider.requestPermissionOnce();
   final dir = await getApplicationDocumentsDirectory();
   final key = Uint8List.fromList(utf8.encode(_keyText));
   final outbox = Outbox.open(p.join(dir.path, 'outbox.db'), key: key);
   final client = http.Client();
   final scheduler = SendScheduler(
     outbox: outbox,
-    channel: FailoverChannel([for (final u in _nodes.split(',')) HttpChannel(Uri.parse(u), client)]),
+    channel: FailoverChannel([
+      for (final u in _nodes.split(',')) HttpChannel(Uri.parse(u), client),
+    ]),
     key: key,
   );
   var pumping = false;
@@ -37,5 +47,12 @@ Future<void> main() async {
       pumping = false;
     }
   });
-  runApp(SardApp(outbox: outbox, scheduler: scheduler, battery: () => Battery().batteryLevel));
+  runApp(
+    SardApp(
+      outbox: outbox,
+      scheduler: scheduler,
+      battery: () => Battery().batteryLevel,
+      location: GeolocatorLocationProvider(),
+    ),
+  );
 }

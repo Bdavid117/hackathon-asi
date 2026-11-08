@@ -20,7 +20,9 @@ class ReportsList extends StatelessWidget {
         final e = entries[i];
         return ListTile(
           key: Key('report_${e.frameSeq}'),
-          title: Text(e.rev == 0 ? 'SOS #${e.frameSeq}' : 'Detalle #${e.frameSeq}'),
+          title: Text(
+            e.rev == 0 ? 'SOS #${e.frameSeq}' : 'Detalle #${e.frameSeq}',
+          ),
           subtitle: Text(stateLabel(e)),
         );
       },
