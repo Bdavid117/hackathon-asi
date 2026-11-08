@@ -13,12 +13,21 @@ const List<(String, String, int)> kFlagChips = [
 
 /// Botón SOS grande y seis indicadores de situación. Sin imágenes ni animaciones.
 class SosPanel extends StatelessWidget {
-  const SosPanel({super.key, required this.selected, required this.onToggle, required this.onSos});
+  const SosPanel({
+    super.key,
+    required this.selected,
+    required this.onToggle,
+    required this.onSos,
+    this.showFlags = true,
+  });
 
   /// Máscara de bits de las banderas marcadas.
   final int selected;
   final void Function(int bit) onToggle;
   final VoidCallback onSos;
+
+  /// En modo «sólo SOS» (batería muy baja) los indicadores se ocultan.
+  final bool showFlags;
 
   @override
   Widget build(BuildContext context) {
@@ -37,26 +46,34 @@ class SosPanel extends StatelessWidget {
               backgroundColor: const Color(0xFFC0392B),
               foregroundColor: Colors.white,
             ),
-            child: const Text('SOS', style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800)),
+            child: const Text(
+              'SOS',
+              style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800),
+            ),
           ),
         ),
         const SizedBox(height: 6),
-        const Text('Un toque: guarda y pone en cola', style: TextStyle(fontSize: 12)),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          alignment: WrapAlignment.center,
-          children: [
-            for (final (key, label, bit) in kFlagChips)
-              FilterChip(
-                key: Key(key),
-                label: Text(label),
-                selected: selected & bit != 0,
-                onSelected: (_) => onToggle(bit),
-              ),
-          ],
+        const Text(
+          'Un toque: guarda y pone en cola',
+          style: TextStyle(fontSize: 12),
         ),
+        if (showFlags) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            alignment: WrapAlignment.center,
+            children: [
+              for (final (key, label, bit) in kFlagChips)
+                FilterChip(
+                  key: Key(key),
+                  label: Text(label),
+                  selected: selected & bit != 0,
+                  onSelected: (_) => onToggle(bit),
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }

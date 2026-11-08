@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -36,5 +37,5 @@ Future<void> main() async {
       pumping = false;
     }
   });
-  runApp(SardApp(outbox: outbox, scheduler: scheduler));
+  runApp(SardApp(outbox: outbox, scheduler: scheduler, battery: () => Battery().batteryLevel));
 }

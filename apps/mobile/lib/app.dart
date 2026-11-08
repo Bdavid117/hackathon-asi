@@ -15,6 +15,7 @@ class SardApp extends StatefulWidget {
     this.scheduler,
     this.refreshEvery = const Duration(seconds: 1),
     this.clock,
+    this.battery,
   });
 
   final Outbox outbox;
@@ -26,25 +27,65 @@ class SardApp extends StatefulWidget {
   final Duration? refreshEvery;
   final DateTime Function()? clock;
 
+  /// Porcentaje de batería (0..100) o `null` si no se conoce. Si falla o no se da, la app
+  /// se comporta en modo normal y marca la batería con el valor «desconocido» de la trama.
+  final Future<int?> Function()? battery;
+
   @override
   State<SardApp> createState() => _SardAppState();
 }
 
 class _SardAppState extends State<SardApp> {
   int _selected = 0;
+  int? _percent;
   Timer? _timer;
+  Timer? _batteryTimer;
+
+  PowerMode get _mode => powerModeFor(_percent);
 
   @override
   void initState() {
     super.initState();
-    final every = widget.refreshEvery;
-    if (every != null) _timer = Timer.periodic(every, (_) => setState(() {}));
+    _applyTimers();
+    unawaited(_readBattery());
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _batteryTimer?.cancel();
     super.dispose();
+  }
+
+  /// En modo ahorro la lista se refresca cinco veces más despacio.
+  void _applyTimers() {
+    _timer?.cancel();
+    _batteryTimer?.cancel();
+    final every = widget.refreshEvery;
+    if (every == null) return;
+    _timer = Timer.periodic(
+      _mode == PowerMode.normal ? every : every * 5,
+      (_) => setState(() {}),
+    );
+    _batteryTimer = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => unawaited(_readBattery()),
+    );
+  }
+
+  Future<void> _readBattery() async {
+    final read = widget.battery;
+    if (read == null) return;
+    int? p;
+    try {
+      p = await read();
+    } on Object {
+      p = null; // sin dato: modo normal
+    }
+    if (!mounted || p == _percent) return;
+    final before = _mode;
+    setState(() => _percent = p);
+    if (_mode != before) _applyTimers();
   }
 
   void _toggle(int bit) => setState(() => _selected ^= bit);
@@ -52,12 +93,12 @@ class _SardAppState extends State<SardApp> {
   void _sos() {
     final now = (widget.clock ?? DateTime.now)();
     widget.outbox.enqueueSos(
-      // B1: sin GPS ni lectura real de batería (llegan en B2); incidentType 1 = SOS genérico.
+      // incidentType 1 = SOS genérico; la ubicación llega en la Tarea 23.
       NewReport(
         incidentType: 1,
         flags: _selected,
         peopleBucket: 0,
-        batteryQ: 15,
+        batteryQ: batteryQFromPercent(_percent),
         locQuality: LocQuality.none,
       ),
       now: now,
@@ -78,9 +119,40 @@ class _SardAppState extends State<SardApp> {
         body: SafeArea(
           child: Column(
             children: [
-              SosPanel(selected: _selected, onToggle: _toggle, onSos: _sos),
-              const Divider(),
-              Expanded(child: ReportsList(entries: widget.outbox.all().reversed.toList())),
+              if (_mode != PowerMode.normal)
+                Container(
+                  key: const Key('power_banner'),
+                  width: double.infinity,
+                  color: const Color(0xFF8A6508),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 12,
+                  ),
+                  child: Text(
+                    _mode == PowerMode.saver
+                        ? 'Modo ahorro de batería'
+                        : 'Sólo SOS: batería muy baja',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              SosPanel(
+                selected: _selected,
+                onToggle: _toggle,
+                onSos: _sos,
+                showFlags: _mode != PowerMode.sosOnly,
+              ),
+              if (_mode != PowerMode.sosOnly) ...[
+                const Divider(),
+                Expanded(
+                  child: ReportsList(
+                    entries: widget.outbox.all().reversed.toList(),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
