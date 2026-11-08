@@ -1,0 +1,14 @@
+name: hackathon_asi_workspace
+description: Workspace raíz del proyecto SARD (Hackathon Expo ASI 2026).
+publish_to: none
+environment:
+  sdk: ^3.11.0
+workspace:
+  - packages/protocol
+  - packages/client_core
+  - packages/agents
+  - packages/sim
+  - apps/node
+  - apps/mobile
+  - apps/dashboard
+  - spikes/sqlite_kill
