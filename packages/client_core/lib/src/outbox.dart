@@ -190,7 +190,7 @@ class Outbox {
   /// Entradas listas para enviar: `queued` cuyo `nextTryAt` ya venció.
   ///
   /// Orden: prioridad efectiva (la del reporte menos un nivel por cada [agingStep] que lleva
-  /// esperando, mínimo 0), luego antigüedad. **Cuota anti-inanición:** cada [quotaEvery]
+  /// esperando, con suelo en P2: sólo un P1 de origen es P1), luego antigüedad. **Cuota anti-inanición:** cada [quotaEvery]
   /// posiciones del lote (la 5.ª, la 10.ª…) se reservan para los pendientes más antiguos que
   /// aún no estén en él, de modo que la urgencia nunca deja morir a los casos leves.
   List<OutboxEntry> due(
@@ -209,7 +209,9 @@ class Outbox {
     int effective(OutboxEntry e) {
       final waited = now.difference(e.createdAt).inMicroseconds;
       final levels = waited <= 0 ? 0 : waited ~/ agingStep.inMicroseconds;
-      return max(0, e.prioHint - levels);
+      // Esperar sube la prioridad pero nunca por encima de P2: un caso leve muy antiguo no
+      // adelanta a un P1 (la cuota ya garantiza que no muera de inanición).
+      return e.prioHint == 0 ? 0 : max(1, e.prioHint - levels);
     }
 
     ready.sort((a, b) {

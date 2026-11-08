@@ -181,6 +181,23 @@ void main() {
       ob.close();
     });
 
+    test('el envejecimiento nunca iguala a un P1: un P4 de 3 horas sigue yendo detrás de un P1 nuevo', () {
+      final ob = Outbox.open(path, key: key);
+      ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(hours: 3)));
+      final p1 = ob.enqueueSos(sos(flags: flagsP1), now: base);
+      expect(ob.due(base, limit: 1).single.frameSeq, p1.frameSeq);
+      ob.close();
+    });
+
+    test('el envejecimiento sí lleva un P4 muy antiguo por delante de un P2 nuevo', () {
+      final ob = Outbox.open(path, key: key);
+      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(hours: 3)));
+      ob.enqueueSos(sos(flags: SituationFlags.atrapado), now: base); // prioHint 1 (P2)
+      // P4 envejecido queda en P2 y gana el desempate por antigüedad al P2 nuevo.
+      expect(ob.due(base, limit: 1).single.frameSeq, old.frameSeq);
+      ob.close();
+    });
+
     test('sin envejecer, un P4 reciente va detrás de un P3', () {
       final ob = Outbox.open(path, key: key);
       ob.enqueueSos(sos(flags: flagsP4), now: base);

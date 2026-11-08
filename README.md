@@ -8,7 +8,7 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 
 **B0, B1 y B2 implementados y verificados.** Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado y la app se comporta bien en sus condiciones: **se guarda sin red y sale solo al volver la señal** (en el emulador de Android: 1 s tras devolver la red), usa **GPS y batería reales** (ubicación como revisión del mismo reporte; modos normal, ahorro y sólo SOS) y reparte el envío con **envejecimiento y cuota anti-inanición**.
 
-- **299 pruebas automáticas** en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
+- **313 pruebas automáticas** en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
 - **Sin probar en hardware real ni con radio real** (todo en emuladores).
 
 | Qué | Dónde |

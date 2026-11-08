@@ -6,6 +6,7 @@ import 'package:sard_protocol/sard_protocol.dart';
 
 import 'reports_screen.dart';
 import 'sos_screen.dart';
+import 'state_labels.dart';
 
 /// La app ciudadana: SOS en un toque y estado de entrega.
 class SardApp extends StatefulWidget {
@@ -17,6 +18,7 @@ class SardApp extends StatefulWidget {
     this.clock,
     this.battery,
     this.location,
+    this.onNewReport,
   });
 
   final Outbox outbox;
@@ -35,6 +37,11 @@ class SardApp extends StatefulWidget {
   /// Fuente de ubicación. Sin ella (o sin permiso) los reportes salen con ubicación «ninguna».
   final LocationProvider? location;
 
+  /// Cómo pedir el envío tras crear un reporte. En la app real pasa por [PumpTrigger] (no intenta
+  /// enviar sin red y nunca descarta un SOS por el filtro anti-parpadeo). Si no se da, se usa
+  /// el `scheduler` directamente.
+  final Future<void> Function()? onNewReport;
+
   @override
   State<SardApp> createState() => _SardAppState();
 }
@@ -43,6 +50,10 @@ class _SardAppState extends State<SardApp> {
   int _selected = 0;
   int? _percent;
   LocationFix? _cachedFix;
+  DateTime? _lastSosAt;
+
+  /// Pánico: toques repetidos en menos de este plazo son el mismo SOS, no uno por toque.
+  static const Duration sosDebounce = Duration(seconds: 2);
   Timer? _timer;
   Timer? _batteryTimer;
 
@@ -127,6 +138,9 @@ class _SardAppState extends State<SardApp> {
   /// si llega, se envía como **revisión del mismo reporte** (nunca como un reporte nuevo).
   void _sos() {
     final now = (widget.clock ?? DateTime.now)();
+    final last = _lastSosAt;
+    if (last != null && now.difference(last) < sosDebounce) return;
+    _lastSosAt = now;
     final flags = _selected;
     final cached = _cachedFix;
     final usable =
@@ -136,8 +150,7 @@ class _SardAppState extends State<SardApp> {
     final report = _report(flags: flags, fix: usable ? cached : null);
     final entry = widget.outbox.enqueueSos(report, now: now);
     setState(() => _selected = 0);
-    final s = widget.scheduler;
-    if (s != null) unawaited(s.pump());
+    _requestSend();
     if (!report.locQuality.hasCoordinates && widget.location != null) {
       unawaited(_refineLocation(entry.reportKey, flags));
     }
@@ -165,8 +178,14 @@ class _SardAppState extends State<SardApp> {
       return; // la bandeja pudo cerrarse mientras tanto
     }
     if (mounted) setState(() {});
-    final s = widget.scheduler;
-    if (s != null) unawaited(s.pump());
+    _requestSend();
+  }
+
+  void _requestSend() {
+    final send =
+        widget.onNewReport ??
+        (widget.scheduler == null ? null : () => widget.scheduler!.pump());
+    if (send != null) unawaited(send());
   }
 
   @override
@@ -213,7 +232,16 @@ class _SardAppState extends State<SardApp> {
                     entries: widget.outbox.all().reversed.toList(),
                   ),
                 ),
-              ],
+              ] else if (widget.outbox.all().isNotEmpty)
+                // Sin lista (batería muy baja) la pantalla igualmente confirma el estado del último reporte.
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    stateLabel(widget.outbox.all().last),
+                    key: const Key('last_status'),
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
             ],
           ),
         ),

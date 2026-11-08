@@ -213,6 +213,46 @@ void main() {
       expect(s.stats.framesSent, 1);
     });
 
+    test('una petición que llega durante un envío en curso se atiende en cuanto éste termina (no se pierde)', () async {
+      final a = outbox.enqueueSos(sos(), now: t0);
+      final gate = Completer<Uint8List?>();
+      final node = _Node();
+      var first = true;
+      final ch = _Fn((f) {
+        if (first) {
+          first = false;
+          return gate.future; // el primer envío queda esperando (nodo lento)
+        }
+        return node.handle(f);
+      });
+      final s = scheduler(ch);
+      final running = s.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final b = outbox.enqueueSos(sos(), now: t0); // un SOS nuevo mientras el primero sigue en vuelo
+      expect(await s.pump(), 0, reason: 'la llamada solapada no envía en paralelo');
+      expect(ch.calls, 1);
+      gate.complete(await node.handle(a.frame)); // por fin responde el nodo lento
+      await running;
+      final byState = {for (final e in outbox.all()) e.frameSeq: e.state};
+      expect(byState[b.frameSeq], OutboxState.sent, reason: 'el SOS que llegó durante el envío sale en la ronda siguiente');
+    });
+
+    test('muchas peticiones solapadas se coalescen en una sola ronda extra', () async {
+      outbox.enqueueSos(sos(), now: t0);
+      final gate = Completer<Uint8List?>();
+      final ch = _Fn((_) => gate.future);
+      final s = scheduler(ch);
+      final running = s.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      for (var i = 0; i < 5; i++) {
+        expect(await s.pump(), 0);
+      }
+      gate.complete(null);
+      await running;
+      // Una ronda inicial + a lo sumo una de seguimiento (la entrada fallida tiene espera, no se reenvía).
+      expect(ch.calls, 1);
+    });
+
     test('tras terminar un pump se puede lanzar otro', () async {
       outbox.enqueueSos(sos(), now: t0);
       final node = _Node();

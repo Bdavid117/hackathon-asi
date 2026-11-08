@@ -139,6 +139,11 @@ class WindowResult {
 /// [lossInWindow] de las tramas. La app envía al crear cada reporte y, como haría al volver la
 /// conectividad, **libera las esperas de reintento al abrirse la ventana** (desactivable con
 /// [releaseBackoffOnOpen] para medir su efecto) y reintenta cada segundo mientras dura.
+///
+/// [channelTimeout] modela el coste real de intentar enviar con la ventana cerrada: un nodo
+/// inalcanzable retiene el envío hasta su plazo (5 s en `HttpChannel`), y lo que llega mientras
+/// tanto espera a que termine (el planificador coalesce, no pierde). Con `Duration.zero` el canal
+/// cerrado falla al instante: es el caso **ideal**, que sobrestima lo que se logra en la práctica.
 Future<WindowResult> runWindowScenario({
   int reports = 100,
   int seed = 1,
@@ -147,6 +152,7 @@ Future<WindowResult> runWindowScenario({
   int periods = 10,
   double lossInWindow = 0,
   bool releaseBackoffOnOpen = true,
+  Duration channelTimeout = Duration.zero,
   int maxExtraPeriods = 60,
 }) async {
   final clock = VirtualClock(_epoch);
@@ -180,7 +186,13 @@ Future<WindowResult> runWindowScenario({
   }
 
   Future<void> pumpAll() async {
+    final wasClosed = !windowed.isOpenAt(clock.now());
+    final framesBefore = scheduler.stats.framesSent;
     while (await scheduler.pump() > 0) {}
+    // Intentar enviar con la ventana cerrada bloquea el envío hasta el plazo del nodo inalcanzable.
+    if (wasClosed && scheduler.stats.framesSent > framesBefore && channelTimeout > Duration.zero) {
+      clock.advance(channelTimeout);
+    }
     noteSent();
   }
 

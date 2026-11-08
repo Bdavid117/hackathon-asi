@@ -22,6 +22,8 @@ class PumpTrigger {
   bool _online = true; // optimista hasta saber lo contrario
   DateTime? _lastRun;
   bool _running = false;
+  bool _pending = false;
+  bool _pendingRelease = false;
 
   /// El sistema informa de un cambio de conectividad.
   Future<void> onConnectivity(bool online) async {
@@ -36,18 +38,41 @@ class PumpTrigger {
     await _run(release: false);
   }
 
-  Future<void> _run({required bool release}) async {
-    if (_running) return;
+  /// El ciudadano acaba de crear un reporte: se intenta enviar de inmediato aunque acabe de
+  /// haber otro intento (el filtro anti-parpadeo no puede tragarse un SOS).
+  Future<void> onNewReport() async {
+    if (!_online) return;
+    await _run(release: false, force: true);
+  }
+
+  /// Un envío a la vez. Lo que llega mientras hay uno en curso (un SOS, una reconexión) no se
+  /// pierde: se anota y, al terminar el actual, se hace UNA ronda de seguimiento (liberando las
+  /// esperas si alguno de los disparos lo pedía).
+  Future<void> _run({required bool release, bool force = false}) async {
+    if (_running) {
+      _pending = true;
+      _pendingRelease = _pendingRelease || release;
+      return;
+    }
     final now = _clock();
     final last = _lastRun;
-    if (last != null && now.difference(last) < minGap) return;
+    if (!force && last != null && now.difference(last) < minGap) return;
     _running = true;
     _lastRun = now;
     try {
-      if (release) _releaseBackoff();
-      await _pump();
+      var rel = release;
+      while (true) {
+        if (rel) _releaseBackoff();
+        await _pump();
+        if (!_pending) break;
+        rel = _pendingRelease;
+        _pending = false;
+        _pendingRelease = false;
+      }
     } finally {
       _running = false;
+      _pending = false;
+      _pendingRelease = false;
     }
   }
 }

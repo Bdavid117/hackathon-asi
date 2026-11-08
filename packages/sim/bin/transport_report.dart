@@ -57,13 +57,20 @@ Future<void> main(List<String> args) async {
     ..writeln()
     ..writeln('«Primera ventana» = antes de que se cierre la primera ventana abierta en o después de crear el reporte.')
     ..writeln()
-    ..writeln('| Pérdida dentro de la ventana | Libera esperas al abrirse | Salen en la primera ventana | Entregados al final | Latencia p50 / p95 |')
-    ..writeln('|---|---|---|---|---|');
+    ..writeln('Se miden **dos condiciones**:')
+    ..writeln()
+    ..writeln('- **Ideal — red bien detectada:** el cliente no intenta enviar mientras el sistema dice que no hay red (es lo que hace `PumpTrigger` en la app) y se despierta al abrirse la ventana. El canal cerrado no cuesta nada.')
+    ..writeln('- **Peor caso — «plazo 5 s»:** el sistema dice que hay red pero el nodo no responde (Wi-Fi conectado sin llegar al nodo, nodo caído…). Cada intento con la ventana cerrada retiene el envío 5 s (el plazo de `HttpChannel`) y lo que llega mientras tanto espera; así el cliente puede pasarse la ventana de 3 s bloqueado en un intento anterior.')
+    ..writeln()
+    ..writeln('| Pérdida dentro de la ventana | Libera esperas al abrirse | Condición | Salen en la primera ventana | Entregados al final | Latencia p50 / p95 |')
+    ..writeln('|---|---|---|---|---|---|');
   for (final loss in [0.0, 0.3, 0.6]) {
     for (final release in [true, false]) {
-      final rs = [for (final s in seeds) await runWindowScenario(reports: 100, seed: s, lossInWindow: loss, releaseBackoffOnOpen: release)];
-      final lat = [for (final r in rs) ...r.latencies];
-      b.writeln('| ${(loss * 100).round()} % | ${release ? 'sí' : 'no'} | ${(mean(rs.map((r) => r.firstWindowRatio)) * 100).toStringAsFixed(1)} % | ${(mean(rs.map((r) => r.deliveredEventually / r.total)) * 100).toStringAsFixed(0)} % | ${fmt(percentile(lat, .5))} / ${fmt(percentile(lat, .95))} |');
+      for (final timeout in [Duration.zero, const Duration(seconds: 5)]) {
+        final rs = [for (final s in seeds) await runWindowScenario(reports: 100, seed: s, lossInWindow: loss, releaseBackoffOnOpen: release, channelTimeout: timeout)];
+        final lat = [for (final r in rs) ...r.latencies];
+        b.writeln('| ${(loss * 100).round()} % | ${release ? 'sí' : 'no'} | ${timeout == Duration.zero ? 'ideal' : 'plazo 5 s'} | ${(mean(rs.map((r) => r.firstWindowRatio)) * 100).toStringAsFixed(1)} % | ${(mean(rs.map((r) => r.deliveredEventually / r.total)) * 100).toStringAsFixed(0)} % | ${fmt(percentile(lat, .5))} / ${fmt(percentile(lat, .95))} |');
+      }
     }
   }
   b
@@ -72,7 +79,9 @@ Future<void> main(List<String> args) async {
     ..writeln()
     ..writeln('- Demuestran el **comportamiento del planificador y la bandeja** (prioridad, cuota, espera, liberación al volver la señal), no el rendimiento de una radio real.')
     ..writeln('- Los canales son simulados: pérdida independiente por trama y ventanas ideales. Una radio real pierde en ráfagas y las ventanas no son tan limpias.')
-    ..writeln('- «Libera esperas = no» muestra lo que se perdería si el reintento de un reporte cayera fuera de la ventana: por eso la app libera las esperas al volver la conectividad.');
+    ..writeln('- «Libera esperas = no» muestra lo que se perdería si el reintento de un reporte cayera fuera de la ventana: por eso la app libera las esperas al volver la conectividad.')
+    ..writeln('- **El resultado depende mucho de detectar bien la red.** En el peor caso sólo una minoría de los SOS sale en la primera ventana (aunque todos acaban saliendo): por eso la app no intenta enviar sin red y por eso un plazo de intento más corto cuando acaba de volver la señal sería una mejora a medir.')
+    ..writeln('- Los disparos de envío (tocar SOS, abrirse la ventana, temporizador) los modela el simulador sin fallos; en la app real los gestiona `PumpTrigger` con la red que detecta el sistema.');
   final f = File(out)..parent.createSync(recursive: true);
   f.writeAsStringSync(b.toString());
   stdout.writeln('escrito $out');

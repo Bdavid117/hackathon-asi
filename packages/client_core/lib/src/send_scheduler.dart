@@ -39,6 +39,7 @@ class SendScheduler {
   final TransportStats stats = TransportStats();
 
   bool _running = false;
+  bool _pending = false;
 
   /// Máximo de tramas en vuelo por ráfaga.
   static const int window = 8;
@@ -54,15 +55,27 @@ class SendScheduler {
   /// Envía hasta [window] tramas vencidas. Devuelve cuántas fueron acusadas.
   ///
   /// Si ya hay un envío en curso (temporizador, toque de SOS y reconexión pueden coincidir)
-  /// devuelve 0 sin hacer nada: así no se reenvía lo mismo ni se cuentan intentos de más.
+  /// no se lanza otro en paralelo —se reenviaría lo mismo y se contarían intentos de más—: la
+  /// llamada devuelve 0 y **deja anotada una petición pendiente**, de modo que en cuanto el
+  /// envío actual termina se hace una ronda más. Una petición que llega mientras un nodo lento
+  /// retiene el envío no se pierde ni espera al siguiente temporizador.
   Future<int> pump() async {
-    if (_running) return 0;
+    if (_running) {
+      _pending = true;
+      return 0;
+    }
     _running = true;
+    var acked = 0;
     try {
-      return await _pump();
+      do {
+        _pending = false;
+        acked += await _pump();
+      } while (_pending);
     } finally {
       _running = false;
+      _pending = false;
     }
+    return acked;
   }
 
   Future<int> _pump() async {

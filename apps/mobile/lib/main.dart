@@ -66,6 +66,7 @@ Future<void> main() async {
       scheduler: scheduler,
       battery: () => Battery().batteryLevel,
       location: GeolocatorLocationProvider(),
+      onNewReport: trigger.onNewReport,
     ),
   );
 }

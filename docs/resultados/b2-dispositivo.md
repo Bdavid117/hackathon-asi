@@ -31,10 +31,21 @@ bash tool/android_battery_check.sh                  # batería real 100 / 15 / 3
 - **`main_test` esperaba exactamente 3 eventos:** con el permiso de ubicación concedido cada SOS genera también su revisión con GPS (6 eventos = 2 ternas). Se corrigió la aserción para exigir ternas completas.
 - **La licencia de Android que falta** (1 de 8) **no bloquea** compilar ni ejecutar en el emulador; sólo `flutter doctor` la señala.
 
+## Cambios tras la revisión final de B2 (y su verificación)
+
+- **Coalescencia de envíos.** `SendScheduler.pump()` y `PumpTrigger` ya no *descartan* un disparo que llega mientras hay un envío en curso: lo anotan y hacen **una** ronda de seguimiento al terminar (conservando la liberación de esperas de una reconexión). Antes, con un nodo lento (hasta 5 s por intento), un SOS o una reconexión podían esperar al siguiente temporizador. Pruebas: envío solapado atendido al terminar, coalescencia de seis disparos en una ronda, reconexión a mitad de envío (`pump → release → pump`).
+- **El toque de SOS pasa por `PumpTrigger.onNewReport`:** no intenta enviar sin red (sin bloquearse en plazos inútiles) y nunca se descarta por el filtro anti-parpadeo.
+- **Filtro anti-pánico:** varios toques en menos de 2 s son el mismo SOS (antes, 5 toques daban 5 reportes, contra «un reporte vivo por incidente»). Pasado el plazo, otro toque es otro reporte.
+- **Modo «sólo SOS»:** sin lista, la pantalla confirma el estado del último reporte («Guardado en tu teléfono»).
+- **Envejecimiento con tope en P2:** un caso leve muy antiguo ya no iguala a un P1 (la cuota 1 de cada 5 garantiza igualmente que no muera de inanición).
+- **T04 medido con el coste real de un nodo inalcanzable:** ver `b2.md`. Con la red bien detectada el 100 % de los SOS sale en la primera ventana de 3 s; si el sistema dice que hay red pero el nodo no responde (intentos de 5 s), **baja al 20 %** (todos acaban saliendo en ventanas posteriores). El 100 % de antes era el caso ideal.
+- Tras estos cambios se repitieron las 3 pruebas en Android y en iOS, la de sin red y la de batería: todas en verde.
+- **Un fallo único sin explicar:** durante estos cambios una ejecución de `location_flow_test` falló una vez y no volvió a fallar (12 repeticiones aisladas y 3 de la suite completa, todas en verde). No tengo causa demostrada.
+
 ## Limitaciones declaradas
 
 - **Son emuladores:** la ubicación y la batería están simuladas desde la consola del emulador; no se probó hardware real, ni radio real (BLE, SMS, LoRa), ni consumo de energía real.
 - **Sin red en iOS:** el simulador comparte la red del anfitrión y no se puede apagar con una orden; el escenario sin conexión sólo se verificó en Android.
 - **La batería de iOS no se puede fijar en el simulador**, así que los modos de energía sólo se verificaron con batería real en Android (en iOS, con lector falso en pruebas de widgets).
 - **Los servicios en primer plano de Android no están implementados:** el envío depende de que la app esté viva (primer plano o recién pasada a segundo plano). Es la limitación declarada en el PDF §5.8 y no se ha resuelto.
-- **Reintentos con enlace vivo:** con 30 % de pérdida dentro de una ventana de 3 s sólo el 69 % de los SOS sale en la primera ventana (`docs/resultados/b2.md`); un reintento inmediato mientras el enlace responde lo mejoraría. Queda como siguiente paso.
+- **Reintentos con enlace vivo y plazos de intento:** con 30 % de pérdida dentro de una ventana de 3 s sólo el 69 % de los SOS sale en la primera ventana (caso ideal) y mucho menos si el sistema dice que hay red pero el nodo no responde (`docs/resultados/b2.md`). Un reintento inmediato mientras el enlace responde y un plazo de intento más corto justo tras volver la señal lo mejorarían: siguiente paso, sin medir.

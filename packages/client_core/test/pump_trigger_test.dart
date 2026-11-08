@@ -70,7 +70,7 @@ void main() {
     expect(calls.where((c) => c == 'pump').length, 1);
   });
 
-  test('no solapa dos envíos aunque lleguen dos disparadores a la vez', () async {
+  test('no solapa dos envíos: el segundo disparador espera a que termine el primero y entonces se atiende', () async {
     slowPump = () => Future<int>(() async {
           await Future<void>.delayed(const Duration(milliseconds: 50));
           return 0;
@@ -79,7 +79,44 @@ void main() {
     final b = trigger.onEvent();
     await Future.wait([a, b]);
     expect(maxConcurrent, 1);
-    expect(calls.where((c) => c == 'pump').length, 1);
+    expect(calls.where((c) => c == 'pump').length, 2, reason: 'coalescidos en UNA ronda de seguimiento');
+  });
+
+  test('muchos disparadores durante un envío se coalescen en una sola ronda de seguimiento', () async {
+    slowPump = () => Future<int>(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return 0;
+        });
+    final futures = [for (var i = 0; i < 6; i++) trigger.onEvent()];
+    await Future.wait(futures);
+    expect(calls.where((c) => c == 'pump').length, 2);
+    expect(maxConcurrent, 1);
+  });
+
+  test('una reconexión que llega a mitad de un envío no pierde la liberación de esperas', () async {
+    slowPump = () => Future<int>(() async {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return 0;
+        });
+    final first = trigger.onEvent(); // envío en curso con un nodo lento
+    now = now.add(const Duration(seconds: 1));
+    final reconnect = trigger.onConnectivity(true); // vuelve la señal mientras tanto
+    await Future.wait([first, reconnect]);
+    expect(calls, ['pump', 'release', 'pump'], reason: 'tras el envío en curso: se liberan las esperas y se reenvía');
+  });
+
+  test('un SOS recién tocado no se descarta por el filtro anti-parpadeo (minGap)', () async {
+    await trigger.onEvent();
+    calls.clear();
+    now = now.add(const Duration(milliseconds: 10)); // dentro de minGap
+    await trigger.onNewReport();
+    expect(calls, ['pump']);
+  });
+
+  test('un SOS recién tocado sin red no intenta enviar (saldrá al volver la señal)', () async {
+    await trigger.onConnectivity(false);
+    await trigger.onNewReport();
+    expect(calls, isEmpty);
   });
 
   test('tras una caída, el siguiente evento del temporizador ya no envía hasta que vuelva la red', () async {
