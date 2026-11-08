@@ -3,7 +3,7 @@
 <p>El plan está pensado para una restricción que el enunciado no resuelve: no sabemos cuánto tiempo hay. Por eso se expresa en <strong>bloques con criterio de terminado</strong> y porcentajes del tiempo disponible, y está ordenado para que siempre exista un recorrido completo funcionando desde el primer tercio del tiempo, aunque sea con piezas simples.</p>
 
 <h2 id="s10-1">Estructura del repositorio</h2>
-<p>Un monorepo con <em>pub workspaces</em> de Dart. Los paquetes compartidos son Dart puro, sin Flutter. Los bloques B0 y B1 ya están implementados (plan en <code>docs/superpowers/plans/</code>, resultados en <code>docs/resultados/h1.md</code>). Las dos apuestas de la pila se validaron antes de construir: SQLite durable ante <code>kill -9</code> en el nodo, y el espacio de trabajo con la app Flutter, el paquete puro y Flutter Web.</p>
+<p>Un monorepo con <em>pub workspaces</em> de Dart. Los paquetes compartidos son Dart puro, sin Flutter. Los bloques B0, B1 y B2 ya están implementados (planes en <code>docs/superpowers/plans/</code>, resultados en <code>docs/resultados/</code>). Las dos apuestas de la pila se validaron antes de construir: SQLite durable ante <code>kill -9</code> en el nodo, y el espacio de trabajo con la app Flutter, el paquete puro y Flutter Web.</p>
 <pre><code>hackathon-asi/
 ├── HackathonExpoASI2026.pdf     enunciado oficial (no se modifica)
 ├── README.md
@@ -119,8 +119,8 @@
 
 <h2 id="s10-7">Próximos pasos inmediatos</h2>
 <ol>
-  <li><strong>Confirmar el plazo disponible</strong>: es el dato que falta para dimensionar el recorte de {{ref:s10-3}}.</li>
-  <li><strong>Aceptar las licencias de Android</strong> (<code>flutter doctor --android-licenses</code>) y repetir la app y la prueba de integración en el emulador: B1 sólo se verificó en el simulador de iOS.</li>
-  <li><strong>Bloque B2 · transporte real:</strong> GPS y batería reales, ventanas de comunicación, cuota contra la inanición, y la medición de bytes por reporte confirmado.</li>
-  <li><strong>Commits y remoto.</strong> Todo el trabajo está sin commits; hacerlos y publicar el repositorio (por ejemplo en GitHub) son decisiones tuyas.</li>
+  <li><strong>Confirmar el plazo disponible</strong>: es el dato que falta para dimensionar el recorte de {{ref:s10-3}} para los bloques B3 a B6.</li>
+  <li><strong>Bloque B3 · agentes y deduplicación:</strong> correlación con puntaje y tres estados, generador sintético con verdad de referencia y puerto del modelo de lenguaje con respaldo de reglas.</li>
+  <li><strong>Probar en hardware real:</strong> B2 se verificó en el emulador de Android y el simulador de iOS (ubicación y batería simuladas); falta un teléfono real, un servicio en primer plano de Android y, si se quiere, un canal de baja capacidad.</li>
+  <li><strong>Mejora detectada en B2:</strong> reintentar enseguida mientras el enlace responde (con 30 % de pérdida dentro de una ventana de 3 s sólo el 69 % de los SOS sale en la primera ventana).</li>
 </ol>

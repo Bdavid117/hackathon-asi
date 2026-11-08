@@ -78,11 +78,18 @@ void main() {
       final added = ((await events()).skip(
         before,
       )).cast<Map<String, Object?>>().map((e) => e['type']).toList();
-      expect(added, [
-        'report.received',
-        'report.normalized',
-        'triage.assessed',
-      ]);
+      // Cada trama que el nodo guarda deja su terna received → normalized → triage. Con el permiso
+      // de ubicación concedido el SOS puede llevar además una revisión con GPS (otra terna).
+      const terna = ['report.received', 'report.normalized', 'triage.assessed'];
+      expect(
+        added.length % 3,
+        0,
+        reason: 'cada trama deja exactamente tres eventos: $added',
+      );
+      for (var i = 0; i < added.length; i += 3) {
+        expect(added.sublist(i, i + 3), terna, reason: 'terna ${i ~/ 3}');
+      }
+      expect(added, isNotEmpty);
     },
   );
 }

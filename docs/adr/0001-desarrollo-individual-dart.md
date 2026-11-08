@@ -1,6 +1,6 @@
 # ADR-0001 · Desarrollo individual, Dart de punta a punta y corte de alcance
 
-- **Estado:** propuesta, validada técnicamente en B0/B1 · 8 de noviembre de 2026. Confirmados por el usuario: trabajar solo y con Flutter. **Validado:** SQLite ante `kill -9`, workspace con app + nodo + tablero Web + paquetes puros, códec en VM y Chrome, recorrido H1 (ver `docs/resultados/h1.md`). **Pendiente:** ejecutar en Android (licencias del SDK sin aceptar).
+- **Estado:** propuesta, validada técnicamente en B0/B1 · 8 de noviembre de 2026. Confirmados por el usuario: trabajar solo y con Flutter. **Validado:** SQLite ante `kill -9`, workspace con app + nodo + tablero Web + paquetes puros, códec en VM y Chrome, recorrido H1 (ver `docs/resultados/h1.md`). **Android validado en B2** (emulador): compila, ejecuta y `package:sqlite3` funciona. Sigue pendiente probar en hardware real.
 - **Contexto de diseño:** [`docs/SARD-arquitectura-app-movil.pdf`](../SARD-arquitectura-app-movil.pdf) (versión 0.2)
 
 ## Contexto

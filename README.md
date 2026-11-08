@@ -6,28 +6,35 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 
 ## Estado actual
 
-**B0 y B1 implementados; hito H1 verificado.** Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado (app → bandeja local → red con pérdida → nodo → agentes de reglas → tablero → pérdida de un nodo → recuperación). Lo verificado y lo que falta está en [`docs/resultados/h1.md`](docs/resultados/h1.md): 218 pruebas en verde más dos pruebas de integración en el simulador de iOS; **sin probar todavía en Android** (licencias del SDK sin aceptar) y **sin commits** (no autorizados).
+**B0, B1 y B2 implementados y verificados.** Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado y la app se comporta bien en sus condiciones: **se guarda sin red y sale solo al volver la señal** (en el emulador de Android: 1 s tras devolver la red), usa **GPS y batería reales** (ubicación como revisión del mismo reporte; modos normal, ahorro y sólo SOS) y reparte el envío con **envejecimiento y cuota anti-inanición**.
+
+- **299 pruebas automáticas** en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
+- **Sin probar en hardware real ni con radio real** (todo en emuladores).
 
 | Qué | Dónde |
 |---|---|
 | Diseño: análisis del enunciado, arquitectura, protocolo, agentes, pruebas y plan (v0.2) | [`docs/SARD-arquitectura-app-movil.pdf`](docs/SARD-arquitectura-app-movil.pdf) |
 | Decisión: desarrollo individual, Dart de punta a punta y corte de alcance | [`docs/adr/0001-desarrollo-individual-dart.md`](docs/adr/0001-desarrollo-individual-dart.md) |
-| Plan de implementación de B0 y B1 | [`docs/superpowers/plans/2026-11-08-sard-b0-b1.md`](docs/superpowers/plans/2026-11-08-sard-b0-b1.md) |
-| Resultados y limitaciones de B0/B1 | [`docs/resultados/h1.md`](docs/resultados/h1.md) |
+| Planes de implementación: B0/B1 y B2 | [`docs/superpowers/plans/`](docs/superpowers/plans/) |
+| Resultados: H1 (recorrido de punta a punta) | [`docs/resultados/h1.md`](docs/resultados/h1.md) |
+| Resultados: transporte T02–T04 en tiempo virtual | [`docs/resultados/b2.md`](docs/resultados/b2.md) |
+| Resultados: verificación en dispositivo | [`docs/resultados/b2-dispositivo.md`](docs/resultados/b2-dispositivo.md) |
 | Oráculo del códec (genera los vectores de prueba) | [`docs/src/tools/frame_size.py`](docs/src/tools/frame_size.py) |
 
 ## Estructura
 
 ```
 packages/protocol/     códec binario, ACK selectivo, Channel (Dart puro)
-packages/client_core/  bandeja de salida durable, planificador, HttpChannel (Dart puro)
+packages/client_core/  bandeja durable con aging y cuota, planificador, modos de energía, ubicación, PumpTrigger (Dart puro)
 packages/agents/       triaje y normalización por reglas (Dart puro)
-packages/sim/          canal con pérdida, NodeProcess y el recorrido E2E (Dart puro)
+packages/sim/          canales con pérdida y ventanas, tiempo virtual, nodo falso, escenarios T02–T04 y el recorrido E2E (Dart puro)
 apps/node/             nodo: log de eventos, ingreso, API HTTP, replicación
 apps/mobile/           app ciudadana (Flutter)
 apps/dashboard/        tablero del coordinador (Flutter Web)
 spikes/sqlite_kill/    prueba técnica: SQLite ante kill -9
 tool/test_all.sh       toda la batería de pruebas
+tool/device_check.sh   pruebas de integración en Android o iOS contra un nodo real
+tool/android_*_check.sh  sin red → sale solo; batería real → modos
 ```
 
 ## Comandos
@@ -45,6 +52,10 @@ bash tool/test_all.sh                          # pruebas + análisis + recorrido
 
 # Recorrido de punta a punta con pérdida de nodo
 dart run packages/sim/bin/e2e_skeleton.dart --seed 42 --reports 60 --loss 0.3
+
+# Mediciones de transporte (T02–T04) y pruebas en dispositivo
+dart run packages/sim/bin/transport_report.dart docs/resultados/b2.md
+bash tool/device_check.sh android emulator-5554
 ```
 
 ## Resumen de la arquitectura
@@ -58,7 +69,7 @@ Los paquetes compartidos (`protocol`, `client_core`, `agents`, `sim`) serán **D
 
 ## Entorno de desarrollo
 
-Flutter 3.41.9, Dart 3.11.5, AVD de Android `MediumAndroid` y simulador de iOS `SARD-iPhone` (iPhone 17, iOS 27). Pendiente: aceptar las licencias de Android (`flutter doctor --android-licenses`).
+Flutter 3.41.9, Dart 3.11.5, AVD de Android `MediumAndroid` y simulador de iOS `SARD-iPhone` (iPhone 17, iOS 27). Aviso conocido: `flutter doctor` marca 1 de 8 licencias de Android sin aceptar; no impide compilar ni ejecutar en el emulador.
 
 ## Regenerar el PDF
 
