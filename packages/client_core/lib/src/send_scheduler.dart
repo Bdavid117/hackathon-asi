@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:sard_protocol/sard_protocol.dart';
 
 import 'outbox.dart';
+import 'transport_stats.dart';
 
 /// Envía lo vencido de la bandeja, en ráfaga, y aplica los ACK.
 ///
@@ -34,6 +35,11 @@ class SendScheduler {
   final Duration backoffBase;
   final Duration backoffCap;
 
+  /// Contadores acumulados desde que se creó el planificador.
+  final TransportStats stats = TransportStats();
+
+  bool _running = false;
+
   /// Máximo de tramas en vuelo por ráfaga.
   static const int window = 8;
 
@@ -46,11 +52,28 @@ class SendScheduler {
   }
 
   /// Envía hasta [window] tramas vencidas. Devuelve cuántas fueron acusadas.
+  ///
+  /// Si ya hay un envío en curso (temporizador, toque de SOS y reconexión pueden coincidir)
+  /// devuelve 0 sin hacer nada: así no se reenvía lo mismo ni se cuentan intentos de más.
   Future<int> pump() async {
+    if (_running) return 0;
+    _running = true;
+    try {
+      return await _pump();
+    } finally {
+      _running = false;
+    }
+  }
+
+  Future<int> _pump() async {
     final now = _clock();
     final batch = _outbox.due(now, limit: window);
     for (final e in batch) {
       _outbox.markSending(e.frameSeq);
+    }
+    stats.framesSent += batch.length;
+    for (final e in batch) {
+      stats.bytesOut += e.frame.length;
     }
     final responses = await Future.wait([
       for (final e in batch)
@@ -69,6 +92,7 @@ class SendScheduler {
       final bytes = responses[i];
       Ack? ack;
       if (bytes != null) {
+        stats.bytesIn += bytes.length;
         try {
           ack = decodeAck(bytes, _key);
         } on FrameException {
@@ -78,7 +102,9 @@ class SendScheduler {
       if (ack != null && ack.covers(e.frameSeq)) {
         _outbox.applyAck(ack);
         acked++;
+        stats.acked++;
       } else {
+        stats.failed++;
         _outbox.markFailed(e.frameSeq, nextTryAt: now.add(backoff(e.attempts, _rng, base: backoffBase, cap: backoffCap)));
       }
     }

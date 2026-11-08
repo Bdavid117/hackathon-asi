@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -147,6 +148,79 @@ void main() {
     now = now.add(const Duration(seconds: 3));
     expect(await s.pump(), 1);
     expect(outbox.all().single.state, OutboxState.sent);
+  });
+
+  group('estadísticas de transporte y reentrada', () {
+    test('un SOS entregado a la primera cuesta 33 B de ida y 22 B de vuelta', () async {
+      outbox.enqueueSos(sos(), now: t0);
+      final s = scheduler(_Fn(_Node().handle));
+      await s.pump();
+      expect(s.stats.framesSent, 1);
+      expect(s.stats.bytesOut, 33);
+      expect(s.stats.bytesIn, 22);
+      expect(s.stats.acked, 1);
+      expect(s.stats.bytesPerAcked, 55.0);
+    });
+
+    test('los reintentos suman bytes de ida', () async {
+      outbox.enqueueSos(sos(), now: t0);
+      final node = _Node();
+      var failures = 2;
+      final s = SendScheduler(
+        outbox: outbox, key: key, rng: Random(1), clock: () => now,
+        backoffBase: const Duration(milliseconds: 1), backoffCap: const Duration(milliseconds: 2),
+        channel: _Fn((f) async => failures-- > 0 ? null : node.handle(f)),
+      );
+      for (var i = 0; i < 3; i++) {
+        await s.pump();
+        now = now.add(const Duration(seconds: 1));
+      }
+      expect(s.stats.bytesOut, 99);
+      expect(s.stats.failed, 2);
+      expect(s.stats.acked, 1);
+      expect(s.stats.bytesPerAcked, (99 + 22) / 1);
+    });
+
+    test('sin ningún acuse no hay bytes por acusado', () async {
+      outbox.enqueueSos(sos(), now: t0);
+      final s = scheduler(_Fn((_) async => null));
+      await s.pump();
+      expect(s.stats.bytesPerAcked, isNull);
+    });
+
+    test('una respuesta inválida cuenta sus bytes y es un fallo', () async {
+      outbox.enqueueSos(sos(), now: t0);
+      final s = scheduler(_Fn((_) async => Uint8List(5)));
+      await s.pump();
+      expect(s.stats.bytesIn, 5);
+      expect(s.stats.failed, 1);
+      expect(s.stats.acked, 0);
+    });
+
+    test('dos pump simultáneos no envían dos veces ni cuentan dos intentos', () async {
+      outbox.enqueueSos(sos(), now: t0);
+      final gate = Completer<Uint8List?>();
+      final ch = _Fn((_) => gate.future);
+      final s = scheduler(ch);
+      final first = s.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 10)); // el primero ya está en vuelo
+      final second = await s.pump();
+      expect(second, 0);
+      expect(ch.calls, 1);
+      gate.complete(null);
+      await first;
+      expect(outbox.all().single.attempts, 1);
+      expect(s.stats.framesSent, 1);
+    });
+
+    test('tras terminar un pump se puede lanzar otro', () async {
+      outbox.enqueueSos(sos(), now: t0);
+      final node = _Node();
+      final s = scheduler(_Fn(node.handle));
+      expect(await s.pump(), 1);
+      outbox.enqueueSos(sos(), now: t0);
+      expect(await s.pump(), 1);
+    });
   });
 
   group('HttpChannel', () {
