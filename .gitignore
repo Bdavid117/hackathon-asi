@@ -1,0 +1,56 @@
+# Sistema operativo / editores
+.DS_Store
+.idea/
+.vscode/
+
+# Node / monorepo
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+*.log
+
+# Expo / React Native / Android / iOS
+.expo/
+.expo-shared/
+android/build/
+android/.gradle/
+android/app/build/
+ios/Pods/
+ios/build/
+*.apk
+*.aab
+*.ipa
+
+# Secretos y configuración local (nunca al repositorio)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Datos locales de los nodos y de las pruebas
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.sard-data/
+sim-output/
+
+# Python (herramientas de documentación)
+__pycache__/
+*.pyc
+.venv/
+
+# Artefactos intermedios del PDF (el PDF final en docs/ sí se versiona)
+docs/src/_build/
+
+# Registro de ejecución del plan (scratch)
+.superpowers/
+
+# Dart / Flutter (generado)
+.dart_tool/
+.packages

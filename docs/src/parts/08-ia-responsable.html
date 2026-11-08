@@ -1,0 +1,24 @@
+<h1 id="s8">IA responsable y seguridad</h1>
+
+<p>El objetivo 9 del enunciado pide «prevenir invenciones, decisiones injustas, sesgos y acciones autónomas peligrosas». La estrategia no es pedirle al modelo que se porte bien, sino <strong>diseñar el sistema para que no pueda portarse mal</strong>: limitar lo que los agentes pueden hacer, validar lo que producen y dejar todo registrado. Cada control tiene una prueba que lo verifica.</p>
+
+<table>
+  <thead><tr><th style="width:22%">Riesgo</th><th>Control de diseño</th><th style="width:12%">Prueba</th></tr></thead>
+  <tbody>
+    <tr><td>Invención de datos (ubicación, cifras, recursos)</td><td>El esquema admite <code>null</code> explícito para lo desconocido. Un validador exige que cada cita sea subcadena del texto original o un campo existente, y que cada recurso citado exista en la tabla declarada. Lo inferido se marca <code>inferido</code>.</td><td>T13</td></tr>
+    <tr><td>Acciones autónomas peligrosas</td><td>Los agentes <strong>no tienen herramienta de despacho</strong>; sólo emiten eventos de propuesta. Toda recomendación exige <code>approval.granted</code> de una persona identificada.</td><td>T13</td></tr>
+    <tr><td>Inyección de instrucciones en el texto ciudadano</td><td>El texto es dato no confiable: se delimita en el prompt, el agente de triaje no tiene herramientas con efectos, la salida se valida por esquema y el <em>piso por reglas</em> no puede ser rebajado por el modelo.</td><td>T13</td></tr>
+    <tr><td>Decisiones injustas y sesgos</td><td>La urgencia no usa propiedades del dispositivo ni del usuario. Las métricas se desglosan por subgrupos (con y sin ubicación, texto corto y largo, variantes de lenguaje). Se advierte que <strong>el silencio no es seguridad</strong>: un mapa de cobertura señala las zonas sin reportes para que no se lean como zonas sin problemas.</td><td>T06 por subgrupo</td></tr>
+    <tr><td>Indisponibilidad o degradación del modelo</td><td>Respaldo determinista para cada agente; el evento indica el modo usado (<code>rules</code> o <code>rules+llm</code>) y se mide la diferencia de calidad.</td><td>T12</td></tr>
+    <tr><td>Opacidad de las decisiones</td><td>Cada evento guarda productor, versión, modo, modelo y eventos de entrada. El tablero muestra el «por qué» con señales y citas. El log inmutable es el registro de auditoría.</td><td>T15</td></tr>
+    <tr><td>Pérdida de contexto al fusionar</td><td>Los grupos son vistas reversibles con vínculo a cada observación original; las contradicciones se conservan.</td><td>T07</td></tr>
+    <tr><td>Privacidad de datos de emergencia</td><td>Sin cuenta obligatoria; ubicación redondeada y datos personales redactados antes de enviar a servicios externos; retención y acceso definidos por la política operativa.</td><td>Revisión</td></tr>
+    <tr><td>Abuso y spam</td><td>Límite de tasa por dispositivo; peso de corroboración por independencia de fuentes; detección de copias de texto.</td><td>T05, T08</td></tr>
+  </tbody>
+  <caption>Riesgos de IA y seguridad, control de diseño que los contiene y prueba que lo verifica.</caption>
+</table>
+
+<div class="callout risk">
+  <p class="t">UN PRINCIPIO QUE CONVIENE DEFENDER ANTE EL JURADO</p>
+  <p>Ante la incertidumbre, el sistema <strong>sube el caso a revisión humana; nunca lo baja de prioridad</strong>. Un falso positivo cuesta atención del coordinador; un falso negativo puede costar una vida. Por eso las métricas de triaje separan el <em>recall</em> de los casos críticos de la exactitud global (ver {{ref:s9-3}}).</p>
+</div>

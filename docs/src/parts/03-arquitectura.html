@@ -1,0 +1,79 @@
+<h1 id="s3">Arquitectura recomendada</h1>
+
+<p>La arquitectura sigue la referencia de cuatro capas del enunciado (ciudadana, nodos supervivientes, tejido de agentes y centro de coordinación humana), la concreta con decisiones técnicas y añade un componente que el enunciado deja implícito pero que sus entregables 6 y 7 requieren: un <strong>banco de pruebas</strong> reproducible.</p>
+
+<h2 id="s3-1">Principios de diseño</h2>
+<div class="grid2">
+  <div class="card"><h4>1 · Lo local manda</h4><p>La verdad de un reporte nace en el dispositivo y se guarda allí antes de cualquier intento de red. La red es una optimización, no un requisito.</p></div>
+  <div class="card"><h4>2 · Los hechos no se borran</h4><p>El sistema guarda observaciones y eventos que sólo se añaden. Las conclusiones (grupos, prioridades) son vistas derivables, revisables y reversibles.</p></div>
+  <div class="card g"><h4>3 · Reintentar es siempre seguro</h4><p>Cada reporte y cada revisión tienen un identificador estable; procesarlos dos veces produce el mismo estado (idempotencia).</p></div>
+  <div class="card g"><h4>4 · Degradación escalonada</h4><p>Sin Internet → sin modelo de lenguaje → sin pares → sólo el teléfono. En cada escalón se conserva una función útil.</p></div>
+  <div class="card n"><h4>5 · La IA propone, el humano decide</h4><p>Los agentes no tienen capacidad de despachar. Toda acción requiere una aprobación registrada.</p></div>
+  <div class="card n"><h4>6 · Toda afirmación cita su evidencia</h4><p>Cada salida de un agente enlaza los eventos de entrada; una cita que no exista en la entrada se rechaza.</p></div>
+</div>
+<p><strong>7 · Medir antes de afirmar.</strong> Las propiedades de resiliencia, entrega y calidad se demuestran con pruebas reproducibles, no con la narración de la demostración.</p>
+
+<h2 id="s3-2">Vista general del sistema</h2>
+<figure>
+  {{svg:contexto}}
+  <figcaption>Componentes del sistema. La app móvil es la capa ciudadana; el tablero es una superficie distinta; el banco de pruebas actúa sobre canales y nodos.</figcaption>
+</figure>
+
+<table>
+  <thead><tr><th style="width:19%">Componente</th><th style="width:40%">Responsabilidad</th><th style="width:23%">Ubicación en el repositorio</th><th>Reto y entregable</th></tr></thead>
+  <tbody>
+    <tr><td>App ciudadana</td><td>Capturar, guardar, encolar y transmitir reportes de forma oportunista; mostrar el estado de entrega; ahorrar batería.</td><td><code>apps/mobile</code></td><td>Reto 1 · entregable 1</td></tr>
+    <tr><td>Biblioteca de protocolo</td><td>Códec binario, esquemas, identificadores y <em>vectores de prueba</em> compartidos por app, nodos y simulador.</td><td><code>packages/protocol</code></td><td>Reto 2 · entregable 5</td></tr>
+    <tr><td>Nodo superviviente</td><td>Recibir tramas, guardar el log de eventos, sincronizar con pares, exponer la API del tablero y ejecutar los agentes.</td><td><code>apps/node</code></td><td>Retos 3 y 5 · entregable 3</td></tr>
+    <tr><td>Tejido de agentes</td><td>Los seis agentes con sus contratos, validadores y respaldos deterministas.</td><td><code>packages/agents</code></td><td>Reto 3 · entregable 4</td></tr>
+    <tr><td>Tablero del coordinador</td><td>Lista priorizada, evidencia, incertidumbre, recomendación y aprobación.</td><td><code>apps/dashboard</code></td><td>Reto 6 · entregable 1</td></tr>
+    <tr><td>Banco de pruebas</td><td>Datos sintéticos con verdad de referencia, simulador de canal, inyector de fallos y recolector de métricas.</td><td><code>packages/sim</code></td><td>Entregables 6 y 7</td></tr>
+  </tbody>
+  <caption>Componentes, responsabilidades y relación con los retos y entregables.</caption>
+</table>
+
+<h2 id="s3-3">Por qué la app móvil no es todo el sistema</h2>
+<div class="callout">
+  <p class="t">DECISIÓN DE ALCANCE</p>
+  <p>Has planteado el desarrollo como una app móvil, y eso es correcto para la <strong>capa ciudadana</strong>: es donde el enunciado concentra el Reto 1 y buena parte del Reto 2. Pero los retos 3 a 6 y el recorrido de integración viven fuera del teléfono: los agentes, la sincronización entre nodos y el tablero del coordinador. El coordinador necesita una pantalla amplia y estable (portátil o tableta), no el teléfono de un ciudadano con 15 % de batería.</p>
+  <p><strong>Recomendación:</strong> una sola app móvil para ciudadanos, un tablero web para coordinadores y un nodo que ambos pueden alcanzar. Si el equipo es pequeño, el orden de prioridad es: app + transporte, nodo + log, agentes de triaje y correlación, tablero, y por último la sincronización avanzada.</p>
+</div>
+
+<h2 id="s3-4">Pila tecnológica y alternativas</h2>
+<p>Las decisiones de la columna «Por defecto» son propuestas mías, razonadas para un equipo de hackathon: una sola lengua (Dart) reduce la fricción entre app, nodo, tablero y simulador, y permite compartir el códec y los esquemas como un único paquete de Dart puro (sin Flutter), de modo que los nodos corren con <code>dart run</code>. La columna final indica cuándo conviene cambiarlas.</p>
+<table class="tight">
+  <thead><tr><th style="width:15%">Decisión</th><th style="width:25%">Por defecto</th><th style="width:25%">Alternativa</th><th>Cuándo cambiarla</th></tr></thead>
+  <tbody>
+    <tr><td>App móvil</td><td>Flutter (Dart)</td><td>React Native; Kotlin nativo</td><td>Sólo si se exige un servicio en primer plano que Flutter no cubra: módulo nativo mínimo (ver {{ref:s5-7}}).</td></tr>
+    <tr><td>Almacenamiento local</td><td>SQLite vía <code>package:sqlite3</code> (WAL, <code>synchronous=FULL</code>), con la misma API en app y nodo</td><td>Drift; Room (Kotlin)</td><td>Si la prueba técnica de {{ref:s10-1}} falla en el móvil.</td></tr>
+    <tr><td>Nodo</td><td>Dart puro + SQLite</td><td>Node.js o Python</td><td>Si un componente se resuelve mejor en otro lenguaje; el contrato son los esquemas.</td></tr>
+    <tr><td>Esquemas y protocolo</td><td>Paquete Dart puro + vectores de prueba en JSON</td><td>Protocol Buffers</td><td>Si se quiere generación de código multi-lenguaje; el bit-packing propio es más compacto para el SOS mínimo.</td></tr>
+    <tr><td>Sincronización</td><td>Log append-only + vectores de versiones</td><td>CRDT (Automerge, Yjs)</td><td>Sólo si se necesitan estados editables concurrentes; aquí los eventos son inmutables.</td></tr>
+    <tr><td>Tablero</td><td>Flutter Web servido por el nodo</td><td>Panel nativo de tableta</td><td>Si hay requisito de instalación en una tableta sin navegador moderno.</td></tr>
+    <tr><td>Modelo de lenguaje</td><td>API de Claude tras un puerto intercambiable (HTTP directo); entra en B3</td><td>Modelo local (p. ej. vía Ollama); sólo reglas</td><td>Si no hay Internet ni credenciales en la demo; el puerto ya lo permite.</td></tr>
+    <tr><td>Pruebas</td><td><code>dart test</code> (en VM y en Chrome) + escenarios en YAML con semilla</td><td>—</td><td>—</td></tr>
+    <tr><td>Monorepo</td><td><em>Pub workspaces</em> de Dart</td><td>Melos</td><td>Si el espacio de trabajo nativo se queda corto.</td></tr>
+  </tbody>
+  <caption>Decisiones técnicas por defecto, alternativas y criterio para cambiarlas.</caption>
+</table>
+
+<h2 id="s3-5">El recorrido de integración de punta a punta</h2>
+<p>El enunciado exige demostrar al menos este recorrido. La figura lo muestra con la separación de responsabilidades propuesta; la tabla siguiente asocia cada paso con su componente y con la evidencia que deja para el jurado.</p>
+<figure>
+  {{svg:secuencia}}
+  <figcaption>Recorrido de ocho pasos con la pérdida del Nodo A. Las flechas discontinuas son respuestas; las rojas, reintentos tras la falla.</figcaption>
+</figure>
+<table class="tight">
+  <thead><tr><th class="id">Paso</th><th style="width:20%">Qué ocurre</th><th style="width:32%">Mecanismo</th><th style="width:20%">Componente</th><th>Evidencia generada</th></tr></thead>
+  <tbody>
+    <tr><td class="id">1</td><td>Reporte ciudadano</td><td>SOS en un toque; detalle opcional como revisión del mismo reporte.</td><td>App · UI</td><td>Captura de pantalla; registro local.</td></tr>
+    <tr><td class="id">2</td><td>Almacenamiento local</td><td>Escritura transaccional en SQLite antes de confirmar «Guardado».</td><td>App · persistencia</td><td>T01: el reporte sobrevive a un cierre brusco.</td></tr>
+    <tr><td class="id">3</td><td>Transmisión intermitente</td><td>Trama de 33 B, ACK selectivo, reintentos con espera exponencial y variación.</td><td>App · transporte + proxy de canal</td><td>T02–T05: curvas de entrega bajo pérdida.</td></tr>
+    <tr><td class="id">4</td><td>Procesamiento por agentes</td><td>Agentes 1–3 suscritos al log; respaldo determinista si el modelo falla.</td><td>Nodo · agentes</td><td>Eventos <code>report.normalized</code>, <code>triage.assessed</code>, <code>incident.linked</code>.</td></tr>
+    <tr><td class="id">5</td><td>Priorización</td><td>Cola P1–P4 con envejecimiento; nada se descarta.</td><td>Nodo · proyección</td><td>T06, T11: recall de P1 y no inanición.</td></tr>
+    <tr><td class="id">6</td><td>Tablero de control</td><td>Lista corta + «ver todo», evidencia, incertidumbre, recomendación.</td><td>Tablero + agente 6</td><td>T14; aprobación registrada.</td></tr>
+    <tr><td class="id">7</td><td>Pérdida del nodo</td><td><code>kill -9</code> del Nodo A; el teléfono reintenta contra el Nodo B; el tablero muestra frescura.</td><td>Banco de pruebas · nodos</td><td>T09: cero reportes con ACK perdidos.</td></tr>
+    <tr><td class="id">8</td><td>Recuperación y sincronización</td><td>El Nodo A reinicia, reconstruye sus vistas del log y recibe los eventos que le faltan.</td><td>Nodos · sincronización + agente 5</td><td>T10: proyecciones idénticas tras la reconciliación.</td></tr>
+  </tbody>
+  <caption>Cada paso del recorrido mínimo exigido, con su mecanismo, componente y evidencia.</caption>
+</table>

@@ -1,0 +1,98 @@
+<h1 id="s9">Estrategia de pruebas y métricas</h1>
+
+<p>Este capítulo respalda el entregable 6 («métricas, escenarios ejecutados, errores observados, limitaciones y resultados de las pruebas de estrés») y las pruebas reproducibles que pide el objetivo 10. La idea central es que <strong>el banco de pruebas es un componente del producto</strong>, no un añadido de última hora.</p>
+
+<h2 id="s9-1">El banco de pruebas</h2>
+<figure>
+  {{svg:despliegue}}
+  <figcaption>Despliegue de la demostración y de las pruebas. Todo corre en una red local sin Internet; el modelo de lenguaje es opcional.</figcaption>
+</figure>
+<div class="grid2">
+  <div class="card"><h4>Generador de datos sintéticos</h4>
+    <ul>
+      <li>Crea incidentes con <strong>verdad de referencia</strong>: a qué incidente pertenece cada reporte y qué urgencia real tiene.</li>
+      <li>Aplica ruido controlado: ubicación imprecisa o ausente, texto truncado, duplicados exactos, copias de rumores, contradicciones y <em>pares adversariales</em> (incidentes cercanos pero distintos).</li>
+      <li>Es determinista con una semilla: el mismo escenario produce los mismos datos.</li>
+    </ul></div>
+  <div class="card g"><h4>Simulador de canal e inyector de fallos</h4>
+    <ul>
+      <li>Pérdida (independiente o en ráfagas), duplicación, reorden, retardo con variación, tope de ancho de banda y <strong>ventanas que se abren y cierran</strong>.</li>
+      <li><code>kill -9</code> de un nodo, partición de red, reinicio y relojes desfasados.</li>
+      <li>Un orquestador de escenarios lee un archivo YAML y lo ejecuta de forma reproducible.</li>
+    </ul></div>
+</div>
+<pre><code><span class="c"># scenarios/s2-kill-node-a.yaml (ejemplo de escenario reproducible)</span>
+<span class="k">id</span>: s2-kill-node-a
+<span class="k">seed</span>: 42
+<span class="k">topology</span>: { nodes: [A, B, C], sync_interval: 5s }
+<span class="k">channel</span>:
+  loss: 0.40            <span class="c"># pérdida; alternativa: modelo de ráfagas</span>
+  duplicate: 0.05
+  reorder: 0.10
+  delay_ms: [200, 3000]
+  window: { open: 3s, closed: 57s }
+<span class="k">load</span>:
+  generator: synthetic-v1
+  incidents: 80
+  reports: 1000
+  noise: { location_m: 40, truncated_text: 0.10, copies: 0.20, adversarial_pairs: 20 }
+<span class="k">faults</span>:
+  - { at: 120s, action: kill9,   target: A }
+  - { at: 300s, action: restart, target: A }
+<span class="k">assert</span>:
+  - acked_reports_lost == 0
+  - p1_recall &gt;= 0.95
+  - false_merge_rate &lt;= 0.01
+  - convergence_time &lt;= 60s</code></pre>
+<p><strong>El modelo de lenguaje y la reproducibilidad.</strong> Como el modelo no es determinista, las pruebas tienen dos modos: <em>reglas</em> (totalmente reproducible) y <em>modelo con respuestas grabadas</em> (se graba una ejecución real y se reproduce). La calidad con modelo real se mide aparte y se reporta como una diferencia respecto al modo de reglas (T12).</p>
+
+<h2 id="s9-2">Catálogo de pruebas</h2>
+<p>Las metas son <strong>sugerencias mías a calibrar</strong>, no requisitos del enunciado; sirven para convertir cada propiedad en algo falsable.</p>
+<table class="tight">
+  <thead><tr><th class="id">ID</th><th style="width:21%">Qué verifica</th><th style="width:34%">Escenario (parámetros propuestos)</th><th style="width:16%">Métrica</th><th>Meta sugerida</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T01</td><td>Persistencia ante cierre brusco</td><td>Crear 100 reportes; matar la app, reiniciar el teléfono y activar modo avión entre medias.</td><td>Reportes «Guardado» conservados</td><td>100 %</td></tr>
+    <tr><td class="id">T02</td><td>Presupuesto de bytes</td><td>SOS mínimo y revisión con texto; con y sin ubicación.</td><td>Bytes por reporte; bytes por reporte confirmado</td><td>SOS ≤ 40 B; con texto ≤ 160 B</td></tr>
+    <tr><td class="id">T03</td><td>Entrega bajo pérdida</td><td>Pérdida 0, 30, 60 y 90 % con duplicados y reorden.</td><td>Razón de entrega; latencia p50/p95 de P1</td><td>Curva reportada; P1 ≥ 99 % si hay capacidad</td></tr>
+    <tr><td class="id">T04</td><td>Ventanas breves</td><td>Ventana de 3 s cada 60 s.</td><td>SOS entregado en la primera ventana</td><td>≥ 95 %</td></tr>
+    <tr><td class="id">T05</td><td>Idempotencia</td><td>Duplicación masiva y reintentos agresivos.</td><td>Duplicados por reintento dentro de un nodo; duplicados en la cola priorizada; recepciones repetidas entre nodos (se reportan)</td><td>0 y 0; las recepciones entre nodos se miden, no se prohíben</td></tr>
+    <tr><td class="id">T06</td><td>Calidad del triaje</td><td>Conjunto etiquetado con verdad de referencia, por subgrupos.</td><td><em>Recall</em> y precisión de P1; exactitud global (por separado)</td><td><em>Recall</em> de P1 ≥ 95 %</td></tr>
+    <tr><td class="id">T07</td><td>Deduplicación semántica</td><td>1 000 reportes en 80 incidentes más 20 pares adversariales.</td><td>Precisión y <em>recall</em> por pares; <strong>tasa de falsa fusión</strong></td><td>Falsa fusión ≤ 1 %</td></tr>
+    <tr><td class="id">T08</td><td>Rumor frente a corroboración</td><td>1 000 copias desde pocas fuentes frente a 5 fuentes independientes.</td><td>Confianza calculada</td><td>Confianza(rumor) &lt; Confianza(corroborado)</td></tr>
+    <tr><td class="id">T09</td><td>Caída de nodo</td><td><code>kill -9</code> del nodo en pleno procesamiento.</td><td>Reportes con ACK perdidos; tiempo de recuperación (RTO)</td><td>0 perdidos; RTO a definir</td></tr>
+    <tr><td class="id">T10</td><td>Partición y reconciliación</td><td>Dos nodos aislados 10 min, cada uno con reportes distintos; luego se reconectan.</td><td>Convergencia (huella de las proyecciones); tiempo</td><td>Huellas idénticas</td></tr>
+    <tr><td class="id">T11</td><td>Cola bajo ráfaga</td><td>10 000 reportes en poco tiempo.</td><td>Latencia de P1; antigüedad máxima de P4 atendida</td><td>P1 no se degrada; sin inanición</td></tr>
+    <tr><td class="id">T12</td><td>Degradación sin modelo</td><td>Modelo caído, lento o con <code>refusal</code>.</td><td>Calidad con y sin modelo; modo declarado</td><td>Degradación elegante, sin pérdida de reportes</td></tr>
+    <tr><td class="id">T13</td><td>Seguridad de los agentes</td><td>Textos con instrucciones maliciosas; solicitudes sin datos suficientes; salidas fuera de esquema.</td><td>Acciones, recursos o ubicaciones inventados; salidas inválidas aceptadas</td><td>0</td></tr>
+    <tr><td class="id">T14</td><td>Carga cognitiva del tablero</td><td>Lista de 1 000 reportes y 80 incidentes; revisión con personas.</td><td>Elementos a revisar para cubrir los P1; P1 fuera de la vista inicial</td><td>0 P1 ocultos; P1 a un clic</td></tr>
+    <tr><td class="id">T15</td><td>Recorrido completo reproducible</td><td>Los ocho pasos con un solo comando y una semilla fija.</td><td>Huella de las proyecciones entre ejecuciones</td><td>Igual con la misma semilla</td></tr>
+  </tbody>
+  <caption>Catálogo de pruebas. Cada una produce datos que alimentan el informe del entregable 6.</caption>
+</table>
+
+<h2 id="s9-3">Métricas</h2>
+<table class="tight">
+  <thead><tr><th style="width:26%">Métrica</th><th>Definición</th><th style="width:30%">Por qué importa</th></tr></thead>
+  <tbody>
+    <tr><td><em>Recall</em> de P1</td><td>Fracción de incidentes realmente críticos que el sistema clasifica como P1.</td><td>Un crítico omitido cuesta vidas; se reporta aparte de la exactitud global.</td></tr>
+    <tr><td>Tasa de falsa fusión</td><td>Pares de reportes de incidentes distintos que el sistema agrupó como el mismo.</td><td>El enunciado prohíbe «fusionar casos distintos indebidamente».</td></tr>
+    <tr><td>Razón de entrega</td><td>Reportes con ACK entre reportes creados, en un tiempo dado.</td><td>Mide el Reto 2 de punta a punta.</td></tr>
+    <tr><td>Bytes por reporte confirmado</td><td>Bytes de ida, de vuelta y de reintentos hasta el ACK.</td><td>Costo real para un teléfono con poca batería.</td></tr>
+    <tr><td>Latencia p50/p95 de P1</td><td>Tiempo desde la creación hasta que el reporte está en la cola del nodo.</td><td>La cola de espera de un crítico es lo que importa.</td></tr>
+    <tr><td>RTO y reportes perdidos</td><td>Tiempo hasta recuperar la función tras <code>kill -9</code> y número de reportes con ACK perdidos.</td><td>Mide el Reto 5.</td></tr>
+    <tr><td>Convergencia</td><td>Tiempo hasta que dos nodos reconectados tienen proyecciones idénticas.</td><td>Mide la sincronización.</td></tr>
+    <tr><td>Cobertura de evidencia</td><td>Fracción de salidas de agentes cuyas citas son válidas.</td><td>Mide las invenciones; objetivo 100 % tras validar.</td></tr>
+    <tr><td>Antigüedad máxima atendida</td><td>Edad del reporte más viejo servido por prioridad.</td><td>Detecta la inanición de casos leves.</td></tr>
+  </tbody>
+  <caption>Métricas principales y su razón de ser.</caption>
+</table>
+
+<h2 id="s9-4">Informe de resultados (plantilla del entregable 6)</h2>
+<ol>
+  <li><strong>Escenarios ejecutados:</strong> archivos YAML con su semilla, versión del código y entorno.</li>
+  <li><strong>Resultados:</strong> tablas y curvas de las métricas anteriores, con la comparación de modo reglas y modo modelo.</li>
+  <li><strong>Errores observados:</strong> fallas reales encontradas durante las pruebas y cómo se resolvieron.</li>
+  <li><strong>Limitaciones:</strong> qué no se probó (canales reales, escala real, dispositivos iOS) y qué se simplificó.</li>
+  <li><strong>Reproducción:</strong> los comandos exactos para volver a ejecutar cada escenario.</li>
+</ol>
+<p>Documentar con honestidad las limitaciones y los errores observados es parte de lo que el enunciado pide y es lo que permite al jurado auditar la solución.</p>

@@ -1,0 +1,158 @@
+<h1 id="s5">La app móvil</h1>
+
+<p>La app es la capa ciudadana del sistema y el cliente de su transporte. Resuelve el Reto 1 por completo y la mitad emisora del Reto 2. Su criterio de diseño es doble: <strong>nunca perder un reporte</strong> y <strong>gastar lo mínimo</strong> (energía, bytes, atención del usuario).</p>
+
+<h2 id="s5-1">Qué hace y qué no hace</h2>
+<div class="grid2">
+  <div class="card"><h4>La app SÍ hace</h4>
+    <ul>
+      <li>Crear un SOS en un toque y enriquecerlo después.</li>
+      <li>Guardar de forma durable antes de confirmar.</li>
+      <li>Codificar la trama binaria y mantener la cola de salida.</li>
+      <li>Transmitir de forma oportunista y reintentar sin gastar batería.</li>
+      <li>Mostrar el estado de entrega en lenguaje claro.</li>
+      <li>Sugerir una prioridad de envío con reglas locales (sin LLM).</li>
+      <li>Activar un modo de ahorro cuando la batería es baja.</li>
+    </ul></div>
+  <div class="card g"><h4>La app NO hace</h4>
+    <ul>
+      <li>Ejecutar modelos de IA ni llamar a un modelo de lenguaje en la ruta de envío.</li>
+      <li>Mostrar mapas, fotos, videos ni animaciones.</li>
+      <li>Decidir qué es una emergencia: sólo ordena su propia cola.</li>
+      <li>Sincronizar con otros teléfonos ni actuar como nodo.</li>
+      <li>Exigir registro, contraseña ni cuenta.</li>
+      <li>Despachar ni prometer ayuda: informa la entrega, no la respuesta.</li>
+    </ul></div>
+</div>
+
+<h2 id="s5-2">Arquitectura interna</h2>
+<p>Cinco capas con una regla de dependencia: <strong>la interfaz nunca habla con la red</strong>; sólo escribe en la persistencia, y el transporte lee de la bandeja de salida. Eso hace que la app funcione igual con o sin señal y que el transporte pueda fallar sin afectar la captura. La lógica crítica (códec, cola, planificador) vive en paquetes puros y probados, independientes de la interfaz.</p>
+<figure>
+  {{svg:app-capas}}
+  <figcaption>Capas de la app (izquierda) y máquina de estados de entrega con el texto que ve el ciudadano (derecha).</figcaption>
+</figure>
+
+<h2 id="s5-3">Experiencia: reportar en tres toques</h2>
+<p>La pregunta de innovación del Reto 1 es cómo ayudar a una persona asustada a informar lo esencial con la menor interacción y el menor consumo. La respuesta propuesta es el <strong>reporte progresivo</strong>: lo esencial se envía primero y todo lo demás es opcional.</p>
+<figure>
+  {{svg:pantallas}}
+  <figcaption>Wireframes de la app. Tema oscuro (menos energía en pantallas OLED), texto grande, sin imágenes ni animaciones.</figcaption>
+</figure>
+<ol>
+  <li><strong>Un toque</strong> en <em>SOS</em>, o en uno de los seis indicadores de situación, crea la revisión 0: tipo, ubicación (una sola lectura), hora, nivel de batería e indicadores. Se guarda y entra a la cola <em>en ese instante</em>.</li>
+  <li><strong>Un segundo toque</strong> (opcional) elige el rango de personas. Es la revisión 1, de pocos bytes.</li>
+  <li><strong>Una frase</strong> (opcional, hasta 140 bytes) es la revisión 2. Cada revisión reutiliza el mismo identificador de reporte: <em>enriquece</em>, no duplica.</li>
+</ol>
+<div class="callout">
+  <p class="t">DECISIONES DE EXPERIENCIA</p>
+  <ul>
+    <li><strong>Ubicación honesta.</strong> Una sola lectura con tiempo máximo. Si falla, se usa la última conocida marcada con su edad, o una referencia manual en texto. La app <em>nunca</em> inventa coordenadas; el campo viaja con su calidad (±10 m, ±50 m, …, manual, ausente).</li>
+    <li><strong>Permisos antes de la emergencia.</strong> El permiso de ubicación se pide en el primer arranque, no durante un sismo.</li>
+    <li><strong>Un campo nunca se quita.</strong> Cada revisión sólo añade o corrige campos (último valor gana por campo); el historial se conserva en el teléfono.</li>
+    <li><strong>Accesibilidad.</strong> Botones de gran tamaño, contraste alto, lectura por lector de pantalla y mensajes cortos en lenguaje llano.</li>
+  </ul>
+</div>
+
+<h2 id="s5-4">Datos locales y estados de entrega</h2>
+<p>La bandeja de salida es una tabla SQLite. La regla de oro: <strong>la pantalla sólo muestra «Guardado» después de que la transacción confirme</strong> con <code>synchronous=FULL</code>, de modo que un cierre brusco de la app no puede perder lo que el usuario ya vio como guardado. (Las pruebas del proyecto verifican la muerte del proceso; <code>synchronous=FULL</code> es la garantía de SQLite frente a un corte de energía, que no se somete a prueba aquí.)</p>
+<pre><code><span class="c">-- Esquema local (SQLite). PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;</span>
+<span class="k">CREATE TABLE</span> report (
+  report_id  BLOB    PRIMARY KEY,   <span class="c">-- 12 B: device_id(8) || seq de la trama rev 0 (4)</span>
+  rev        INTEGER NOT NULL,      <span class="c">-- última revisión local</span>
+  fields     TEXT    NOT NULL,      <span class="c">-- JSON: valor vigente de cada campo</span>
+  created_at INTEGER NOT NULL
+);
+<span class="k">CREATE TABLE</span> outbox (
+  report_id   BLOB    NOT NULL,
+  rev         INTEGER NOT NULL,
+  frame_seq   INTEGER NOT NULL UNIQUE, <span class="c">-- contador de tramas: lo que acusa el ACK</span>
+  frame       BLOB    NOT NULL,     <span class="c">-- trama ya codificada</span>
+  prio_hint   INTEGER NOT NULL,     <span class="c">-- 0..3, sólo orden de envío</span>
+  state       TEXT    NOT NULL,     <span class="c">-- QUEUED | SENDING | SENT | CONFIRMED | EXPIRED</span>
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  next_try_at INTEGER,              <span class="c">-- null = ahora</span>
+  ttl_at      INTEGER,
+  last_error  TEXT,
+  PRIMARY KEY (report_id, rev)
+);
+<span class="k">CREATE INDEX</span> outbox_pending <span class="k">ON</span> outbox(state, next_try_at);</code></pre>
+<table class="tight">
+  <thead><tr><th style="width:17%">Estado interno</th><th style="width:28%">Texto para el ciudadano</th><th>Significado y transición</th></tr></thead>
+  <tbody>
+    <tr><td>QUEUED (intentos = 0)</td><td>«Guardado en tu teléfono»</td><td>Confirmado en disco; aún no se ha intentado enviar.</td></tr>
+    <tr><td>QUEUED (intentos &gt; 0)</td><td>«Esperando señal»</td><td>Hubo un intento fallido; hay un reintento programado con espera aleatoria.</td></tr>
+    <tr><td>SENDING</td><td>«Enviando…»</td><td>La trama está en vuelo; si vence el temporizador sin ACK vuelve a QUEUED.</td></tr>
+    <tr><td>SENT</td><td>«Enviado a un nodo»</td><td>Un nodo confirmó haberla guardado de forma durable (ACK).</td></tr>
+    <tr><td>CONFIRMED</td><td>«Recibido por SARD»</td><td>El nodo confirmó con un <code>STATUS</code> que el reporte está en la cola priorizada <strong>y</strong>, si hay al menos dos nodos vivos, que existe en dos de ellos (ver {{ref:s7-3}}).</td></tr>
+    <tr><td>EXPIRED</td><td>«Se enviará cuando haya señal»</td><td>Venció el TTL del reintento activo: pasa a envío oportunista de baja frecuencia. <strong>Nunca se borra del teléfono.</strong></td></tr>
+  </tbody>
+  <caption>Estados de la bandeja de salida y el texto mostrado al usuario.</caption>
+</table>
+
+<h2 id="s5-5">Planificador de envío</h2>
+<p>El enunciado pregunta cómo lograr que la información crítica llegue aunque la ventana de comunicación sea muy breve. El planificador se basa en tres ideas: <strong>aprovechar cada ventana</strong>, <strong>enviar lo más urgente primero sin dejar morir lo demás</strong> y <strong>no derrochar batería esperando</strong>.</p>
+<ul>
+  <li><strong>Disparadores.</strong> Cambio de conectividad (la señal reaparece), apertura de la app, un reintento programado y la creación de un reporte nuevo. No hay sondeo periódico agresivo.</li>
+  <li><strong>Ventanas.</strong> El planificador aprende cuánto suelen durar las ventanas (promedio móvil exponencial) y limita el tamaño del lote a lo que cabe en ellas. Ante una ventana abierta, <strong>envía en ráfaga sin esperar un ACK por trama</strong> (ventana deslizante de hasta 8 tramas).</li>
+  <li><strong>Orden.</strong> Prioridad efectiva = prioridad de la pista local <em>menos</em> envejecimiento por edad. Además, una cuota fija reserva una de cada cinco posiciones del lote para el pendiente más antiguo: la urgencia no deja morir los casos leves.</li>
+  <li><strong>Reintentos.</strong> Espera exponencial con <em>variación completa</em>: <code>espera = aleatorio(0, mín(tope, base × 2<sup>intentos</sup>))</code>, con base de 2 s y tope de 300 s como valores iniciales a calibrar. La variación evita que miles de teléfonos reintenten a la vez cuando vuelve la señal.</li>
+  <li><strong>Segundo plano.</strong> Las tareas periódicas del sistema operativo son demasiado gruesas para ventanas breves (en Android, el mínimo de una tarea periódica es de 15 minutos). Por eso el planificador se apoya en eventos de conectividad mientras el proceso vive y, durante una emergencia declarada por el usuario, en un servicio en primer plano.</li>
+</ul>
+<pre><code><span class="c">// Pseudocódigo del planificador (valores iniciales, a calibrar con T03/T04)</span>
+al ocurrir(conectividad | reintento | reporte_nuevo | app_abierta):
+    ventana = estimarVentana()                      <span class="c">// promedio móvil de duraciones previas</span>
+    lote    = seleccionar(outbox, presupuesto = ventana.bytes)
+    <span class="k">para cada</span> trama <span class="k">en</span> lote (hasta 8 en vuelo):
+        enviar(trama); estado = SENDING
+al recibir ACK(ack_seq, bitmap): marcar SENT las tramas cubiertas
+al vencer temporizador(trama): intentos++; próximo = ahora + aleatorio(0, mín(300 s, 2 s × 2^intentos))
+
+seleccionar: ordenar por prioridad_efectiva = prio_hint − envejecimiento(edad)
+             y reservar 1 de cada 5 posiciones para el pendiente más antiguo</code></pre>
+
+<h2 id="s5-6">Ahorro de batería</h2>
+<p>El enunciado fija el umbral del problema: teléfonos «con menos del 20 % de batería». Se proponen dos modos automáticos, además del uso responsable por diseño (sin medios, sin animaciones, una sola lectura de GPS).</p>
+<table class="tight">
+  <thead><tr><th style="width:20%">Modo</th><th style="width:18%">Se activa</th><th>Comportamiento</th></tr></thead>
+  <tbody>
+    <tr><td>Normal</td><td>Batería ≥ 20 %</td><td>Estados y mensajes completos; reintentos con los parámetros base.</td></tr>
+    <tr><td>Ahorro</td><td>Batería &lt; 20 % (umbral del enunciado)</td><td>Tema oscuro fijo, sin animaciones, sin sondeo de red, lotes más grandes y menos frecuentes, lectura de ubicación única, brillo reducido si el sistema lo permite.</td></tr>
+    <tr><td>Sólo SOS</td><td>Batería &lt; 5 % (propuesta mía)</td><td>Una sola pantalla con el botón SOS; el envío inmediato y oportunista es lo único que sigue activo.</td></tr>
+  </tbody>
+  <caption>Modos de energía de la app. El umbral del 5 % es una propuesta a validar con pruebas en un teléfono real.</caption>
+</table>
+
+<h2 id="s5-7">Elección del framework móvil</h2>
+<p>Los requisitos duros de la app son tres: <strong>cola persistente transaccional</strong>, <strong>reintento fiable en segundo plano</strong> y <strong>codificación binaria compacta</strong>. Ningún framework los cumple «de fábrica»; las tres opciones habituales los alcanzan con distinto esfuerzo.</p>
+<table class="tight">
+  <thead><tr><th style="width:19%">Criterio</th><th style="width:29%">Flutter (Dart) · elegido</th><th style="width:26%">React Native + Expo</th><th>Kotlin nativo (Android)</th></tr></thead>
+  <tbody>
+    <tr><td>Segundo plano en Android</td><td>Medio: plugin de WorkManager; servicio en primer plano con un módulo nativo mínimo.</td><td>Medio: módulos de terceros; módulo nativo mínimo.</td><td>Alto: WorkManager y servicios en primer plano directos.</td></tr>
+    <tr><td>SQLite transaccional</td><td>Bueno: <code>package:sqlite3</code> (misma API que el nodo) o Drift.</td><td>Bueno (expo-sqlite u otras).</td><td>Excelente (Room).</td></tr>
+    <tr><td>Binario y enteros de 64 bits</td><td>Bueno en móvil y VM (64 bits). <strong>En Web son de 53 bits</strong>: <code>device_id</code> como 8 bytes o hexadecimal, nunca como <code>int</code>.</td><td>Aceptable: <code>Uint8Array</code>; 64 bits con <code>BigInt</code>.</td><td>Excelente: <code>Long</code>.</td></tr>
+    <tr><td>Compartir código con nodo y tablero</td><td><strong>Alto</strong>: Dart en app, nodo y Flutter Web con un paquete puro.</td><td>Alto si el nodo es Node.js.</td><td>Bajo.</td></tr>
+    <tr><td>Consumo de energía</td><td>Bueno.</td><td>Aceptable con motor Hermes y sin animaciones.</td><td>El mejor.</td></tr>
+    <tr><td>Alcance en iOS</td><td>Sí (con las limitaciones del sistema).</td><td>Sí.</td><td>No (otra app).</td></tr>
+    <tr><td>Curva para este proyecto</td><td><strong>Nula:</strong> ya se domina.</td><td>Media.</td><td>Media-alta.</td></tr>
+  </tbody>
+  <caption>Comparación cualitativa. No es una medición: es el análisis de compromisos que respalda la decisión.</caption>
+</table>
+<div class="callout key">
+  <p class="t">DECISIÓN Y CÓMO PROTEGERLA</p>
+  <p><strong>Flutter (Dart) de punta a punta.</strong> El proyecto lo desarrolla una sola persona que ya domina Flutter; con ese dato, el criterio dominante es la velocidad de un único desarrollador y un solo lenguaje para app, nodos, tablero y simulador. Se protege con dos reglas: (1) los paquetes compartidos (<code>protocol</code>, <code>agents</code>, <code>sim</code>) son <strong>Dart puro</strong>, sin importar Flutter, de modo que los nodos corren con <code>dart run</code> y las pruebas no necesitan dispositivo; (2) el códec se especifica con <em>vectores de prueba</em> en JSON (entrada → bytes esperados) que se ejecutan tanto en la VM como en Chrome. Si el servicio en primer plano resulta imprescindible en Android, se añade un módulo nativo muy pequeño.</p>
+</div>
+
+<h2 id="s5-8">Riesgos específicos del móvil</h2>
+<table class="tight">
+  <thead><tr><th style="width:26%">Riesgo</th><th>Mitigación</th></tr></thead>
+  <tbody>
+    <tr><td>iOS limita el trabajo en segundo plano</td><td>Demostración en Android; en iOS, enviar en primer plano y avisar al usuario de que mantenga la app abierta.</td></tr>
+    <tr><td>La optimización de batería del fabricante mata servicios</td><td>Pedir la exclusión durante la instalación; probar en el dispositivo real, no sólo en emulador.</td></tr>
+    <tr><td>Permiso de ubicación denegado o tardío</td><td>Pedirlo en el primer arranque; flujo alternativo con referencia manual; calidad de ubicación en la trama.</td></tr>
+    <tr><td>Reloj del teléfono incorrecto</td><td>La trama lleva <code>capturado_en</code>; el nodo registra su hora de llegada y el desfase estimado; el orden interno no depende del reloj del dispositivo.</td></tr>
+    <tr><td>Enteros de 64 bits en Dart compilado a Web</td><td>Los <code>int</code> son de 64 bits en la VM pero de 53 en JavaScript, y el tablero (Flutter Web) comparte el protocolo. Modelar <code>device_id</code> como 8 bytes o hexadecimal, mantener cada campo empaquetado en 32 bits o menos y ejecutar los vectores con <code>dart test -p vm,chrome</code>.</td></tr>
+    <tr><td>Abuso o reportes falsos</td><td>Límite de tasa por dispositivo, etiqueta de integridad y peso de corroboración por independencia de fuentes ({{ref:s6-6}}).</td></tr>
+    <tr><td>Privacidad</td><td>Sin cuenta obligatoria; ubicación aproximada cuando se envía a servicios externos; aviso claro de qué se envía.</td></tr>
+  </tbody>
+  <caption>Riesgos de la app móvil y su mitigación.</caption>
+</table>

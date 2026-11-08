@@ -1,0 +1,43 @@
+<h1 id="aA" data-annex="A">Glosario</h1>
+
+<table class="tight">
+  <thead><tr><th style="width:24%">Término</th><th>Significado en este documento</th></tr></thead>
+  <tbody>
+    <tr><td>ACK selectivo</td><td>Confirmación de recepción de una trama concreta, con un mapa de bits de las 32 tramas anteriores que el mismo nodo también guarda.</td></tr>
+    <tr><td>Anti-entropía</td><td>Mecanismo por el que dos nodos comparan lo que tienen e intercambian sólo lo que le falta a cada uno.</td></tr>
+    <tr><td><em>Append-only</em></td><td>Almacén donde sólo se añaden registros; nunca se modifican ni se borran.</td></tr>
+    <tr><td>Envejecimiento (<em>aging</em>)</td><td>Aumento gradual de prioridad con la espera, para que un caso leve no quede relegado indefinidamente.</td></tr>
+    <tr><td><em>Backoff</em> con variación</td><td>Espera creciente entre reintentos con un componente aleatorio, para que muchos dispositivos no reintenten a la vez.</td></tr>
+    <tr><td><em>Event sourcing</em></td><td>Guardar la secuencia de eventos como fuente de verdad y derivar las vistas de ella.</td></tr>
+    <tr><td><em>Geohash</em></td><td>Código de texto que identifica una celda geográfica; las celdas vecinas comparten prefijo.</td></tr>
+    <tr><td>HLC</td><td>Reloj lógico híbrido: ordena eventos de forma causal sin depender de que los relojes de los nodos coincidan.</td></tr>
+    <tr><td>Idempotencia</td><td>Propiedad de una operación que, repetida varias veces, deja el mismo resultado que una vez.</td></tr>
+    <tr><td>MTU</td><td>Tamaño máximo de un paquete que un canal puede transportar sin fragmentar.</td></tr>
+    <tr><td><em>Noisy-OR</em></td><td>Regla para combinar probabilidades de fuentes independientes: <code>1 − Π(1 − p<sub>i</sub>)</code>.</td></tr>
+    <tr><td>Proyección</td><td>Vista derivada del log (cola priorizada, grupos de incidentes) que puede reconstruirse desde cero.</td></tr>
+    <tr><td><em>Rendezvous hashing</em></td><td>Forma de asignar un trabajo a un nodo vivo de modo que, si cae, otro lo hereda de forma determinista.</td></tr>
+    <tr><td><em>Store-and-forward</em></td><td>Guardar un mensaje localmente y reenviarlo cuando haya una oportunidad de transmitir.</td></tr>
+    <tr><td>TTL</td><td>Tiempo de vida tras el cual cambia el tratamiento de un mensaje.</td></tr>
+    <tr><td>Vector de versiones</td><td>Resumen, por nodo de origen, de hasta qué contador se tienen todos los eventos.</td></tr>
+    <tr><td>WAL</td><td>Registro previo de escritura de SQLite que permite recuperación consistente tras un corte.</td></tr>
+  </tbody>
+</table>
+
+<h1 id="aB" data-annex="B">Decisiones de arquitectura (resumen)</h1>
+
+<p>Resumen de las decisiones principales en formato de registro. Cada una se guardará como un archivo independiente en <code>docs/adr/</code> al iniciar la implementación.</p>
+<table class="tight">
+  <thead><tr><th class="id">ID</th><th style="width:27%">Decisión</th><th style="width:22%">Alternativa descartada</th><th>Consecuencia principal</th></tr></thead>
+  <tbody>
+    <tr><td class="id">01</td><td>Log de eventos <em>append-only</em> con vistas derivadas</td><td>Base mutable con réplicas</td><td>Recuperación y auditoría simples; el coste es reconstruir vistas.</td></tr>
+    <tr><td class="id">02</td><td>Sin líder y consistencia eventual</td><td>Consenso (Raft)</td><td>Sigue funcionando con particiones; las vistas pueden diferir de forma temporal y se declaran.</td></tr>
+    <tr><td class="id">03</td><td>Monorepo Dart con paquetes puros compartidos (<code>protocol</code>, <code>agents</code>, <code>sim</code>)</td><td>Varios repositorios y lenguajes</td><td>Menos fricción para una sola persona; los agentes quedan en Dart y no hay SDK oficial de Claude (se usa HTTP directo).</td></tr>
+    <tr><td class="id">04</td><td>Trama binaria propia con vectores de prueba</td><td>JSON o Protocol Buffers</td><td>33 B frente a 239 B (JSON descriptivo) o 104 B (JSON compacto); hay que mantener el códec y sus pruebas.</td></tr>
+    <tr><td class="id">05</td><td>Modelo de lenguaje tras un puerto con respaldo determinista</td><td>Dependencia directa de una API</td><td>Funciona sin Internet; hay que mantener las reglas.</td></tr>
+    <tr><td class="id">06</td><td>Agentes sin herramienta de despacho</td><td>Autonomía limitada sólo por instrucciones</td><td>Límite por construcción; ninguna acción es automática.</td></tr>
+    <tr><td class="id">07</td><td>Deduplicación semántica como vista reversible</td><td>Fusionar y borrar</td><td>Conserva la evidencia; exige más lógica de vistas.</td></tr>
+    <tr><td class="id">08</td><td>Banco de pruebas como componente de primera clase</td><td>Pruebas manuales al final</td><td>Reproducibilidad y evidencia para el jurado; coste inicial de desarrollo.</td></tr>
+    <tr><td class="id">09</td><td>Reporte progresivo por revisiones</td><td>Formulario único</td><td>Mínima interacción y sin duplicados de origen; hay que fundir campo a campo.</td></tr>
+    <tr><td class="id">10</td><td>Desarrollo individual con corte de alcance en la columna «Mantener»</td><td>Intentar cubrir todos los retos</td><td>Se entrega el recorrido completo con piezas simples y limitaciones declaradas; la profundización queda como trabajo futuro.</td></tr>
+  </tbody>
+</table>

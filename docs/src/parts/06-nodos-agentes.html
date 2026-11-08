@@ -1,0 +1,246 @@
+<h1 id="s6">Nodos supervivientes y tejido de agentes</h1>
+
+<p>Este capítulo cubre los retos 3 a 6: dónde viven los datos, cómo se sincronizan, cómo colaboran los agentes y cómo se presenta el resultado al coordinador. Respalda los entregables 3 (arquitectura) y 4 (fichas de agentes).</p>
+
+<h2 id="s6-1">El nodo superviviente</h2>
+<p>Un nodo es un proceso pequeño que puede funcionar <strong>completamente solo</strong>: sin pares, sin Internet y sin modelo de lenguaje. Su corazón es un <strong>log de eventos que sólo crece</strong> (<em>append-only</em>, en SQLite). Todo lo demás —la cola priorizada, los grupos de incidentes, el estado de los nodos— son <em>proyecciones</em> que se pueden reconstruir desde cero leyendo el log.</p>
+<figure>
+  {{svg:nodo}}
+  <figcaption>Arquitectura interna de un nodo. Los agentes son suscriptores del log: leen eventos y añaden eventos derivados.</figcaption>
+</figure>
+
+<p>Esta decisión (<em>event sourcing</em> con un log local por nodo) responde a casi todo el Escenario 2 a la vez: la persistencia es el log; la recuperación es releerlo; la sincronización es intercambiar los eventos que faltan; y la trazabilidad es gratuita porque cada salida enlaza los eventos de los que proviene.</p>
+
+<h3>Modelo de evento</h3>
+<pre><code>{
+  <span class="k">"event_id"</span>: <span class="s">"B:000412"</span>,                       <span class="c">// nodo de origen : contador propio</span>
+  <span class="k">"type"</span>: <span class="s">"triage.assessed"</span>,
+  <span class="k">"subject"</span>: { <span class="k">"report_id"</span>: <span class="s">"9a3c51e07b2d44f1-17"</span>, <span class="k">"rev"</span>: 1 },
+  <span class="k">"hlc"</span>: <span class="s">"2026-08-10T14:09:02.114Z-0003-B"</span>,    <span class="c">// reloj lógico híbrido: orden causal sin fiarse del reloj</span>
+  <span class="k">"producer"</span>: { <span class="k">"agent"</span>: <span class="s">"triage"</span>, <span class="k">"version"</span>: <span class="s">"0.3.1"</span>, <span class="k">"mode"</span>: <span class="s">"rules+llm"</span>, <span class="k">"model"</span>: <span class="s">"claude-sonnet-5-5"</span> },
+  <span class="k">"inputs"</span>: [<span class="s">"A:000377"</span>, <span class="s">"B:000411"</span>],                 <span class="c">// eventos de los que depende (trazabilidad)</span>
+  <span class="k">"body"</span>: {
+    <span class="k">"urgency"</span>: <span class="s">"P1"</span>, <span class="k">"confidence"</span>: 0.82,
+    <span class="k">"signals"</span>: [ { <span class="k">"code"</span>: <span class="s">"atrapado"</span>,  <span class="k">"evidence"</span>: { <span class="k">"field"</span>: <span class="s">"flags.atrapado"</span> } },
+                { <span class="k">"code"</span>: <span class="s">"texto_losa"</span>, <span class="k">"evidence"</span>: { <span class="k">"quote"</span>: <span class="s">"atrapada bajo la losa"</span> } } ],
+    <span class="k">"uncertainty"</span>: [<span class="s">"fuente_unica"</span>], <span class="k">"escalate_to_human"</span>: false
+  }
+}</code></pre>
+<table class="tight">
+  <thead><tr><th style="width:24%">Tipo de evento</th><th style="width:20%">Productor</th><th>Contenido clave</th></tr></thead>
+  <tbody>
+    <tr><td><code>report.received</code></td><td>Nodo (ingreso)</td><td>Trama decodificada, canal, hora de llegada y desfase de reloj estimado. Se escribe <em>antes</em> del ACK.</td></tr>
+    <tr><td><code>report.normalized</code></td><td>Agente 1</td><td>Campos validados, faltantes y desconocidos; ubicación con su origen y calidad.</td></tr>
+    <tr><td><code>triage.assessed</code></td><td>Agente 2</td><td>Urgencia, confianza, señales con cita, códigos de incertidumbre, escalamiento.</td></tr>
+    <tr><td><code>incident.linked</code> / <code>.unlinked</code></td><td>Agente 3 o humano</td><td>Grupo, miembros, estado (<em>same</em> / <em>possible</em> / <em>different</em>), contradicciones.</td></tr>
+    <tr><td><code>recommendation.proposed</code></td><td>Agente 6</td><td>Acción, recursos existentes, justificación citada, requisitos pendientes.</td></tr>
+    <tr><td><code>approval.granted</code> / <code>.denied</code></td><td>Humano (tablero)</td><td>Quién, cuándo, a qué recomendación y con qué nota.</td></tr>
+    <tr><td><code>node.health</code></td><td>Agente 5</td><td>Estado de pares, retraso de sincronización, tareas reasignadas.</td></tr>
+    <tr><td><code>delivery.status</code></td><td>Agente 4</td><td>Confirmación de segundo nivel hacia el teléfono (<code>STATUS</code>: en cola priorizada y número de réplicas).</td></tr>
+  </tbody>
+  <caption>Catálogo de eventos. Cada uno referencia los eventos de los que depende.</caption>
+</table>
+
+<h2 id="s6-2">Sincronización, pérdida de nodo y recuperación</h2>
+<p>La arquitectura es <strong>sin líder y eventualmente consistente</strong>: prioriza seguir funcionando y converger después sobre mostrar una vista única en todo momento. Es la elección correcta para este escenario porque los nodos <em>van a</em> quedar aislados; lo importante es que no se pierda nada y que se vea con honestidad qué tan fresca es cada vista.</p>
+<div class="grid2">
+  <div class="card"><h4>Anti-entropía con vectores de versiones</h4>
+    <ul>
+      <li>Cada nodo numera sus propios eventos (<code>B:000412</code>). Su <em>vector de versiones</em> dice, por cada origen, hasta qué contador tiene todo.</li>
+      <li>Al contactar a un par: <code>HAVE(vector)</code> → el par responde con <code>EVENTS</code> sólo de los rangos que faltan. Cuesta lo que falta, no el total.</li>
+      <li>Los eventos son inmutables y tienen identificador único: aplicarlos dos veces o en otro orden produce el mismo estado.</li>
+    </ul></div>
+  <div class="card g"><h4>Pérdida de un nodo sin aviso</h4>
+    <ul>
+      <li>Un reporte sólo recibe ACK <strong>después</strong> de escribir <code>report.received</code> con escritura durable. Un nodo que cae no pierde lo que ya acusó.</li>
+      <li>El teléfono, sin ACK, reintenta contra otro nodo; la idempotencia absorbe el duplicado.</li>
+      <li>El agente 5 detecta la ausencia por latidos y reasigna el trabajo al siguiente nodo en el orden de <em>rendezvous hashing</em>.</li>
+    </ul></div>
+</div>
+<h3>Quién procesa cada reporte</h3>
+<p>Para no calcular lo mismo en todos los nodos, cada reporte tiene un <strong>dueño</strong>: el nodo vivo con mayor <code>hash(nodo, report_id)</code> (<em>rendezvous hashing</em>). Si el dueño no produce el evento esperado dentro de un plazo, el siguiente en el orden lo toma. Si por una falsa alarma dos nodos lo procesan, no pasa nada grave: los eventos de salida son idempotentes y sólo se desperdicia cómputo.</p>
+<h3>Conflictos entre agentes</h3>
+<p>Dos nodos aislados pueden emitir juicios distintos sobre el mismo reporte (el modelo de lenguaje no es determinista). Ambos eventos se conservan. La proyección aplica una regla <strong>conservadora</strong>: para la urgencia muestra el valor más alto y marca «juicios discrepantes»; para el triaje de personas es preferible un falso positivo revisable que un falso negativo.</p>
+<h3>Recuperación de un nodo</h3>
+<ol>
+  <li>El proceso reinicia y reconstruye sus proyecciones releyendo el log local.</li>
+  <li>Envía su vector de versiones a los pares vivos y recibe los eventos que le faltan.</li>
+  <li>El agente 5 compara y publica <code>node.health</code>; el tablero deja de mostrar «vista parcial».</li>
+</ol>
+<div class="callout warn">
+  <p class="t">LO QUE ESTA ARQUITECTURA NO PROMETE (Y DEBE DECIRSE EN LA DEMOSTRACIÓN)</p>
+  <p>Un reporte con ACK está a salvo mientras el disco de ese nodo sobreviva; si el disco se destruye antes de la primera sincronización, el evento se pierde. Se reduce la ventana con la confirmación de segundo nivel: el teléfono sólo marca «Recibido por SARD» cuando el <code>STATUS</code> indica que el reporte está en la cola priorizada y, si hay dos o más nodos vivos, replicado en al menos dos. Además, durante un aislamiento las vistas de dos tableros pueden diferir; por eso cada vista muestra su <strong>frescura</strong>.</p>
+</div>
+
+<h2 id="s6-3">El tejido de agentes</h2>
+<p>El enunciado sugiere seis agentes: un flujo principal (recepción → triaje → correlación → coordinación) apoyado por dos servicios transversales (comunicación y resiliencia). Se implementan como suscriptores del log con contratos de evento tipados. <strong>No hay agente central</strong>: cada nodo ejecuta el tejido completo sobre su propio log.</p>
+<figure>
+  {{svg:agentes}}
+  <figcaption>Flujo de eventos entre agentes, respaldo determinista de cada uno y servicios transversales.</figcaption>
+</figure>
+<p>Reglas comunes a todos los agentes:</p>
+<ul>
+  <li><strong>Entradas y salidas tipadas.</strong> Cada salida se valida contra un esquema antes de entrar al log; lo que no valida se rechaza y queda registrado.</li>
+  <li><strong>Idempotencia.</strong> Un agente produce a lo sumo un evento por (sujeto, versión del agente). Reprocesar no duplica.</li>
+  <li><strong>Plazos y reintentos acotados.</strong> Toda llamada a un modelo tiene tiempo máximo; tras el límite se usa el respaldo y el evento lo indica (<code>mode: "rules"</code>).</li>
+  <li><strong>Sin efectos laterales.</strong> Ningún agente puede despachar, notificar a terceros ni modificar el log más allá de sus propios eventos.</li>
+</ul>
+
+<h2 id="s6-4">Fichas de los agentes</h2>
+<p>Una ficha por agente con los ocho campos que pide el entregable 4. El «modelo sugerido» se justifica en {{ref:s6-5}}.</p>
+
+<table class="cards">
+  <caption>Agente 1 · Recepción y normalización</caption>
+  <tbody>
+    <tr><td>Objetivo</td><td>Convertir cada observación en un reporte normalizado y validado, con los campos faltantes explícitos.</td></tr>
+    <tr><td>Entradas</td><td><code>report.received</code>: carga decodificada, canal, hora de llegada, desfase de reloj estimado.</td></tr>
+    <tr><td>Salidas</td><td><code>report.normalized</code>: campos, errores de validación, campos desconocidos, campos faltantes, ubicación (valor o nulo, origen, calidad).</td></tr>
+    <tr><td>Herramientas</td><td>Validador de esquema; decodificador de trama; extractor de texto libre (modelo, opcional).</td></tr>
+    <tr><td>Memoria</td><td>Ninguna entre reportes. Lee catálogos de tipos y de lugares conocidos (sólo lectura).</td></tr>
+    <tr><td>Límites de autonomía</td><td>No inventa ni completa la ubicación ni cifras. Lo extraído del texto se marca <code>inferido</code> y no sobrescribe campos del teléfono.</td></tr>
+    <tr><td>Manejo de errores</td><td>Trama corrupta o truncada → <code>estado: incompleto</code> con la razón; sigue en la cola. Si el modelo falla, sólo se usan los campos estructurados.</td></tr>
+    <tr><td>Terminación</td><td>Un <code>report.normalized</code> por (reporte, revisión). Tras dos fallos consecutivos pasa a la bandeja de errores y avisa al agente 5.</td></tr>
+    <tr><td>Respaldo · modelo</td><td>Totalmente determinista. Modelo sugerido (sólo texto libre): <code>claude-haiku-5-5</code>.</td></tr>
+  </tbody>
+</table>
+
+<table class="cards">
+  <caption>Agente 2 · Triaje y priorización</caption>
+  <tbody>
+    <tr><td>Objetivo</td><td>Proponer un nivel de urgencia (P1–P4) con evidencia, confianza y motivo de escalamiento.</td></tr>
+    <tr><td>Entradas</td><td><code>report.normalized</code> y el historial del mismo reporte.</td></tr>
+    <tr><td>Salidas</td><td><code>triage.assessed</code>: urgencia, confianza (0–1), señales con cita, códigos de incertidumbre, <code>escalate_to_human</code>, versión.</td></tr>
+    <tr><td>Herramientas</td><td>Reglas de señales de riesgo (configuración versionada); modelo con salida estructurada; verificador de citas (cada cita debe ser subcadena del texto o un campo existente).</td></tr>
+    <tr><td>Memoria</td><td>Ninguna. La tabla de señales es configuración.</td></tr>
+    <tr><td>Límites de autonomía</td><td>Herramienta de apoyo, no diagnóstico clínico. <strong>Piso por reglas:</strong> «atrapado», dificultad respiratoria e incendio imponen al menos P2 aunque el modelo discrepe. Ante la duda sube a revisión, nunca baja la urgencia por falta de datos.</td></tr>
+    <tr><td>Manejo de errores</td><td>Salida fuera de esquema o cita inválida → se descarta la parte del modelo. Rechazo (<code>refusal</code>) o tiempo agotado → sólo reglas, con <code>mode: "rules"</code>.</td></tr>
+    <tr><td>Terminación</td><td>Un evento por (reporte, revisión, versión). Se reevalúa cuando llega una revisión mayor o una corroboración nueva.</td></tr>
+    <tr><td>Respaldo · modelo</td><td>Reglas deterministas. Modelo sugerido: <code>claude-sonnet-5-5</code>.</td></tr>
+  </tbody>
+</table>
+
+<table class="cards">
+  <caption>Agente 3 · Correlación y deduplicación</caption>
+  <tbody>
+    <tr><td>Objetivo</td><td>Agrupar observaciones que probablemente describen el mismo suceso, medir la independencia de las fuentes y preservar las contradicciones.</td></tr>
+    <tr><td>Entradas</td><td><code>report.normalized</code>, <code>triage.assessed</code> e índice espacial-temporal local de incidentes abiertos.</td></tr>
+    <tr><td>Salidas</td><td><code>incident.linked</code> / <code>.unlinked</code>: grupo, miembros, similitud, estado (same / possible / different), contradicciones, corroboración.</td></tr>
+    <tr><td>Herramientas</td><td>Bloqueo por <em>geohash</em> vecino, ventana temporal y tipo; puntuación determinista; detector de copias de texto; modelo sólo para adjudicar pares «possible» y extraer afirmaciones.</td></tr>
+    <tr><td>Memoria</td><td>Índice de incidentes abiertos (derivable del log).</td></tr>
+    <tr><td>Límites de autonomía</td><td>Nunca borra ni modifica observaciones. «same» sólo sobre un umbral alto; «possible» se muestra como sugerencia. Toda fusión es reversible y conserva los vínculos.</td></tr>
+    <tr><td>Manejo de errores</td><td>Sin ubicación: agrupa sólo con umbral más estricto y marca <code>ubicacion_ausente</code>. Sin modelo: decide el puntaje y las contradicciones figuran como «no evaluadas».</td></tr>
+    <tr><td>Terminación</td><td>Evalúa como máximo K candidatos por reporte nuevo y termina; se reabre si llegan observaciones nuevas del grupo.</td></tr>
+    <tr><td>Respaldo · modelo</td><td>Puntaje determinista. Modelo sugerido: <code>claude-sonnet-5-5</code>.</td></tr>
+  </tbody>
+</table>
+
+<table class="cards">
+  <caption>Agente 4 · Comunicación y sincronización (servicio transversal)</caption>
+  <tbody>
+    <tr><td>Objetivo</td><td>Decidir qué se transmite primero y administrar colas, fragmentos, reintentos y confirmaciones, tanto en el teléfono como en el nodo.</td></tr>
+    <tr><td>Entradas</td><td>Estado de las colas, estimación de ventana y ancho de banda, política operativa, urgencia (pista local o triaje).</td></tr>
+    <tr><td>Salidas</td><td>Plan de transmisión (lote ordenado), estado de entrega, eventos pendientes de sincronización, <code>delivery.status</code>.</td></tr>
+    <tr><td>Herramientas</td><td>Planificador con envejecimiento; fragmentador y ensamblador; temporizadores de retransmisión. No requiere modelo.</td></tr>
+    <tr><td>Memoria</td><td>Estado de las colas, persistido.</td></tr>
+    <tr><td>Límites de autonomía</td><td>La priorización no hace desaparecer los casos de baja prioridad: envejecimiento y cuota mínima. Nada se descarta sin dejar un evento.</td></tr>
+    <tr><td>Manejo de errores</td><td>Canal caído → reprograma con espera exponencial y variación. Trama inválida → NACK y contador por dispositivo.</td></tr>
+    <tr><td>Terminación</td><td>Un mensaje termina con su ACK, su vencimiento o un descarte registrado. El planificador es un servicio continuo.</td></tr>
+    <tr><td>Respaldo · modelo</td><td>Lógica determinista. El modelo, si se usa, sólo redacta la explicación para el tablero.</td></tr>
+  </tbody>
+</table>
+
+<table class="cards">
+  <caption>Agente 5 · Resiliencia y recuperación (servicio transversal, sin LLM)</caption>
+  <tbody>
+    <tr><td>Objetivo</td><td>Supervisar la salud de los nodos, detectar interrupciones y reanudar el procesamiento desde el estado persistido; reportar conflictos de sincronización.</td></tr>
+    <tr><td>Entradas</td><td>Latidos de pares, errores de procesos, huecos en los vectores de versiones.</td></tr>
+    <tr><td>Salidas</td><td><code>node.health</code> (estado, última vista, retraso), tareas reasignadas, conflictos detectados.</td></tr>
+    <tr><td>Herramientas</td><td>Detector de fallos por latidos con umbral; <em>rendezvous hashing</em> para reasignar; reanudación desde cursores persistidos.</td></tr>
+    <tr><td>Memoria</td><td>Cursores por suscriptor y vector de versiones, persistidos.</td></tr>
+    <tr><td>Límites de autonomía</td><td><strong>Sin modelo de lenguaje:</strong> lógica distribuida convencional, como indica el enunciado. Decide sobre infraestructura propia, nunca sobre recursos de respuesta.</td></tr>
+    <tr><td>Manejo de errores</td><td>Una falsa alarma de caída se absorbe por idempotencia (sólo cuesta cómputo repetido).</td></tr>
+    <tr><td>Terminación</td><td>Servicio continuo; cada tarea reasignada termina cuando existe el evento resultado.</td></tr>
+    <tr><td>Respaldo · modelo</td><td>No aplica: no usa modelo.</td></tr>
+  </tbody>
+</table>
+
+<table class="cards">
+  <caption>Agente 6 · Coordinación de respuesta</caption>
+  <tbody>
+    <tr><td>Objetivo</td><td>Preparar para el centro de control una recomendación (acción, justificación, requisitos pendientes) que relacione el incidente con los recursos declarados y las restricciones.</td></tr>
+    <tr><td>Entradas</td><td>Incidente agrupado (evidencia, urgencia, incertidumbre), tabla de recursos declarados disponibles, restricciones operativas.</td></tr>
+    <tr><td>Salidas</td><td><code>recommendation.proposed</code>: acción, recursos (sólo identificadores existentes), justificación con citas a eventos, requisitos pendientes, incertidumbre, <code>requires_approval: true</code>.</td></tr>
+    <tr><td>Herramientas</td><td>Lectura de recursos y políticas; modelo con salida estructurada; validador de referencias y citas.</td></tr>
+    <tr><td>Memoria</td><td>Ninguna propia: lee proyecciones.</td></tr>
+    <tr><td>Límites de autonomía</td><td><strong>No dispone de ninguna herramienta de despacho.</strong> No asigna recursos críticos sin autorización ni inventa recursos; si faltan datos mínimos devuelve «información requerida» en vez de recomendar.</td></tr>
+    <tr><td>Manejo de errores</td><td>Referencia a un recurso inexistente o cita inválida → la recomendación se rechaza y se emite <code>recommendation.rejected</code>. Sin modelo: plantilla por tipo de incidente.</td></tr>
+    <tr><td>Terminación</td><td>Una recomendación por versión del incidente; caduca si el incidente cambia; se cierra con <code>approval.granted</code> o <code>approval.denied</code>.</td></tr>
+    <tr><td>Respaldo · modelo</td><td>Plantilla de acción. Modelo sugerido: <code>claude-opus-5-5</code> (bajo volumen y mayor riesgo).</td></tr>
+  </tbody>
+</table>
+
+<h2 id="s6-5">Integración con modelos de lenguaje</h2>
+<p>Principio rector: <strong>el modelo es una mejora, no un requisito</strong>. En el Escenario 2 los proveedores de internet están caídos, así que un diseño cuya función esencial dependa de una API en la nube fallaría justo cuando más se necesita. Por eso el acceso al modelo es un <em>puerto</em> con tres implementaciones intercambiables: nube, modelo local y reglas.</p>
+<table class="tight">
+  <thead><tr><th style="width:22%">Agente</th><th style="width:30%">Qué hace el modelo</th><th style="width:20%">Modelo sugerido</th><th>Por qué</th></tr></thead>
+  <tbody>
+    <tr><td>1 · Recepción</td><td>Sólo extrae tipo y referencias de lugar del texto libre.</td><td><code>claude-haiku-5-5</code></td><td>Alto volumen, tarea acotada, latencia baja.</td></tr>
+    <tr><td>2 · Triaje</td><td>Interpreta el texto, propone urgencia con citas.</td><td><code>claude-sonnet-5-5</code></td><td>Equilibrio de calidad y latencia en el camino crítico.</td></tr>
+    <tr><td>3 · Correlación</td><td>Adjudica pares «possible»; extrae afirmaciones para detectar contradicciones.</td><td><code>claude-sonnet-5-5</code></td><td>Sólo se invoca en casos dudosos: volumen bajo.</td></tr>
+    <tr><td>6 · Coordinación</td><td>Redacta la recomendación y su justificación.</td><td><code>claude-opus-5-5</code></td><td>Mayor riesgo y menor volumen: sólo incidentes priorizados.</td></tr>
+    <tr><td>4 y 5</td><td>No dependen del modelo.</td><td>—</td><td>Requisito del enunciado (agente 5) y de robustez.</td></tr>
+  </tbody>
+  <caption>Asignación por defecto, proporcional al riesgo. Es una propuesta mía: el modelo de cada agente es configuración, no código.</caption>
+</table>
+<div class="grid2">
+  <div class="card"><h4>Notas de integración con la API</h4>
+    <ul>
+      <li><strong>Salida estructurada</strong> con <code>output_config.format</code> y, además, validación propia del esquema. En <code>claude-sonnet-5-5</code> y <code>claude-opus-5-5</code> la herramienta forzada (<code>tool_choice</code> <em>any</em> / <em>tool</em>) devuelve error 400: usar salida estructurada.</li>
+      <li><strong>Esfuerzo explícito.</strong> En <code>claude-opus-5-5</code> el razonamiento no puede desactivarse y el esfuerzo por defecto es <em>medium</em>: fijarlo por agente.</li>
+      <li><strong>Sin ajuste de muestreo.</strong> En estos modelos <code>temperature</code> y afines no son configurables: el sistema trata el modelo como no determinista y por eso es idempotente y conserva ambos juicios.</li>
+      <li><strong>Rechazos.</strong> Revisar siempre <code>stop_reason</code>: un <code>refusal</code> (los clasificadores de seguridad pueden declinar una solicitud) es un fallo del agente y activa el respaldo.</li>
+    </ul></div>
+  <div class="card g"><h4>Datos, costo y seguridad</h4>
+    <ul>
+      <li><strong>Minimizar lo que sale a la nube:</strong> redactar teléfonos y nombres, redondear la ubicación a una celda <em>geohash</em> si no se necesita el punto exacto.</li>
+      <li><strong>Instrucciones estables primero:</strong> un prompt de sistema largo y fijo por agente permite <em>prompt caching</em> y reduce costo y latencia.</li>
+      <li><strong>Plazos cortos y reintentos acotados;</strong> pasado el plazo, respaldo determinista.</li>
+      <li><strong>Auditoría:</strong> el evento guarda agente, versión, modo y modelo; la petición y la respuesta se archivan localmente.</li>
+      <li><strong>Inyección de instrucciones:</strong> el texto ciudadano es dato no confiable: se delimita, el agente de triaje no tiene herramientas con efectos y la salida se valida (ver {{ref:s8}}).</li>
+    </ul></div>
+</div>
+
+<h2 id="s6-6">Deduplicación, independencia de fuentes e incertidumbre</h2>
+<p>Es el corazón del Reto 4. Se separan tres problemas que suelen mezclarse.</p>
+<h3>Nivel 1 · Duplicado de transporte</h3>
+<p>El mismo mensaje llega varias veces porque el canal duplica o el teléfono reintenta. Se resuelve con la clave <code>(report_id, rev)</code>: el nodo ignora lo ya visto pero <strong>siempre responde el ACK</strong>, porque el ACK anterior pudo haberse perdido. Cuesta cero cómputo semántico.</p>
+<h3>Nivel 2 · Duplicado semántico</h3>
+<p>Varias personas reportan el mismo suceso con identificadores distintos. El agente 3 sigue tres pasos:</p>
+<ol>
+  <li><strong>Bloqueo.</strong> Sólo compara reportes en la misma celda <em>geohash</em> o vecinas, dentro de una ventana de tiempo y con tipos compatibles; evita comparar todo con todo.</li>
+  <li><strong>Puntuación.</strong> <code>score = w<sub>d</sub>·K(d / (σ<sub>1</sub>+σ<sub>2</sub>)) + w<sub>t</sub>·e<sup>−Δt/τ</sup> + w<sub>k</sub>·[mismo tipo] + w<sub>s</sub>·sim(texto)</code>, con <code>K(x) = máx(0, 1−x)</code>. La distancia se mide <em>relativa a la precisión declarada</em> (σ) de cada reporte: dos puntos a 40 m con ±35 m de precisión son compatibles; a 400 m no. Valores iniciales: <code>w = (0,40; 0,15; 0,15; 0,30)</code>, <code>τ = 30 min</code>.</li>
+  <li><strong>Decisión tri-estado.</strong> <em>same</em> si <code>score ≥ θ<sub>hi</sub></code> (inicial 0,80); <em>possible</em> si <code>θ<sub>lo</sub> ≤ score &lt; θ<sub>hi</sub></code> (inicial 0,55); <em>different</em> en otro caso. Sólo <em>same</em> agrupa; <em>possible</em> se sugiere al coordinador. Los umbrales se calibran con T07 priorizando <strong>no fusionar casos distintos</strong>.</li>
+</ol>
+<h3>Nivel 3 · Rumor frente a corroboración</h3>
+<p>La pregunta del Reto 4 es cómo distinguir un rumor repetido mil veces de una emergencia corroborada por fuentes independientes. La respuesta es que <strong>contar mensajes no mide confianza; contar fuentes independientes sí</strong>.</p>
+<ul>
+  <li>Cada dispositivo cuenta una vez. Los textos casi idénticos de dispositivos distintos, cercanos en el tiempo, forman una <em>familia de copias</em> que cuenta como una sola fuente.</li>
+  <li>La confianza combina las fuentes independientes con una regla de tipo <em>noisy-OR</em>: <code>P(real) = 1 − Π (1 − p<sub>i</sub>·w<sub>i</sub>)</code>, donde <code>p<sub>i</sub></code> es la credibilidad base de la clase de fuente y <code>w<sub>i</sub></code> su factor de independencia.</li>
+  <li><strong>Ejemplo ilustrativo</strong> (valores no calibrados): un rumor por radio repetido 1 000 veces es una sola familia con <code>p = 0,2</code> → <code>P = 0,20</code>; cinco reportes de la app con ubicación, de dispositivos distintos y con texto propio (<code>p = 0,6</code>) → <code>P = 1 − 0,4<sup>5</sup> ≈ 0,99</code>.</li>
+</ul>
+<h3>Contradicciones e incertidumbre</h3>
+<p>Las contradicciones («puente transitable» frente a «puente colapsado») <strong>se conservan y se muestran</strong>; nunca se resuelven en silencio, porque pueden cambiar la respuesta. La incertidumbre es un campo del esquema con códigos explícitos —<code>ubicacion_ausente</code>, <code>ubicacion_imprecisa</code>, <code>texto_truncado</code>, <code>fuente_unica</code>, <code>fuente_no_independiente</code>, <code>contradiccion</code>, <code>dato_antiguo</code>, <code>baja_confianza_modelo</code>— que el tablero convierte en insignias. Sin modelo de lenguaje, la detección de contradicciones queda «no evaluada» y así se indica, en lugar de afirmar que no las hay.</p>
+
+<h2 id="s6-7">El tablero del coordinador</h2>
+<p>El Reto 6 pregunta cómo reducir la carga cognitiva del coordinador sin ocultarle información importante. La respuesta propuesta es <strong>resumir con contadores honestos</strong>: vista corta por defecto, con lo que queda fuera siempre a la vista.</p>
+<figure>
+  {{svg:tablero}}
+  <figcaption>Tablero del coordinador (wireframe con datos ilustrativos). Lista priorizada, evidencia, contradicciones, recomendación con aprobación y estado de los nodos.</figcaption>
+</figure>
+<ul>
+  <li><strong>Unidad = incidente, no mensaje.</strong> Mil reportes se presentan como decenas de incidentes con sus fuentes.</li>
+  <li><strong>Lista corta con contadores.</strong> Una franja fija indica cuántos incidentes quedan en seguimiento y cuántos tienen incertidumbre alta. <strong>Ningún P1 queda fuera de la vista inicial.</strong></li>
+  <li><strong>Por qué.</strong> Cada incidente explica su prioridad con las señales y citas del agente 2 y enlaza sus observaciones originales.</li>
+  <li><strong>Siguiente acción sugerida y aprobación.</strong> La recomendación del agente 6 aparece con sus requisitos pendientes; aprobar o rechazar queda registrado.</li>
+  <li><strong>Frescura y funcionamiento sin Internet.</strong> Se indica qué nodos están sincronizados y cuándo; si faltan eventos, el tablero declara la «vista parcial». Sus recursos los sirve el nodo y el mapa es esquemático o con teselas precargadas.</li>
+</ul>

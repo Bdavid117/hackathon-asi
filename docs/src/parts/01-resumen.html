@@ -1,0 +1,37 @@
+<h1 id="resumen">Resumen ejecutivo</h1>
+
+<p>El enunciado de la Hackathon SARD plantea un sismo de magnitud 7,4 seguido de un apagón generalizado y de la caída en cascada de antenas, centros de datos y proveedores de internet. El desafío no es solamente recoger información: es <strong>decidir qué hacer con ella</strong> cuando llega parcial, duplicada y contradictoria, y cuando el sistema que la procesa puede desaparecer en cualquier momento. Este documento analiza el enunciado y propone una arquitectura concreta para una <strong>aplicación móvil</strong> que forma parte de un sistema mayor, junto con su protocolo, sus agentes, la estrategia de pruebas y un plan de desarrollo.</p>
+
+<div class="callout key">
+  <p class="t">LA CONCLUSIÓN MÁS IMPORTANTE</p>
+  <p>El enunciado no evalúa una aplicación: evalúa <strong>un recorrido completo de ocho pasos</strong> (reporte ciudadano → almacenamiento local → transmisión intermitente → procesamiento por agentes → priorización → tablero → pérdida de un nodo → recuperación). La app móvil es la primera capa de ese recorrido y el cliente de su transporte, pero por sí sola no cumple el requisito de integración ni los siete entregables. Por eso la arquitectura propuesta cubre además los nodos supervivientes, el tejido de agentes, el tablero del coordinador y un banco de pruebas.</p>
+</div>
+
+<h2 id="resumen-decisiones">Las ocho decisiones que se recomiendan</h2>
+<ol>
+  <li><strong>Offline-first y store-and-forward.</strong> El reporte nace y se guarda en el teléfono (SQLite durable). La pantalla sólo dice «Guardado» después del <em>commit</em>. La app nunca depende de la red para ser útil.</li>
+  <li><strong>Reporte en tres toques y por revisiones.</strong> Primero un SOS mínimo (tipo, ubicación, hora) que se encola de inmediato; los detalles son revisiones posteriores del mismo reporte. Así se minimiza la interacción y se evitan duplicados desde el origen.</li>
+  <li><strong>Trama binaria propia con identificador idempotente.</strong> El SOS mínimo ocupa <strong>33 bytes</strong>, frente a 239 bytes de un JSON con claves descriptivas y a 104 bytes de un JSON ya compactado (medido con la calculadora del repositorio). El identificador del reporte (12 bytes) hace que reintentar sea siempre seguro.</li>
+  <li><strong>Sin nodo principal.</strong> Cada nodo superviviente guarda un log de eventos que sólo crece; las vistas (cola priorizada, incidentes) se derivan de él. Los nodos se sincronizan por anti-entropía al reconectarse. La caída de un nodo no detiene al sistema.</li>
+  <li><strong>Agentes con respaldo determinista.</strong> Los seis agentes del enunciado son suscriptores del log. El modelo de lenguaje mejora el triaje, la correlación y las recomendaciones, pero ninguna función esencial depende de él; el agente de resiliencia no lo usa.</li>
+  <li><strong>Autonomía limitada por construcción.</strong> No existe ninguna herramienta de despacho al alcance de los agentes: sólo pueden <em>proponer</em>. Toda recomendación exige aprobación humana, cita sus fuentes y marca su incertidumbre.</li>
+  <li><strong>Dos niveles de deduplicación.</strong> El transporte descarta reintentos por identificador; la correlación semántica agrupa reportes distintos del mismo suceso como una <em>vista</em> reversible que conserva el vínculo con cada observación original.</li>
+  <li><strong>Banco de pruebas de primera clase.</strong> Un generador sintético con verdad de referencia, un simulador de canal (pérdida, duplicados, ventanas cortas) y un inyector de fallos permiten reproducir los escenarios con una semilla y producir los resultados del entregable 6.</li>
+</ol>
+
+<h2 id="resumen-stack">Pila tecnológica propuesta</h2>
+<table class="tight">
+  <thead><tr><th style="width:27%">Pieza</th><th style="width:38%">Propuesta por defecto</th><th>Estado</th></tr></thead>
+  <tbody>
+    <tr><td>App móvil</td><td>Flutter (Dart). Android (emulador) como plataforma principal; iOS en simulador como segunda</td><td><span class="pill n">Decidido</span> una persona que ya domina Flutter</td></tr>
+    <tr><td>Nodos y agentes</td><td>Dart puro (<code>dart run</code>), SQLite en modo WAL con <code>package:sqlite3</code></td><td><span class="pill n">Validado</span> SQLite ante <code>kill -9</code> y recorrido H1 (ver <code>docs/resultados/h1.md</code>)</td></tr>
+    <tr><td>Tablero</td><td>Flutter Web, servido por cada nodo; comparte el paquete de protocolo</td><td><span class="pill g">Propuesta mía</span></td></tr>
+    <tr><td>Modelo de lenguaje</td><td>API de Claude detrás de un puerto intercambiable, con respaldo de reglas y opción de modelo local</td><td><span class="pill g">Propuesta mía</span> depende de credenciales y presupuesto</td></tr>
+    <tr><td>Estructura del repositorio</td><td>Monorepo con <em>pub workspaces</em> de Dart: <code>apps/</code> y <code>packages/</code> (paquetes compartidos en Dart puro)</td><td><span class="pill g">Propuesta mía</span></td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <p class="t">LO QUE EL ENUNCIADO NO DICE Y TODAVÍA FALTA CONFIRMAR</p>
+  <p>El documento no indica el plazo ni la duración de la hackathon, los criterios ni los pesos de evaluación, ni el proveedor de IA permitido. Ya están <strong>confirmados</strong> el equipo (una persona), el framework (Flutter) y los dispositivos de prueba (emulador de Android y simulador de iOS). El resto son <strong>valores por defecto míos</strong>, no requisitos; la sección {{ref:s2-3}} lista cada hueco con el supuesto adoptado. <strong>Lo que más falta para dimensionar el recorte es el plazo disponible.</strong></p>
+</div>

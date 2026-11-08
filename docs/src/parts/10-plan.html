@@ -1,0 +1,126 @@
+<h1 id="s10">Plan de desarrollo</h1>
+
+<p>El plan está pensado para una restricción que el enunciado no resuelve: no sabemos cuánto tiempo hay. Por eso se expresa en <strong>bloques con criterio de terminado</strong> y porcentajes del tiempo disponible, y está ordenado para que siempre exista un recorrido completo funcionando desde el primer tercio del tiempo, aunque sea con piezas simples.</p>
+
+<h2 id="s10-1">Estructura del repositorio</h2>
+<p>Un monorepo con <em>pub workspaces</em> de Dart. Los paquetes compartidos son Dart puro, sin Flutter. Los bloques B0 y B1 ya están implementados (plan en <code>docs/superpowers/plans/</code>, resultados en <code>docs/resultados/h1.md</code>). Las dos apuestas de la pila se validaron antes de construir: SQLite durable ante <code>kill -9</code> en el nodo, y el espacio de trabajo con la app Flutter, el paquete puro y Flutter Web.</p>
+<pre><code>hackathon-asi/
+├── HackathonExpoASI2026.pdf     enunciado oficial (no se modifica)
+├── README.md
+├── pubspec.yaml                 <span class="c">workspace de Dart (se crea en B0)</span>
+├── apps/
+│   ├── mobile/                  app ciudadana (Flutter)
+│   ├── node/                    nodo superviviente en Dart: API, log, sincronización, agentes
+│   └── dashboard/               tablero del coordinador (Flutter Web)
+├── packages/
+│   ├── protocol/                códec binario, esquemas y vectores de prueba
+│   ├── agents/                  seis agentes, validadores, puerto LLM y respaldos
+│   └── sim/                     generador sintético, simulador de canal, inyector de fallos, métricas
+├── scenarios/                   escenarios YAML reproducibles (semilla fija)
+└── docs/
+    ├── SARD-arquitectura-app-movil.pdf   este documento
+    ├── adr/                     decisiones de arquitectura, una por archivo
+    ├── agentes/                 fichas de agentes (entregable 4)
+    ├── protocolo.md             especificación SARD-WIRE (entregable 5)
+    ├── resultados/              informes de pruebas (entregable 6)
+    └── src/                     fuentes y generador de este PDF</code></pre>
+
+<h2 id="s10-2">Hoja de ruta por bloques</h2>
+<figure>
+  {{svg:hoja-ruta}}
+  <figcaption>Bloques de trabajo con solapamiento deliberado e hitos de integración (H1–H4). Las barras indican esfuerzo relativo, no fechas.</figcaption>
+</figure>
+<table class="tight">
+  <thead><tr><th style="width:17%">Bloque</th><th style="width:40%">Qué se construye</th><th>Criterio de terminado</th></tr></thead>
+  <tbody>
+    <tr><td>B0 · Cimientos</td><td>Entorno verificado; las dos pruebas técnicas; monorepo con <em>pub workspaces</em>; paquete <code>protocol</code> (Dart puro) con el códec y los vectores de prueba; primeras decisiones de arquitectura.</td><td><code>dart test -p vm,chrome</code> pasa; el códec reproduce el vector de {{ref:s7-2}}.</td></tr>
+    <tr><td>B1 · Esqueleto vertical</td><td>App con SOS y bandeja; transporte HTTP simple; nodo con log y agentes «stub»; tablero con lista; script que mata un nodo.</td><td><strong>H1:</strong> los ocho pasos corren con datos sintéticos de punta a punta, aunque con piezas simples.</td></tr>
+    <tr><td>B2 · Transporte real</td><td>Códec binario en la app, ACK selectivo, reintentos con variación y ventanas; proxy de canal con pérdida, duplicados y retardo.</td><td>T02–T05 en verde.</td></tr>
+    <tr><td>B3 · Agentes y deduplicación</td><td>Agentes 1, 2 y 3 reales (reglas y modelo); generador sintético con verdad de referencia; puerto LLM con respaldo.</td><td><strong>H2:</strong> T06–T08 medidos y reportados.</td></tr>
+    <tr><td>B4 · Resiliencia</td><td>Anti-entropía, dueño por <em>rendezvous</em>, agente 5, reconstrucción de proyecciones, inyector de fallos.</td><td><strong>H3:</strong> demostración con una condición adversa (T09, T10).</td></tr>
+    <tr><td>B5 · Tablero y coordinación</td><td>Lista corta con contadores, evidencia y contradicciones, agente 6, aprobación, frescura.</td><td>T14; la aprobación queda registrada.</td></tr>
+    <tr><td>B6 · Estrés y entrega</td><td>T11–T13 y T15 finales, informe de resultados, documentación, guion y video de respaldo.</td><td><strong>H4:</strong> los siete entregables completos.</td></tr>
+  </tbody>
+  <caption>Bloques, contenido y criterio de terminado.</caption>
+</table>
+
+<h2 id="s10-3">Si el tiempo es corto: qué mantener y qué simplificar</h2>
+<p>El núcleo no negociable es el recorrido de ocho pasos con <strong>una condición adversa</strong> demostrada (entregable 7). El resto puede reducirse sin invalidar el diseño, siempre que las simplificaciones queden declaradas como limitaciones.</p>
+<div class="grid3">
+  <div class="card"><h4>Mantener</h4>
+    <ul>
+      <li>SOS en un toque, bandeja durable, estados visibles.</li>
+      <li>ACK y reintentos con variación.</li>
+      <li>Log de eventos y <code>kill -9</code> con recuperación.</li>
+      <li>Triaje por reglas con evidencia.</li>
+      <li>Tablero con lista y «ver todo».</li>
+      <li>T01, T03 y T09 reproducibles.</li>
+    </ul></div>
+  <div class="card g"><h4>Simplificar</h4>
+    <ul>
+      <li>Códec: empezar con JSON compacto detrás de la misma interfaz y cambiarlo después.</li>
+      <li>Sincronización: replicación por sondeo en vez de anti-entropía completa.</li>
+      <li>Correlación: puntaje determinista sin modelo.</li>
+      <li>Modelo de lenguaje: sólo en el triaje.</li>
+    </ul></div>
+  <div class="card n"><h4>Posponer</h4>
+    <ul>
+      <li>Canales reales (BLE, SMS).</li>
+      <li>Tramas delta y confirmación de segundo nivel.</li>
+      <li>Modelo de lenguaje local.</li>
+      <li>Mapa en el tablero.</li>
+      <li>Modo «sólo SOS» por debajo del 5 %.</li>
+    </ul></div>
+</div>
+
+<h2 id="s10-4">Roles</h2>
+<p>Cuatro frentes de trabajo. <strong>Este proyecto lo desarrolla una sola persona</strong>, así que los frentes no son un reparto sino un orden: móvil y transporte, nodo, agentes, tablero y relato. Con una persona, la columna «Mantener» de {{ref:s10-3}} es el plan, y todo lo demás se declara como limitación.</p>
+<table class="tight">
+  <thead><tr><th style="width:24%">Frente</th><th>Responsabilidad principal</th><th style="width:26%">Bloques donde pesa</th></tr></thead>
+  <tbody>
+    <tr><td>Móvil y transporte</td><td>App, planificador de envío, códec en el dispositivo, pruebas de energía en un teléfono real.</td><td>B1, B2</td></tr>
+    <tr><td>Nodo y resiliencia</td><td>Log, sincronización, agentes 4 y 5, despliegue de nodos, inyector de fallos.</td><td>B1, B4</td></tr>
+    <tr><td>Agentes y datos</td><td>Agentes 1, 2, 3 y 6, puerto LLM, generador sintético, métricas de calidad.</td><td>B3, B5</td></tr>
+    <tr><td>Tablero, pruebas y relato</td><td>Tablero, orquestador de escenarios, informe de resultados, pitch y documentación.</td><td>B5, B6</td></tr>
+  </tbody>
+  <caption>Reparto sugerido. El contrato entre frentes es el paquete de protocolo y los esquemas de evento.</caption>
+</table>
+
+<h2 id="s10-5">Riesgos del proyecto</h2>
+<table class="tight">
+  <thead><tr><th style="width:30%">Riesgo</th><th>Mitigación</th></tr></thead>
+  <tbody>
+    <tr><td>Querer cubrir todo y no tener nada completo</td><td>Recorrido vertical primero (H1 hacia el 28 % del tiempo); bloques con criterio de terminado.</td></tr>
+    <tr><td>El modelo de lenguaje falla o no hay Internet en la demostración</td><td>Modo de reglas y respuestas grabadas; el puerto lo permite desde el diseño.</td></tr>
+    <tr><td>Falla en vivo de la demostración</td><td>Escenario con semilla y un solo comando; video de respaldo; datos locales.</td></tr>
+    <tr><td>Problemas del dispositivo real (permisos, batería, fabricante)</td><td>Probar en el teléfono real desde B1, no sólo en emulador.</td></tr>
+    <tr><td>Calibración lenta de la deduplicación</td><td>Conjunto sintético con verdad de referencia desde B3; umbrales conservadores que priorizan no fusionar.</td></tr>
+    <tr><td>Sincronización más compleja de lo previsto</td><td>Empezar con replicación por sondeo y evolucionar a anti-entropía; los eventos inmutables lo permiten.</td></tr>
+    <tr><td>Sobreingeniería del códec binario</td><td>Vectores de prueba y JSON compacto como paso intermedio.</td></tr>
+  </tbody>
+  <caption>Riesgos y mitigaciones.</caption>
+</table>
+
+<h2 id="s10-6">Guion de la demostración</h2>
+<p>El entregable 7 pide una demostración reproducible bajo al menos una condición adversa. Este guion encadena varias, y cada paso apunta a una prueba que lo respalda. Se adapta a la duración real del pitch.</p>
+<table class="tight">
+  <thead><tr><th class="id">N.º</th><th style="width:44%">Qué se ve</th><th>Qué demuestra</th></tr></thead>
+  <tbody>
+    <tr><td class="id">1</td><td>Un SOS desde el teléfono en modo avión; se mata la app y se reabre: el reporte sigue «Guardado en tu teléfono».</td><td>Captura resiliente (T01).</td></tr>
+    <tr><td class="id">2</td><td>El proxy aplica 60 % de pérdida y ventanas de 3 s; el SOS llega; se muestran los 33 B, el ACK y los reintentos con variación.</td><td>Comunicación en ráfagas (T03, T04).</td></tr>
+    <tr><td class="id">3</td><td>Entran 200 reportes sintéticos; el tablero los agrupa en incidentes y pone los P1 al frente; un rumor copiado frente a cinco fuentes independientes.</td><td>Triaje, deduplicación y corroboración (T06–T08).</td></tr>
+    <tr><td class="id">4</td><td><strong>Condición adversa:</strong> <code>kill -9</code> del Nodo A en vivo; el tablero del Nodo B sigue y muestra «vista parcial»; la app reintenta contra B.</td><td>Continuidad operativa (T09).</td></tr>
+    <tr><td class="id">5</td><td>Se reinicia A; sus proyecciones se reconstruyen y convergen; las huellas de A y B coinciden.</td><td>Sincronización y recuperación (T10).</td></tr>
+    <tr><td class="id">6</td><td>El coordinador aprueba una recomendación; se muestra que los agentes no tienen herramienta de despacho y el registro de auditoría.</td><td>Humano en el lazo y uso responsable (T13).</td></tr>
+    <tr><td class="id">7</td><td>Tabla de métricas y limitaciones declaradas.</td><td>Validación experimental (entregable 6).</td></tr>
+  </tbody>
+  <caption>Guion en siete pasos con la prueba que respalda cada uno.</caption>
+</table>
+
+<h2 id="s10-7">Próximos pasos inmediatos</h2>
+<ol>
+  <li><strong>Confirmar el plazo disponible</strong>: es el dato que falta para dimensionar el recorte de {{ref:s10-3}}.</li>
+  <li><strong>Aceptar las licencias de Android</strong> (<code>flutter doctor --android-licenses</code>) y repetir la app y la prueba de integración en el emulador: B1 sólo se verificó en el simulador de iOS.</li>
+  <li><strong>Bloque B2 · transporte real:</strong> GPS y batería reales, ventanas de comunicación, cuota contra la inanición, y la medición de bytes por reporte confirmado.</li>
+  <li><strong>Commits y remoto.</strong> Todo el trabajo está sin commits; hacerlos y publicar el repositorio (por ejemplo en GitHub) son decisiones tuyas.</li>
+</ol>

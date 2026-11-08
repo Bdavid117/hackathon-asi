@@ -1,0 +1,98 @@
+<h1 id="s2">Análisis del enunciado</h1>
+
+<p>Este capítulo extrae del documento «Hackathon SARD» lo que se debe construir y demostrar, separa lo que el texto exige de lo que sólo sugiere y deja explícito lo que no dice. Es la base de la matriz de trazabilidad del capítulo {{ref:s4}}.</p>
+
+<h2 id="s2-1">Qué plantea el enunciado</h2>
+<p>El escenario es un sismo M 7,4 en la región andina colombiana que desencadena una cascada de fallos: el Sistema Interconectado Nacional pierde estabilidad, las antenas móviles y los centros de datos quedan sin energía, los proveedores regionales de internet se desconectan y las comunicaciones entre organismos de socorro se fragmentan. La UNGRD, la Cruz Roja y los bomberos reciben información «parcial, duplicada, contradictoria y desactualizada».</p>
+<p>El problema se formula como cuatro decisiones críticas que el sistema debe resolver: <strong>urgencia</strong> (qué requiere respuesta inmediata), <strong>confiabilidad</strong> (qué tan creíble es), <strong>destino</strong> (a dónde enviarlo) y <strong>persistencia</strong> (cómo conservarlo si el sistema que lo procesa desaparece). SARD se define como una capa de coordinación de inteligencia artificial agéntica distribuida entre los ciudadanos, los nodos de comunicación supervivientes y los equipos humanos de respuesta.</p>
+
+<div class="callout key">
+  <p class="t">EL CRITERIO REAL DE ÉXITO</p>
+  <p>La sección de integración exige demostrar <strong>«al menos un recorrido completo, desde que el ciudadano crea el reporte hasta que el sistema se recupera tras perder un nodo»</strong>. Se permite usar datos sintéticos y canales simulados; no se exige una red de radio real ni acceso a infraestructura gubernamental. La evaluación, además, «no debe depender únicamente de la presentación final»: pide evidencia técnica reproducible y auditable.</p>
+</div>
+
+<h2 id="s2-2">Requisitos extraídos</h2>
+
+<h3>Los dos escenarios obligatorios y sus diez preguntas</h3>
+<p>El enunciado formula cinco preguntas por escenario. Cada una se vuelve un requisito verificable y se rastrea en el capítulo {{ref:s4}}.</p>
+<div class="grid2">
+  <div class="card"><h4>Escenario 1 · El momento del apagón</h4>
+    <p class="muted">Primeros minutos; baterías por debajo del 20 %; conectividad casi inexistente.</p>
+    <ul>
+      <li><strong>E1.1</strong> ¿Cómo crear y guardar un reporte sin conexión?</li>
+      <li><strong>E1.2</strong> ¿Cómo enviarlo con el menor número de bytes?</li>
+      <li><strong>E1.3</strong> ¿Cómo evitar perderlo si la transmisión se interrumpe?</li>
+      <li><strong>E1.4</strong> ¿Cómo saber si es una emergencia inmediata?</li>
+      <li><strong>E1.5</strong> ¿Cómo evitar que un mismo incidente se registre decenas de veces?</li>
+    </ul></div>
+  <div class="card g"><h4>Escenario 2 · El silencio digital</h4>
+    <p class="muted">Pasadas 6 h; 95 % de los teléfonos apagados; despachadores en «oscuridad informativa».</p>
+    <ul>
+      <li><strong>E2.1</strong> ¿Cómo continúa el sistema si el nodo principal se apaga sin aviso?</li>
+      <li><strong>E2.2</strong> ¿Cómo se sincronizan nodos que trabajaron aislados?</li>
+      <li><strong>E2.3</strong> ¿Cómo se combinan fragmentos sin inventar datos?</li>
+      <li><strong>E2.4</strong> ¿Cómo se identifica y administra la incertidumbre?</li>
+      <li><strong>E2.5</strong> ¿Cómo se entrega una lista corta de prioridades sin ocultar casos relevantes?</li>
+    </ul></div>
+</div>
+
+<h3>Los seis retos y su prioridad</h3>
+<table class="tight">
+  <thead><tr><th class="id">Reto</th><th style="width:27%">Nombre</th><th style="width:22%">Dimensión</th><th style="width:15%">Prioridad</th><th>Qué exige</th></tr></thead>
+  <tbody>
+    <tr><td class="id">1</td><td>El reporte que debe sobrevivir</td><td>Captura ciudadana</td><td><span class="pill">Obligatoria</span></td><td>Interfaz ultraligera que registra un incidente, lo guarda localmente y lo deja listo para transmitir sin conexión.</td></tr>
+    <tr><td class="id">2</td><td>Comunicación en ráfagas</td><td>Transporte de datos</td><td><span class="pill">Obligatoria</span></td><td>Cola de mensajes pequeños que soporte pérdidas, interrupciones, reintentos y recepción desordenada.</td></tr>
+    <tr><td class="id">3</td><td>El tejido de agentes</td><td>IA agéntica</td><td><span class="pill g">Diferenciador</span></td><td>Agentes especializados que interpreten, validen, enriquezcan y prioricen, sin depender de un agente central.</td></tr>
+    <tr><td class="id">4</td><td>La verdad entre fragmentos</td><td>Deduplicación, incertidumbre</td><td><span class="pill n">Profundización</span></td><td>Detectar repetidos, relacionar observaciones y conservar las contradicciones que puedan cambiar la respuesta.</td></tr>
+    <tr><td class="id">5</td><td>Sobrevivir a la caída</td><td>Resiliencia, sincronización</td><td><span class="pill n">Profundización</span></td><td>Conservar los reportes y continuar las funciones esenciales cuando desaparece el nodo principal.</td></tr>
+    <tr><td class="id">6</td><td>El tablero que salva tiempo</td><td>Coordinación humana</td><td><span class="pill n">Profundización</span></td><td>Vista ordenada por prioridades, con evidencia, incertidumbre, ubicación disponible y siguiente acción sugerida.</td></tr>
+  </tbody>
+  <caption>Retos oficiales. Todos los equipos deben resolver el flujo completo y pueden profundizar en uno o varios de los retos 4 a 6.</caption>
+</table>
+
+<h3>Los siete entregables obligatorios</h3>
+<table class="tight">
+  <thead><tr><th class="id">N.º</th><th style="width:26%">Entregable</th><th>Contenido requerido por el enunciado</th><th style="width:22%">Dónde se cubre aquí</th></tr></thead>
+  <tbody>
+    <tr><td class="id">1</td><td>Prototipo funcional</td><td>Aplicación o servicio demostrable con el flujo mínimo de reporte, procesamiento y priorización.</td><td>{{ref:s10}} (bloques B1–B5)</td></tr>
+    <tr><td class="id">2</td><td>Código fuente</td><td>Repositorio accesible al jurado, con instalación, dependencias y configuración para reproducir la prueba.</td><td>{{ref:s10-1}}</td></tr>
+    <tr><td class="id">3</td><td>Documento de arquitectura</td><td>Diagrama de componentes, distribución de agentes, flujos de mensajes, almacenamiento y dependencias.</td><td>{{ref:s3}}, {{ref:s5}} y {{ref:s6}}</td></tr>
+    <tr><td class="id">4</td><td>Fichas de agentes</td><td>Objetivo, entradas, salidas, herramientas, memoria, límites de autonomía, manejo de errores y criterios de terminación.</td><td>{{ref:s6-4}}</td></tr>
+    <tr><td class="id">5</td><td>Protocolo de comunicación</td><td>Esquema del mensaje, reintentos, confirmaciones, deduplicación y estrategia de sincronización.</td><td>{{ref:s7}}</td></tr>
+    <tr><td class="id">6</td><td>Resultados de pruebas</td><td>Métricas, escenarios ejecutados, errores observados, limitaciones y resultados de las pruebas de estrés.</td><td>{{ref:s9}}</td></tr>
+    <tr><td class="id">7</td><td>Pitch y demostración</td><td>Presentación ejecutiva y demostración reproducible bajo al menos una condición adversa.</td><td>{{ref:s10-6}}</td></tr>
+  </tbody>
+  <caption>Entregables oficiales y capítulo de este documento que los respalda.</caption>
+</table>
+
+<h2 id="s2-3">Lo que el enunciado no dice</h2>
+<p>El documento es deliberadamente abierto: la arquitectura de referencia es «orientación común, no una solución obligatoria». Estos son los vacíos que afectan al diseño y el supuesto de trabajo adoptado. Ninguno se ha inventado como requisito.</p>
+<table class="tight">
+  <thead><tr><th style="width:21%">Vacío</th><th style="width:34%">Supuesto de trabajo</th><th>Si resulta distinto</th></tr></thead>
+  <tbody>
+    <tr><td>Plazo y duración</td><td>Se desconoce. El plan usa porcentajes del tiempo disponible, no fechas.</td><td>Con poco tiempo, aplicar el recorte de {{ref:s10-3}}.</td></tr>
+    <tr><td>Tamaño y perfil del equipo</td><td><strong>Confirmado:</strong> una persona que domina Flutter.</td><td>El plan se recorta a la columna «Mantener» de {{ref:s10-3}}; ver ADR-10 en el anexo B.</td></tr>
+    <tr><td>Plataforma móvil</td><td><strong>Confirmado:</strong> emulador de Android como principal y simulador de iOS como segundo. Los emuladores no prueban batería ni radio reales.</td><td>El reintento en segundo plano de iOS es más débil: la demostración se hace con la app en primer plano.</td></tr>
+    <tr><td>Criterios y pesos de evaluación</td><td>Se asume peso relevante en resiliencia, evidencia reproducible y uso responsable de IA.</td><td>Reordenar qué retos de profundización se eligen.</td></tr>
+    <tr><td>Modelo de lenguaje y presupuesto</td><td>API de Claude disponible durante el desarrollo y la demo; el sistema funciona también sin ella.</td><td>Sin acceso: reglas deterministas o modelo local; el diseño ya lo contempla.</td></tr>
+    <tr><td>Datos de ejemplo</td><td>No hay conjunto de datos oficial; se generan sintéticos con verdad de referencia.</td><td>Si el jurado entrega datos, se cargan con el mismo formato del generador.</td></tr>
+    <tr><td>Escala objetivo</td><td>No se cuantifica el número de reportes, dispositivos ni nodos. Se propone una prueba de ráfaga de 10 000 reportes y de 3 a 5 nodos.</td><td>Ajustar la prueba T11; la arquitectura escala por nodo.</td></tr>
+    <tr><td>Canales reales</td><td>Se permiten canales simulados. HTTP, BLE/Nearby y SMS se dejan como implementaciones de una misma interfaz.</td><td>Si el jurado valora un canal real, implementar uno (la interfaz ya está definida).</td></tr>
+  </tbody>
+  <caption>Vacíos del enunciado y supuestos de trabajo. Todos son revisables.</caption>
+</table>
+
+<h2 id="s2-4">Implicaciones de diseño que se desprenden del texto</h2>
+<p>Estas restricciones no son preferencias: están en el enunciado y condicionan la arquitectura.</p>
+<ol>
+  <li><strong>Dispositivo moribundo.</strong> Baterías por debajo del 20 % y videos pesados drenando energía: la app debe ser mínima en CPU, pantalla y radio, sin medios.</li>
+  <li><strong>Conectividad casi inexistente.</strong> El sistema no puede asumir una sesión: transmite en <em>ventanas</em> cortas y por ráfagas, con reintentos y recepción desordenada.</li>
+  <li><strong>Bytes como recurso escaso.</strong> «El menor número posible de bytes» justifica un formato binario compacto y fragmentos que quepan en canales de baja capacidad.</li>
+  <li><strong>Duplicado no es lo mismo en transporte que en semántica.</strong> Reenviar el mismo mensaje y reportar el mismo suceso desde dos teléfonos son problemas distintos, con soluciones distintas.</li>
+  <li><strong>Nunca borrar evidencia ni fusionar casos distintos.</strong> La correlación debe ser una vista reversible con vínculo a cada observación original.</li>
+  <li><strong>Priorizar sin ocultar.</strong> «La priorización no debe hacer desaparecer los casos de prioridad baja» y la lista corta no debe «ocultar casos relevantes».</li>
+  <li><strong>El agente de resiliencia no usa LLM.</strong> Es una indicación explícita: la infraestructura no la decide un modelo de lenguaje.</li>
+  <li><strong>Autonomía acotada.</strong> No inventar ubicación ni datos, no despachar ni asignar recursos críticos sin autorización.</li>
+  <li><strong>Descentralización.</strong> Sin agente central único; reconstruir el estado desde nodos que estuvieron aislados.</li>
+  <li><strong>Reproducibilidad.</strong> Pruebas de desconexión, pérdida y recuperación repetibles y auditables.</li>
+</ol>

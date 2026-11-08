@@ -1,0 +1,110 @@
+<h1 id="s7">Protocolo de comunicación SARD-WIRE v0</h1>
+
+<p>Este capítulo respalda el entregable 5: esquema del mensaje, reintentos, confirmaciones, deduplicación y estrategia de sincronización. Es el contrato entre la app, los nodos y el simulador, y se define de forma que <strong>cualquier lenguaje pueda implementarlo</strong> verificándolo contra vectores de prueba.</p>
+
+<h2 id="s7-1">Objetivos y supuestos del canal</h2>
+<p>El enunciado no fija un canal ni un tamaño máximo. El protocolo se diseña para el peor caso razonable: una trama completa del caso normal debe caber en un solo paquete de un canal de baja capacidad. Los valores siguientes son magnitudes de referencia habituales y deben verificarse para el canal que finalmente se use.</p>
+<table class="tight">
+  <thead><tr><th style="width:26%">Canal (ejemplo)</th><th style="width:30%">Carga útil de referencia</th><th>Consecuencia de diseño</th></tr></thead>
+  <tbody>
+    <tr><td>HTTP/Wi-Fi local</td><td>Sin límite práctico</td><td>Es el canal de la demostración; las tramas viajan igual que en los demás.</td></tr>
+    <tr><td>SMS</td><td>140 bytes por mensaje</td><td>El SOS (33 B) y una revisión con texto corto (123 B) caben en un mensaje.</td></tr>
+    <tr><td>Bluetooth LE 5 (publicidad extendida)</td><td>Del orden de 250 bytes por paquete</td><td>Cabe el SOS y la revisión con texto sin fragmentar.</td></tr>
+    <tr><td>Radio de baja potencia (tipo LoRa)</td><td>Del orden de 50 a 250 bytes según configuración</td><td>El SOS cabe siempre; los textos largos se fragmentan.</td></tr>
+  </tbody>
+  <caption>Referencias de carga útil por canal. Se diseña para que el caso normal quepa en 100 bytes y se fragmenta sólo cuando hace falta.</caption>
+</table>
+
+<h2 id="s7-2">Formato de la trama</h2>
+<figure>
+  {{svg:trama}}
+  <figcaption>Trama del SOS mínimo (33 bytes) y empaquetado bit a bit de su carga útil (104 bits).</figcaption>
+</figure>
+<table class="tight">
+  <thead><tr><th style="width:22%">Campo</th><th style="width:9%">Tamaño</th><th>Descripción</th></tr></thead>
+  <tbody>
+    <tr><td>versión · tipo</td><td>1 B</td><td>4 bits de versión del protocolo y 4 bits de tipo de mensaje.</td></tr>
+    <tr><td>flags</td><td>1 B</td><td>Bit 7 <code>FRAG</code>, bit 6 <code>ACKREQ</code>, bit 5 <code>FIRMADA</code>, bits 4–3 <code>PRIO</code> (0 = P1 … 3 = P4, sólo pista del teléfono), bit 2 <code>REV</code> (la trama es una revisión y lleva <code>ref_seq</code>), bits 1–0 reservados.</td></tr>
+    <tr><td><code>device_id</code></td><td>8 B</td><td>Número aleatorio de 64 bits generado en la instalación; no identifica al teléfono.</td></tr>
+    <tr><td><code>seq</code></td><td>4 B</td><td><strong>Contador de tramas del dispositivo:</strong> cada trama enviada, sea un reporte nuevo o una revisión, consume un valor. Es lo que acusa el ACK, de modo que cada revisión se confirma por separado.</td></tr>
+    <tr><td><code>rev</code></td><td>1 B</td><td>Revisión del reporte (0 = SOS inicial). Gana la revisión más alta.</td></tr>
+    <tr><td><code>ref_seq</code></td><td>0 ó 4 B</td><td>Sólo si <code>REV</code>: el <code>seq</code> de la trama de revisión 0 del reporte. Así, <code>report_id</code> = (<code>device_id</code>, <code>seq</code> de la trama rev 0) identifica al reporte en todas sus revisiones y es la <strong>clave de idempotencia</strong> junto con <code>rev</code>.</td></tr>
+    <tr><td>fragmento</td><td>0 ó 2 B</td><td>Sólo si <code>FRAG</code>: índice y total de fragmentos.</td></tr>
+    <tr><td>largo</td><td>1–2 B</td><td>Largo de la carga útil (varint).</td></tr>
+    <tr><td>carga útil</td><td>13 B + texto</td><td>Campos fijos empaquetados sin relleno (104 bits) y texto opcional (varint + UTF-8, ≤ 140 B).</td></tr>
+    <tr><td>etiqueta</td><td>4 B</td><td>HMAC-SHA256 truncado sobre cabecera y carga. En v0, con una <strong>clave de evento precompartida</strong> (ver {{ref:s7-6}}).</td></tr>
+  </tbody>
+  <caption>Campos de la trama <code>REPORT</code>. Se usa el orden de red (big-endian).</caption>
+</table>
+<p><strong>Carga útil fija.</strong> Tipo de incidente (4 b), ocho indicadores de situación (8 b: atrapado, herido, incendio, dificultad respiratoria, vía bloqueada, estructura inestable, menores o mayores, medicación), personas por rango (3 b), calidad de la ubicación (3 b), latitud y longitud cuantizadas (24 + 25 b, resolución cercana a 1,2 m), hora de captura en segundos (32 b), batería en 16 pasos (4 b) y un bit que indica si hay texto. Si la ubicación no está disponible (calidad 0 o manual), latitud y longitud se omiten.</p>
+<p><strong>Vector de prueba.</strong> Con la clave de prueba <code>clave-de-ejemplo</code>, el SOS de ejemplo del repositorio (<code>docs/src/tools/frame_size.py</code>) se codifica en estos 33 bytes. Una revisión añade 4 bytes de <code>ref_seq</code>:</p>
+<pre><code>01 60 9a3c51e07b2d44f1 00000011 00 0d 3c04a1cd82929348 6d4f3b6462 2bf36cc5
+ver|tipo · flags · device_id · seq · rev · len · carga (13 B) · etiqueta</code></pre>
+
+<h2 id="s7-3">Tipos de mensaje</h2>
+<table class="tight">
+  <thead><tr><th style="width:8%">Tipo</th><th style="width:15%">Nombre</th><th style="width:17%">Sentido</th><th>Contenido</th></tr></thead>
+  <tbody>
+    <tr><td><code>0x1</code></td><td>REPORT</td><td>Teléfono → nodo</td><td>Reporte inicial o revisión (trama descrita arriba).</td></tr>
+    <tr><td><code>0x2</code></td><td>ACK</td><td>Nodo → teléfono</td><td><code>device_id</code> (8 B), <code>ack_seq</code> (4 B: la trama que este ACK responde), <code>bitmap</code> (4 B: el bit <em>i</em> indica que el nodo guarda además la trama <code>ack_seq − 1 − i</code>) y etiqueta. <strong>22 bytes</strong> en total. Al contar tramas y no reportes, confirma también cada revisión. <strong>Invariante:</strong> un ACK sólo cubre tramas que el nodo que lo emite tiene guardadas.</td></tr>
+    <tr><td><code>0x3</code></td><td>STATUS</td><td>Nodo → teléfono</td><td>Confirmación de segundo nivel que mueve el reporte a «Recibido por SARD»: indica que está en la cola priorizada <strong>y</strong>, si hay dos o más nodos vivos, que existe en al menos dos (número de réplicas). Cuando el nodo ya sabe quiénes son sus pares vivos, puede añadirlos a esta respuesta.</td></tr>
+    <tr><td><code>0x4–0xF</code></td><td>Reservados</td><td>—</td><td>Evolución del protocolo (la versión va en la propia trama).</td></tr>
+    <tr><td>—</td><td>SYNC_HAVE / SYNC_EVENTS</td><td>Nodo ↔ nodo</td><td>Vector de versiones y lotes de eventos (ver {{ref:s6-2}}). Viaja por un canal sin restricción de tamaño; no usa esta trama compacta.</td></tr>
+    <tr><td>—</td><td>HEARTBEAT</td><td>Nodo ↔ nodo</td><td>Latido para el detector de fallos del agente 5.</td></tr>
+  </tbody>
+  <caption>Tipos de mensaje. Los mensajes entre nodos no tienen la restricción de bytes del enlace con el teléfono.</caption>
+</table>
+
+<h2 id="s7-4">Fiabilidad: confirmaciones, reintentos y fragmentación</h2>
+<ul>
+  <li><strong>Confirmaciones.</strong> El nodo escribe <code>report.received</code> de forma durable y entonces responde un <em>ACK selectivo con ventana hacia atrás</em>: un paquete de 22 B acusa la trama recibida y hasta 32 anteriores que ese nodo también guarda. No es acumulativo desde 1 porque, con varios nodos y <em>failover</em>, ningún nodo ve todas las tramas de un teléfono; un ACK acumulativo dejaría sin acusar para siempre todo lo que supere la ventana. También responde ACK ante un duplicado, porque el ACK original pudo haberse perdido.</li>
+  <li><strong>Reintentos.</strong> El temporizador de cada trama vence y se reprograma con espera exponencial y <em>variación completa</em> (ver {{ref:s5-5}}). El teléfono reintenta contra cualquier nodo conocido, no sólo contra el último. En v0 esa lista es una configuración estática (las direcciones de los nodos o del proxy de canal); como extensión, cada <code>STATUS</code> puede anunciar los pares vivos.</li>
+  <li><strong>Ráfagas.</strong> En una ventana abierta se envía una ventana deslizante de hasta 8 tramas sin esperar un ACK por trama; al cerrarse la ventana, la espera vuelve a ser larga.</li>
+  <li><strong>Desorden y duplicados.</strong> No se exige orden de llegada. El receptor aplica la revisión más alta por reporte; una revisión antigua que llega tarde se guarda pero no sobrescribe.</li>
+  <li><strong>Fragmentación.</strong> Sólo cuando la carga no cabe en el MTU del canal: bit <code>FRAG</code> más (índice, total). Cada fragmento repite <code>report_id</code> y <code>rev</code>; cada fragmento consume su propio <code>seq</code> y se acusa con el mismo ACK selectivo; el receptor reensambla con un plazo. En v0 la fragmentación está definida pero no implementada (el decodificador rechaza <code>FRAG</code>). Un reporte incompleto no se descarta: se guarda como parcial.</li>
+  <li><strong>Prioridad y envejecimiento.</strong> El campo <code>PRIO</code> ordena el envío, pero una cuota reserva posiciones para lo más antiguo: la prioridad nunca hace desaparecer un mensaje.</li>
+  <li><strong>Vencimiento.</strong> Al cumplirse el TTL del reintento activo el mensaje pasa a envío oportunista de baja frecuencia; <strong>nunca se elimina</strong> del dispositivo.</li>
+</ul>
+<table class="tight">
+  <thead><tr><th style="width:42%">Parámetro</th><th style="width:30%">Valor inicial</th><th>Se calibra con</th></tr></thead>
+  <tbody>
+    <tr><td>Base y factor de espera de reintento</td><td>2 s, ×2, con variación completa</td><td>T03</td></tr>
+    <tr><td>Tope de espera entre reintentos</td><td>300 s</td><td>T04</td></tr>
+    <tr><td>Ventana deslizante de envío</td><td>8 tramas</td><td>T03, T04</td></tr>
+    <tr><td>Cuota contra la inanición</td><td>1 de cada 5 posiciones del lote</td><td>T11</td></tr>
+    <tr><td>Plazo de reensamblado de fragmentos</td><td>300 s</td><td>T03</td></tr>
+    <tr><td>TTL del reintento activo</td><td>Configurable (propuesta: 6 h)</td><td>Política operativa</td></tr>
+    <tr><td>Reportes nuevos por dispositivo y hora</td><td>Propuesta: 20 (los SOS no cuentan)</td><td>T05, T08</td></tr>
+  </tbody>
+  <caption>Parámetros iniciales. Son valores de arranque míos, no requisitos; las pruebas los ajustan.</caption>
+</table>
+
+<h2 id="s7-5">Deduplicación en el transporte y revisiones</h2>
+<ul>
+  <li><strong>Clave.</strong> <code>(report_id, rev)</code>, con <code>report_id</code> = (<code>device_id</code>, <code>seq</code> de la trama rev 0), es única <strong>en el log de cada nodo</strong>: reenviar la misma trama a un mismo nodo cualquier número de veces deja el mismo estado (ver T05). <strong>Entre nodos no:</strong> si un nodo guarda una trama y su ACK se pierde, el teléfono la reintenta contra otro nodo antes de que se replique, y ambos escriben su recepción (en el recorrido H1 medido: 3 de 72, 4 de 72 y 19 de 240 pares). Esos eventos no se descartan —saltarlos abriría huecos en el vector de versiones y la replicación no convergería—; la cola priorizada los funde por reporte. El ACK se refiere a la <em>trama</em> (<code>seq</code>), por lo que distingue cada revisión.</li>
+  <li><strong>Enriquecer en vez de duplicar.</strong> Cuando el ciudadano añade personas o texto, la app envía una trama nueva (con su propio <code>seq</code>) que apunta al mismo reporte mediante <code>ref_seq</code> y lleva <code>rev + 1</code>. El nodo funde las revisiones <em>campo a campo</em>: el último valor de cada campo gana, un campo ausente conserva el anterior.</li>
+  <li><strong>Costo de una revisión.</strong> Sin texto ocupa 37 bytes (los 33 del SOS más 4 de <code>ref_seq</code>); con un texto de 85 caracteres ocupa 123 bytes. Una optimización futura son tramas «delta» que sólo lleven los campos cambiados.</li>
+  <li><strong>El mismo ciudadano reporta dos veces</strong> (dos <code>report_id</code>): es un duplicado semántico y lo resuelve el agente 3, no el transporte.</li>
+</ul>
+
+<h2 id="s7-6">Seguridad, integridad y abuso</h2>
+<ul>
+  <li><strong>Integridad.</strong> Una etiqueta de 4 bytes detecta corrupción y suplantación casual (probabilidad de acierto aleatorio de 1 entre 2<sup>32</sup> por intento).</li>
+  <li><strong>Provisión de la clave (supuesto de v0).</strong> Un teléfono que se instala o se activa sin conexión no puede haber registrado una clave propia. Por eso, en la demostración, la etiqueta usa una <strong>clave de evento precompartida</strong> que se siembra en la app y en los nodos al preparar el entorno. Limitación: quien tenga la app puede falsificar tramas; protege contra corrupción y errores, no contra un adversario. Para producción: registro de una clave por instalación en el primer contacto con conexión, o firma asimétrica.</li>
+  <li><strong>Límite honesto.</strong> Esta etiqueta <em>no</em> protege contra un atacante dedicado que pueda intentar millones de veces. Para producción se usaría una etiqueta más larga o una firma asimétrica, a costa de más bytes por trama.</li>
+  <li><strong>Abuso.</strong> Límite de tasa por dispositivo, reputación que reduce el <em>peso de corroboración</em> (no bloquea un SOS), y detección de copias de texto.</li>
+  <li><strong>Privacidad.</strong> Sin identidad obligatoria; <code>device_id</code> es un número aleatorio, no un identificador del teléfono; los canales con Internet usan TLS.</li>
+</ul>
+
+<h2 id="s7-7">Qué se midió</h2>
+<p>Las cifras del documento provienen de una calculadora de referencia que empaqueta la trama propuesta y la compara con dos líneas base JSON: una con <strong>claves descriptivas y hora ISO 8601</strong> (lo habitual en una API) y otra <strong>compacta</strong> (claves de una letra, hora en segundos y banderas como entero). El titular de «7 veces menor» depende de la primera; frente al JSON ya optimizado la ventaja es de unas 3 veces. No es una medición de red: es el tamaño del mensaje.</p>
+<table>
+  <thead><tr><th style="width:34%">Caso</th><th class="c">Trama binaria</th><th class="c">JSON descriptivo</th><th class="c">JSON compacto</th></tr></thead>
+  <tbody>
+    <tr><td>SOS mínimo (revisión 0)</td><td class="c">33 B</td><td class="c">239 B <span class="muted">(7,2 ×)</span></td><td class="c">104 B <span class="muted">(3,2 ×)</span></td></tr>
+    <tr><td>Revisión sin texto</td><td class="c">37 B</td><td class="c">239 B <span class="muted">(6,5 ×)</span></td><td class="c">111 B <span class="muted">(3,0 ×)</span></td></tr>
+    <tr><td>Revisión con texto de 85 caracteres</td><td class="c">123 B</td><td class="c">334 B <span class="muted">(2,7 ×)</span></td><td class="c">203 B <span class="muted">(1,7 ×)</span></td></tr>
+    <tr><td>ACK selectivo con ventana</td><td class="c">22 B</td><td class="c">—</td><td class="c">—</td></tr>
+  </tbody>
+  <caption>Tamaños medidos con <code>python3 docs/src/tools/frame_size.py</code>. Un SOS entregado y confirmado cuesta 55 bytes en total (33 B de ida y 22 B de vuelta), sin contar reintentos.</caption>
+</table>
