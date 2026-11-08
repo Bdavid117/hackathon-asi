@@ -1,0 +1,8 @@
+name: sqlite_kill_spike
+description: Prueba técnica A del plan B0/B1. Durabilidad de package:sqlite3 ante kill -9.
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.11.0
+dependencies:
+  sqlite3: ^3.5.2
