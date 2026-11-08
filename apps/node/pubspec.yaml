@@ -1,0 +1,18 @@
+name: sard_node
+description: "Nodo superviviente SARD en Dart."
+publish_to: none
+resolution: workspace
+environment:
+  sdk: ^3.11.0
+dependencies:
+  sard_protocol: any
+  sard_agents: any
+  sqlite3: ^3.5.2
+  shelf: ^1.4.3
+  shelf_router: ^1.1.5
+  shelf_static: ^1.2.0
+  http: ^1.6.0
+  path: ^1.9.1
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.30.0
