@@ -269,4 +269,26 @@ void main() {
       ob.close();
     });
   });
+
+  test('releaseBackoff vuelve a poner vencido lo que esperaba un reintento, sin tocar los intentos', () {
+    final ob = Outbox.open(path, key: key);
+    final e = ob.enqueueSos(sos(), now: t0);
+    ob.markSending(e.frameSeq);
+    ob.markFailed(e.frameSeq, nextTryAt: t0.add(const Duration(minutes: 5)));
+    expect(ob.due(t0), isEmpty);
+    ob.releaseBackoff();
+    expect(ob.due(t0).single.frameSeq, e.frameSeq);
+    expect(ob.all().single.attempts, 1);
+    ob.close();
+  });
+
+  test('releaseBackoff no resucita lo ya enviado', () {
+    final ob = Outbox.open(path, key: key);
+    final e = ob.enqueueSos(sos(), now: t0);
+    ob.applyAck(Ack(deviceId: ob.deviceId, ackSeq: e.frameSeq, bitmap: 0));
+    ob.releaseBackoff();
+    expect(ob.due(t0), isEmpty);
+    expect(ob.all().single.state, OutboxState.sent);
+    ob.close();
+  });
 }

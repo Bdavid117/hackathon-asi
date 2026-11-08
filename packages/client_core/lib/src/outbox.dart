@@ -246,6 +246,10 @@ class Outbox {
         [nextTryAt.millisecondsSinceEpoch, frameSeq],
       );
 
+  /// Reaparece la señal: lo que esperaba un reintento vuelve a estar vencido. No cambia los
+  /// intentos contados, así que si la señal resulta mala el *backoff* vuelve a crecer.
+  void releaseBackoff() => _db.execute("UPDATE outbox SET next_try_at = NULL WHERE state = 'queued'");
+
   /// Pasa a `sent` toda entrada de este dispositivo que el ACK cubre.
   void applyAck(Ack ack) {
     if (deviceIdToHex(ack.deviceId) != _deviceHex) return;
