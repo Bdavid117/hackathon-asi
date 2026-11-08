@@ -59,22 +59,78 @@ class SosPanel extends StatelessWidget {
         ),
         if (showFlags) ...[
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            alignment: WrapAlignment.center,
-            children: [
-              for (final (key, label, bit) in kFlagChips)
-                FilterChip(
-                  key: Key(key),
-                  label: Text(label),
-                  selected: selected & bit != 0,
-                  onSelected: (_) => onToggle(bit),
-                ),
-            ],
+          // Cuadrícula fija de dos columnas: cada indicador mide siempre lo mismo, marcado o no, para
+          // que NADA se mueva bajo el dedo (en una emergencia el pulso tiembla y los objetivos
+          // que se reacomodan hacen marcar el que no era).
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Column(
+              children: [
+                for (var i = 0; i < kFlagChips.length; i += 2)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        for (
+                          var k = i;
+                          k < i + 2 && k < kFlagChips.length;
+                          k++
+                        ) ...[
+                          if (k > i) const SizedBox(width: 8),
+                          Expanded(
+                            child: _FlagChip(
+                              chip: kFlagChips[k],
+                              selected: selected,
+                              onToggle: onToggle,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Un indicador de situación de tamaño fijo. El icono de casilla está siempre presente (no sólo
+/// al marcar), de modo que el estado se distingue sin depender del color y el chip no cambia de ancho.
+class _FlagChip extends StatelessWidget {
+  const _FlagChip({
+    required this.chip,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final (String, String, int) chip;
+  final int selected;
+  final void Function(int bit) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final (key, label, bit) = chip;
+    final on = selected & bit != 0;
+    return SizedBox(
+      height: 52,
+      width: double.infinity,
+      child: FilterChip(
+        key: Key(key),
+        showCheckmark: false,
+        avatar: Icon(
+          on ? Icons.check_box : Icons.check_box_outline_blank,
+          size: 20,
+        ),
+        label: SizedBox(
+          width: double.infinity,
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        selected: on,
+        onSelected: (_) => onToggle(bit),
+      ),
     );
   }
 }

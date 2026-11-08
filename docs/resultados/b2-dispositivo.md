@@ -46,6 +46,30 @@ bash tool/android_battery_check.sh                  # batería real 100 / 15 / 3
 - **Un fallo único sin explicar:** durante estos cambios una ejecución de `location_flow_test` falló una vez y no volvió a fallar (12 repeticiones aisladas y varias de la suite completa, todas en verde). **No se encontró la causa.**
 - **Lo que NO se verificó en dispositivo:** la detección de red sólo se comprobó para «ningún transporte activo» (Wi-Fi y datos apagados). No se probó «Wi-Fi conectado pero el nodo no responde» ni una Wi-Fi local sin Internet, que es justo el escenario del peor caso de T04.
 
+## Prueba manual en el emulador (usando la app como una persona)
+
+Además de las pruebas automatizadas, usé la app a mano en el emulador de Android (`MediumAndroid`, 1080×2400) contra un nodo real que también servía el tablero: tocar indicadores y SOS, quitar y devolver la red, bajar la batería, tocar SOS repetidas veces; y la pantalla de arranque en el simulador de iOS. Capturas de pantalla en cada paso.
+
+**Encontré y corregí un fallo real que ninguna prueba automática veía.** Al marcar «Atrapado» se le añadía una palomita, el chip se ensanchaba y todo el bloque de indicadores se reacomodaba; el toque siguiente, dado donde estaba «Herido», caía sobre «Atrapado» y lo **desmarcaba**. El SOS salía sin indicadores (`signals: []`). En una emergencia, con pulso inestable, los botones no pueden moverse bajo el dedo.
+- Corrección: cuadrícula fija de 2 columnas × 3 filas, cada indicador de 52 dp de alto y con su casilla visible siempre (marcada o no), de modo que ni cambia de tamaño ni depende sólo del color.
+- La prueba nueva (`sos_panel_layout_test.dart`, 4 casos, en 411 dp y 360 dp) **falló primero por la razón correcta**; mi primer intento de prueba pasaba sin arreglar nada porque medía antes de que terminara la animación de la palomita, y tuve que corregirla para que reprodujera el fallo.
+- Tras corregirlo repetí el gesto exacto en el emulador: «Atrapado» + «Herido» + SOS llegó al nodo como **P1 `atrapado · herido`** con su ubicación como revisión 1.
+
+**Lo que comprobé a mano y funciona:**
+- Sin red (Wi-Fi y datos apagados): el SOS queda en «Guardado en tu teléfono», el nodo no recibe nada; al devolver la red llega **0,6 s después** como P2 `incendio`.
+- Tres toques seguidos a SOS dan **un solo reporte**.
+- Banners «Modo ahorro de batería» (15 %) y «Sólo SOS: batería muy baja» (3 %, con los indicadores ocultos); con 3 % el SOS sigue saliendo.
+- Latencia del SOS hasta el nodo: 0,6 s (3 % y 100 %), 8 repeticiones seguidas a 0,1 s, y 0,4 s tras 150 s de inactividad.
+- La cuadrícula se ve bien en iOS (iPhone con isla dinámica).
+
+**Observaciones que NO corregí** (decisiones tuyas o de diseño; ninguna rompe el envío):
+1. **Un SOS sin indicadores queda en P4, la urgencia más baja** (debajo de «vía bloqueada»). Está en la tabla de triaje documentada y probada, así que no es un accidente, pero en el tablero se ve claro: quien pulsa SOS sin dar detalles queda al final de la cola. «No saber» no debería ser lo mismo que «poco urgente». **Decisión pendiente tuya**: subir el SOS sin banderas a P3 o P2 cambia la tabla del PDF §5, `prioHintFromFlags` y sus pruebas.
+2. Las revisiones automáticas (la ubicación que llega después) aparecen en la lista como filas aparte («Detalle #2») que la persona no creó; sería más claro plegarlas dentro de su SOS.
+3. Sin señal el texto es «Guardado en tu teléfono»: no dice que **se enviará solo** al haber señal. Mejor: «Guardado — se enviará solo cuando haya señal».
+4. En iOS el cuadro de permiso de ubicación aparece **antes del primer fotograma**, sobre una pantalla en blanco. No bloquea, pero la primera impresión es un cuadro sobre nada; convendría pedirlo después de pintar la pantalla.
+5. La app lee la batería cada 60 s, así que un cambio de modo puede tardar hasta un minuto en reflejarse.
+6. **Un retraso aislado sin explicar:** una vez, con 3 % de batería, el SOS tardó más de 4 s en llegar al nodo; en 12 repeticiones posteriores (3 %, 100 %, tras inactividad) no volvió a pasar. No tengo causa demostrada.
+
 ## Limitaciones declaradas
 
 - **Son emuladores:** la ubicación y la batería están simuladas desde la consola del emulador; no se probó hardware real, ni radio real (BLE, SMS, LoRa), ni consumo de energía real.
