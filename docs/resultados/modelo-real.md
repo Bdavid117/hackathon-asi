@@ -41,6 +41,10 @@ El nodo real con `--llm on` contra la API real: **5 consultas, 5 útiles, 0 fall
 - T12 y la ráfaga con modelo colgado **siguen** siendo con un servidor falso, a propósito.
 - El texto libre del ciudadano **sale hacia un tercero sin redactar** (ver PDF §8); esa privacidad sigue pendiente.
 
+## El mismo modelo para el Reto 4 (agrupar con otras palabras)
+
+Después de T06/T13 se usó el mismo modelo real como juez de vínculos entre reportes. **Resultado negativo según el criterio fijado de antemano** (falsa fusión 2,21 % frente a 1,22 % de las reglas; recall de pares +3,6 puntos; en la corroboración de 5 fuentes reúne 4): [`reto4-juez.md`](reto4-juez.md). No está en el nodo. Gasto del Reto 4: ≈ 6,2 USD, así que el total de las pruebas con la API real ronda los 11,6 USD de los 200.
+
 ## Cómo repetirlo
 
 La clave se guarda con `read -s K; printf '%s' "$K" > ~/.sard-anthropic-key; chmod 600 ~/.sard-anthropic-key; unset K` en la terminal de quien la usa y se pasa **sólo por entorno** al comando:
@@ -54,7 +58,7 @@ ANTHROPIC_API_KEY=… dart run packages/sim/bin/t13_modelo.dart --model claude-s
 ANTHROPIC_API_KEY=… dart run bin/sard_node.dart --id A --port 8081 --data /tmp/sard-A --llm on [--llm-model …] [--llm-effort low|medium|high|default]
 ```
 
-Si se repite con otras semillas, que sean **nuevas** y con el código congelado. El tope de gasto es duro (las llamadas en vuelo cuentan como gasto reservado) y un modelo sin precio conocido no se mide.
+Si se repite con otras semillas, que sean **nuevas** y con el código congelado. El tope de gasto se comprueba antes de cada llamada contando lo que cuestan las que están en vuelo, pero **no es estrictamente duro** (un piloto lo pasó por 0,0001 USD) y un modelo sin precio conocido no se mide.
 
 ## Verificado antes de gastar
 

@@ -2,7 +2,7 @@
 //
 //   # 1) plan: cuántos reportes y cuánto gastaría (no llama a la API)
 //   dart run packages/sim/bin/t06_model.dart --plan --seeds 601,602,603,604,605 --per-seed 150
-//   # 2) medición (la clave sólo por entorno; el tope de gasto es DURO)
+//   # 2) medición (la clave sólo por entorno; el tope de gasto se comprueba antes de cada llamada, pero no es estrictamente duro)
 //   ANTHROPIC_API_KEY=… dart run packages/sim/bin/t06_model.dart --seeds 601,602,603,604,605 --per-seed 150 --budget-usd 10
 //
 // Opciones: --model (claude-sonnet-5-5) · --effort (low; vacío = el de la API) · --concurrency (4) · --timeout (segundos, 90) ·

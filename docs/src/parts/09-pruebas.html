@@ -131,6 +131,23 @@
 </table>
 <p><strong>Lo que no demuestra.</strong> Datos sintéticos del mismo autor que las reglas; una corrida (estos modelos no permiten fijar el muestreo); sólo reportes con texto, y ≈ 38 % de los P1 son SOS sin texto que no pasan por el modelo, así que el <strong>criterio de T06 completo sigue sin cumplirse</strong> (≈ 85 % global, estimado). Es un intercambio: más P1 capturados a cambio de más reportes P2 subidos un nivel. No hay prueba con reportes reales ni con coordinadores, y T12 sigue con un servidor falso.</p>
 
+<h3>Resultados del Reto 4 con un juez de modelo (T07 y T08 con modelo)</h3>
+<p>Contra la API real (Sonnet 5.5, <code>effort low</code>), una sola corrida, 963 consultas con semillas nuevas 701–705 y un criterio de adopción <strong>commiteado antes de gastar</strong>. El juez recibe cada reporte nuevo y hasta 6 candidatos anteriores que ya pasaron las reglas duras (ventana, tipo, distancia), y su respuesta se valida entera o se descarta. Detalle y protocolo: <code>docs/resultados/reto4-juez.md</code>. Gasto ≈ 6,2 USD.</p>
+<table class="tight">
+  <thead><tr><th style="width:42%"></th><th class="c">Sólo reglas</th><th class="c">Reglas + modelo</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Recall de pares</strong></td><td class="c">0,81 %</td><td class="c"><strong>4,43 %</strong></td></tr>
+    <tr><td><strong>Falsa fusión</strong> (criterio ≤ 1 %)</td><td class="c">1,22 %</td><td class="c"><strong>2,21 %</strong></td></tr>
+    <tr><td>Grupos mezclados</td><td class="c">1</td><td class="c">6</td></tr>
+    <tr><td>Precisión de las uniones que hace el modelo</td><td class="c">—</td><td class="c">97,7 % (216 de 221)</td></tr>
+    <tr><td>T08: corroboración de 5 fuentes (grupos · fuentes del mayor · confianza)</td><td class="c">5 · 1 · 0,60</td><td class="c">2 · 4 · 0,97</td></tr>
+    <tr><td>T08: rumor de 12 copias (fuentes · confianza)</td><td class="c">1 · 0,20</td><td class="c">1 · 0,20</td></tr>
+    <tr><td>Fallos · llamadas &gt; 8 s</td><td class="c">—</td><td class="c">5 de 963 · 1 de 958</td></tr>
+  </tbody>
+  <caption>Reto 4 con el modelo real. Aplicado el criterio fijado de antemano: <strong>no se ofrece en el nodo</strong> (falla la falsa fusión, el recall absoluto y las 5 fuentes completas).</caption>
+</table>
+<p><strong>Por qué falló y qué no demuestra.</strong> Los 5 <em>same</em> equivocados son gemelos adversariales del generador (misma calle, mismo vocabulario, casi a la vez) y los cinco tienen confianza exactamente 0,80, el umbral; cinco uniones malas bastan para casi duplicar la falsa fusión. Que un umbral de 0,85 lo arreglaría es una <em>hipótesis</em> sacada de estos mismos datos (descartaría casi la mitad de las uniones buenas) y exige semillas nuevas. Los textos de T08 son fijos: un caso, no cinco. Con 24 sucesos por conjunto el intervalo de la falsa fusión es ancho; las reglas solas ya pasan del 1 % en estas semillas. Datos sintéticos del mismo autor; una corrida. <strong>No hay ninguna llamada al juez desde el nodo.</strong></p>
+
 <h3>Resultados del canal del despachador (T16)</h3>
 <p>Con tres nodos <em>reales</em> (<code>tool/dispatch_check.sh</code>) y el tablero compilado abierto en Chrome. El detalle, las decisiones y los límites están en <code>docs/resultados/despachador.md</code>.</p>
 <table class="tight">

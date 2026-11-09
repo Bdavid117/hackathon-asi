@@ -41,11 +41,12 @@ En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que 
 ## Frases que NO se deben decir (y por qué)
 
 - «Funciona con el modelo de lenguaje.» → Sólo con cifras y límites: se midió contra la API real en **una** corrida con datos **sintéticos** (recall de P1 85,4 % → 96,0 % en reportes con texto, 10 falsos P1 en 750); T12 sigue con un servidor falso y no se probó con datos reales. «Resuelve el criterio de T06» es falso: el global sigue en ≈ 85 % (estimado) porque ≈ 38 % de los P1 no traen texto.
-- «Agrupa los reportes duplicados.» → Casi no agrupa (0,43 % de los pares verdaderos). Se *sugieren* posibles duplicados.
+- «Agrupa los reportes duplicados.» → Casi no agrupa (0,43 % de los pares verdaderos con reglas). Se *sugieren* posibles duplicados. Un juez de modelo de lenguaje subió el recall de pares de 0,8 % a 4,4 % pero con más falsas fusiones (2,2 % frente a 1,2 %), y por eso **no está en el nodo** (`docs/resultados/reto4-juez.md`).
 - «Resiste una partición de 10 minutos.» → Se probó 5–20 s, por configuración, no por red.
 - «Es seguro.» → Con los códigos de acceso activos, el tablero y la réplica exigen un código compartido (sin ellos, el nodo está abierto). Ese código no dice quién aprobó, viaja sin cifrar (sin TLS) y no tiene límite de intentos; la clave de integridad de las tramas es compartida y pública en el repositorio, así que quien llegue por red puede falsificar tramas (`/frame` está abierto a propósito).
 - «Mejora el tiempo del coordinador.» → No hubo prueba con coordinadores. Lo medido es *elementos a revisar* con datos sintéticos.
 - «El despachador resuelve el Reto 4.» → No: otros orígenes con otras palabras siguen sin agruparse; sólo el mismo texto se funde (y cuenta como una fuente).
+- «El modelo resuelve el Reto 4 / agrupa las 5 fuentes independientes.» → Se probó, una vez y con datos sintéticos: reúne 4 de las 5 fuentes (confianza 0,60 → 0,97), pero la falsa fusión sube y el criterio fijado antes de medir no se cumple; el nodo no lo usa.
 - «Probado con despachadores / con radio real.» → Lo teclea una persona; no se probó con despachadores ni con radio.
 - «Probado en teléfonos.» → Emulador de Android y simulador de iOS; ningún teléfono real ni radio real.
 

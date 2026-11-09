@@ -53,7 +53,7 @@ class T06ModelConfig {
   final String? effort;
   final int concurrency;
 
-  /// Tope duro en dólares: no se lanza una llamada que lo pueda pasar.
+  /// Tope de gasto en dólares: no se lanza una llamada que lo pueda pasar según el gasto medio (un piloto lo superó por 0,0001 USD).
   final double budgetUsd;
 
   /// Plazo por llamada en la medición (largo, para no mezclar «el modelo tarda» con «el modelo falla»; cuántas pasan del
