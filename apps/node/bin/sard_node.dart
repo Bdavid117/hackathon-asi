@@ -22,6 +22,9 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
   --cors      «on» sólo en DESARROLLO (tablero en otro origen). Por omisión no hay CORS: una página ajena no puede leer la cola.
   --resources archivo JSON con los recursos declarados (ver config/recursos.json); sin él el agente 6 propone la acción pero no recursos.
   --llm-url   URL base del modelo (sólo PRUEBAS y demostración: un servidor falso; por omisión la API real).
+  --llm-model modelo que se consulta (por omisión claude-sonnet-5-5).
+  --llm-effort cuánto razona el modelo: low (por omisión: es con lo que se midió T06 y cabe holgado en el plazo de 8 s),
+              medium, high… o «default» para el de la API (en Sonnet 5.5 es high, más lento y caro; no medido).
   --takeover  segundos que espera cada nodo del relevo antes de hacer el trabajo caro (modelo, auditoría) de un
               reporte que no es suyo según el reparto por rendezvous (por omisión 10).
   --coordinator-token  código de acceso del COORDINADOR (también SARD_COORDINATOR_TOKEN; mínimo 8 caracteres): lo
@@ -31,7 +34,7 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
               los reportes crudos con su ubicación. Todos los nodos del grupo deben usar el mismo. Sin él, /api/events
               queda abierto aunque haya código de coordinador.
   --llm       «on» para consultar al modelo de lenguaje (usa la variable ANTHROPIC_API_KEY); por defecto apagado.
-              Sin clave o sin red el nodo sigue con las reglas. NO verificado contra la API real.
+              Sin clave o sin red el nodo sigue con las reglas. Verificado contra la API real (docs/resultados/modelo-real.md).
 ''';
 
 Map<String, String> _parse(List<String> args) {
@@ -91,7 +94,14 @@ Future<void> _run(List<String> args) async {
     if (apiKey == null || apiKey.isEmpty) {
       stderr.writeln('--llm on pide la variable ANTHROPIC_API_KEY; sin ella el nodo sigue sólo con reglas.');
     } else {
-      llm = ClaudeHttpPort(client: http.Client(), apiKey: apiKey, baseUrl: o['llm-url'] == null ? null : Uri.parse(o['llm-url']!));
+      final effort = o['llm-effort'] ?? 'low';
+      llm = ClaudeHttpPort(
+        client: http.Client(),
+        apiKey: apiKey,
+        model: o['llm-model'] ?? 'claude-sonnet-5-5',
+        effort: effort == 'default' ? null : effort,
+        baseUrl: o['llm-url'] == null ? null : Uri.parse(o['llm-url']!),
+      );
     }
   }
   var resources = <Resource>[];

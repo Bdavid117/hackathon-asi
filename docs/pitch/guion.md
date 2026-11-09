@@ -40,7 +40,7 @@ En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que 
 
 ## Frases que NO se deben decir (y por qué)
 
-- «Funciona con el modelo de lenguaje.» → Nunca se consultó la API real; todo fue con un servidor falso.
+- «Funciona con el modelo de lenguaje.» → Sólo con cifras y límites: se midió contra la API real en **una** corrida con datos **sintéticos** (recall de P1 85,4 % → 96,0 % en reportes con texto, 10 falsos P1 en 750); T12 sigue con un servidor falso y no se probó con datos reales. «Resuelve el criterio de T06» es falso: el global sigue en ≈ 85 % (estimado) porque ≈ 38 % de los P1 no traen texto.
 - «Agrupa los reportes duplicados.» → Casi no agrupa (0,43 % de los pares verdaderos). Se *sugieren* posibles duplicados.
 - «Resiste una partición de 10 minutos.» → Se probó 5–20 s, por configuración, no por red.
 - «Es seguro.» → Con los códigos de acceso activos, el tablero y la réplica exigen un código compartido (sin ellos, el nodo está abierto). Ese código no dice quién aprobó, viaja sin cifrar (sin TLS) y no tiene límite de intentos; la clave de integridad de las tramas es compartida y pública en el repositorio, así que quien llegue por red puede falsificar tramas (`/frame` está abierto a propósito).

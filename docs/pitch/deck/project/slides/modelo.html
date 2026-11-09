@@ -1,0 +1,23 @@
+<section id="modelo" data-transition="fade" style="background:#1B222B;color:#EEF1F5;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:'Rubik', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;color:#EEF1F5">El modelo real captura más P1, con un coste</h2>
+<div style="display:flex;flex-direction:row;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#12161C;border-radius:24px;padding:40px">
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Recall de P1</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.2;color:#4CC38A">85,4 → 96,0&#160;%</p>
+<p style="font-size:24px;line-height:1.4;color:#A9B4C2">en 750 reportes con texto, con Sonnet 5.5. Con Opus 5.5: 98,5&#160;%.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#12161C;border-radius:24px;padding:40px">
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Falsos P1</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.2;color:#F2B544">0 → 10</p>
+<p style="font-size:24px;line-height:1.4;color:#A9B4C2">de 750: todos eran P2 subidos un nivel. Con Opus: 24, a doble coste.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#12161C;border-radius:24px;padding:40px">
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Latencia y coste</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.2;color:#4FA3D1">p95 4,4 s</p>
+<p style="font-size:24px;line-height:1.4;color:#A9B4C2">0 de 749 pasaron de los 8 s del nodo. 0,0024 USD por reporte.</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.4;color:#EEF1F5">Con textos que dan instrucciones maliciosas, 12 de 12 cumplen: el modelo nunca baja la urgencia y no puede despachar.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#A9B4C2">Datos sintéticos, una corrida, solo reportes con texto: T06 completo sigue sin cumplirse (≈ 85&#160;% estimado) · docs/resultados/modelo-real.md</p>
+<aside>Un minuto y medio. Es la primera vez que el sistema habla con la API real, con una clave puesta ese mismo día. Sobre los mismos 750 reportes sintéticos con texto, el modelo sube el recall de P1 del 85,4 % al 96,0 % (Sonnet 5.5, esfuerzo bajo; Opus 5.5 llega al 98,5 %), sobre todo en paráfrasis y reportes sin banderas, donde las reglas eran débiles. El precio: 10 reportes P2 que el modelo sube a P1 (Opus, 24). Es un intercambio: se revisan reportes de más a cambio de perder menos P1. El modelo nunca baja una urgencia: lo impide el piso por reglas, y sólo sube con una cita literal verificada. Ninguna de las 749 respuestas útiles pasó de los 8 s del plazo del nodo (p95 4,4 s) y cada reporte cuesta unos 0,0024 USD. Con doce textos que dan instrucciones maliciosas, en español y en inglés, el modelo no se dejó manipular. QUÉ NO DECIR: que se cumple el criterio de T06 (el global sigue en torno al 85 %, porque cerca del 38 % de los P1 son SOS sin texto que no pasan por el modelo), que funciona con datos reales (son sintéticos, de la misma persona que escribió las reglas) o que es estable (una sola corrida; estos modelos no permiten fijar el muestreo). T12 sigue siendo con un servidor falso a propósito.</aside>
+</section>
