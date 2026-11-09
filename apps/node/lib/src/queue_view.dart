@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:sard_agents/sard_agents.dart';
+import 'package:sard_protocol/sard_protocol.dart';
 
 import 'event_log.dart';
 import 'merged_reports.dart';
@@ -15,6 +16,8 @@ class QueueItem {
     this.lat,
     this.lon,
     this.text,
+    this.people = 0,
+    this.evidence = const [],
     required this.capturedAt,
     required this.receivedAtMs,
     required this.signals,
@@ -39,6 +42,16 @@ class QueueItem {
   final double? lat;
   final double? lon;
   final String? text;
+
+  /// Personas afectadas según quien reporta (código de `PeopleBucket`; 0 = no indicado).
+  final int people;
+
+  /// Por qué el sistema cree lo que cree: cada señal con su campo estructurado (`flags.atrapado`) o con
+  /// la **cita exacta** del texto del reporte. Reglas y modelo; las citas del modelo sólo entran si son
+  /// subcadena del texto vigente. Orden canónico y sin repetidos.
+  final List<Map<String, String>> evidence;
+
+  String get peopleLabel => PeopleBucket.fromCode(people).label;
   final int capturedAt;
 
   /// Cuándo recibió este nodo la primera trama del reporte.
@@ -74,6 +87,9 @@ class QueueItem {
     'lat': lat,
     'lon': lon,
     'text': text,
+    'people': people,
+    'peopleLabel': peopleLabel,
+    'evidence': evidence,
     'capturedAt': capturedAt,
     'receivedAt': receivedAtMs,
     'signals': signals,
@@ -119,6 +135,7 @@ List<QueueItem> buildQueueFromEvents(List<Event> received, List<Event> triageEve
       m.reportKey: _effective(
         triage(m.flags, text: m.text, hasLocation: m.hasLocation && m.locQuality.hasCoordinates),
         [for (final e in modelEvents[m.reportKey] ?? const <Event>[]) if (m.text != null && e.body['analyzed_text'] == m.text) e],
+        m.text,
       ),
   };
   final assessments = <String, GroupAssessment>{};
@@ -154,6 +171,8 @@ List<QueueItem> buildQueueFromEvents(List<Event> received, List<Event> triageEve
         lat: m.lat,
         lon: m.lon,
         text: m.text,
+        people: m.people,
+        evidence: _evidenceJson(t.evidence),
         capturedAt: m.capturedAt,
         receivedAtMs: m.receivedAtMs,
         signals: t.signals,
@@ -191,7 +210,7 @@ const List<String> _codeOrder = [
 /// Triaje por reglas combinado con los juicios del modelo sobre el texto vigente: manda la urgencia
 /// **más grave** (el modelo nunca baja nada), las señales se unen, y si los juicios difieren se
 /// marca `juicios_discrepantes`. Listas en orden canónico para que dos nodos produzcan lo mismo.
-TriageResult _effective(TriageResult rules, List<Event> model) {
+TriageResult _effective(TriageResult rules, List<Event> model, String? text) {
   if (model.isEmpty) return rules;
   var urgency = rules.urgency;
   final modelUrgencies = <Urgency>{};
@@ -199,6 +218,7 @@ TriageResult _effective(TriageResult rules, List<Event> model) {
   final uncertainty = {...rules.uncertainty};
   var modelAsksReview = false;
   var interpreted = false;
+  final evidence = [...rules.evidence];
   for (final e in model) {
     final u = Urgency.values.firstWhere((x) => x.name.toUpperCase() == e.body['urgency'], orElse: () => Urgency.p4);
     modelUrgencies.add(u);
@@ -209,6 +229,14 @@ TriageResult _effective(TriageResult rules, List<Event> model) {
     }
     uncertainty.addAll((e.body['uncertainty'] as List? ?? const []).cast<String>());
     if (e.body['escalate_to_human'] == true) modelAsksReview = true;
+    // Una cita del modelo sólo vale si es subcadena EXACTA del texto vigente: nunca se muestra una inventada.
+    for (final ev in (e.body['evidence'] as List? ?? const [])) {
+      if (ev is! Map) continue;
+      final code = ev['code'], quote = ev['quote'];
+      if (code is! String || quote is! String || quote.isEmpty || text == null || !text.contains(quote)) continue;
+      if (!_codeOrder.contains(code)) continue;
+      evidence.add(Signal(code, quote: quote));
+    }
   }
   if (interpreted) {
     uncertainty.remove('texto_no_interpretado');
@@ -219,11 +247,31 @@ TriageResult _effective(TriageResult rules, List<Event> model) {
     urgency: urgency,
     signals: [for (final c in _codeOrder) if (signals.contains(c)) c],
     mode: 'rules+llm',
-    evidence: rules.evidence,
+    evidence: evidence,
     confidence: rules.confidence,
     uncertainty: uncertainty.toList()..sort(),
     escalateToHuman: modelAsksReview || (rules.escalateToHuman && !interpreted),
   );
+}
+
+/// La evidencia en JSON, sin repetidos y en orden canónico (código, campo, cita): dos nodos con los
+/// mismos datos producen la misma lista.
+List<Map<String, String>> _evidenceJson(List<Signal> evidence) {
+  final seen = <String>{};
+  final rows = <(int, String, String, Map<String, String>)>[];
+  for (final e in evidence) {
+    final row = {'code': e.code, if (e.field != null) 'field': e.field!, if (e.quote != null) 'quote': e.quote!};
+    if (!seen.add(jsonEncode(row))) continue;
+    final order = _codeOrder.indexOf(e.code);
+    rows.add((order < 0 ? _codeOrder.length : order, e.field ?? '', e.quote ?? '', row));
+  }
+  rows.sort((a, b) {
+    final c = a.$1.compareTo(b.$1);
+    if (c != 0) return c;
+    final f = a.$2.compareTo(b.$2);
+    return f != 0 ? f : a.$3.compareTo(b.$3);
+  });
+  return [for (final r in rows) r.$4];
 }
 
 /// La cola ya codificada como JSON, calculada sólo a partir de listas de eventos: es lo que se

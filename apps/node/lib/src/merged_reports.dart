@@ -16,6 +16,7 @@ class MergedReport {
     required this.lon,
     required this.locQuality,
     required this.text,
+    this.people = 0,
     required this.capturedAt,
     required this.receivedAtMs,
   });
@@ -31,6 +32,10 @@ class MergedReport {
   final double? lon;
   final LocQuality locQuality;
   final String? text;
+
+  /// Cuántas personas afectadas indica quien reporta (código de `PeopleBucket`; 0 = no indicado).
+  /// Vale la **última** revisión que indicó algo: una revisión que no lo indica no borra lo dicho.
+  final int people;
 
   /// Segundos desde la época, según el teléfono (revisión 0).
   final int capturedAt;
@@ -71,6 +76,7 @@ List<MergedReport> mergeReports(Iterable<Event> received) {
     double? lat, lon;
     var q = LocQuality.none;
     String? text;
+    var people = 0;
     var receivedAt = (events.first.body['received_at'] as num?)?.toInt() ?? 0;
     final device = (events.first.body['device_id'] as String?) ?? key.split('-').first;
     for (final e in events) {
@@ -84,6 +90,9 @@ List<MergedReport> mergeReports(Iterable<Event> received) {
         q = LocQuality.values[qi.clamp(0, LocQuality.values.length - 1)];
       }
       if (b['text'] != null) text = b['text'] as String;
+      // Un código reservado o desconocido se lee como «no indicado»: no pisa lo que ya se había dicho.
+      final pb = PeopleBucket.fromCode((b['people_bucket'] as num?)?.toInt());
+      if (pb != PeopleBucket.unknown) people = pb.code;
       final c = (b['captured_at'] as num?)?.toInt();
       if (c != null && (e.rev == 0 || capturedAt == 0)) capturedAt = c;
       final r = (b['received_at'] as num?)?.toInt() ?? 0;
@@ -100,6 +109,7 @@ List<MergedReport> mergeReports(Iterable<Event> received) {
         lon: lon,
         locQuality: q,
         text: text,
+        people: people,
         capturedAt: capturedAt,
         receivedAtMs: receivedAt,
       ),
