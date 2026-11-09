@@ -100,6 +100,6 @@ Fuentes del documento: `docs/src/parts/*.html` (contenido), `docs/src/diagrams.p
 
 ## Pendiente
 
-- **Repositorio accesible al jurado (entregable 2):** hoy sólo hay commits locales, sin remoto. Falta decidir dónde publicarlo y con qué visibilidad (público, o privado con cada integrante del jurado como colaborador).
+- **Repositorio accesible al jurado (entregable 2):** está publicado como **privado** en `github.com/Bdavid117/hackathon-asi`. Falta darle acceso al jurado: hacerlo público, o añadir a cada integrante como colaborador (Settings → Collaborators).
 - **Un canal de entrada para el despachador** (radio de onda corta o informes manuales): hoy el nodo sólo recibe tramas binarias de la app, y `radio` como fuente sólo existe en el generador sintético.
 - **Para que SARD sea más que una demostración:** probar el modelo con la API real, un agrupamiento que de verdad fusione (las cinco fuentes independientes de T08 siguen sin agruparse de punta a punta), una prueba con coordinadores, el mapa de cobertura que advierta de que el silencio no es seguridad (pospuesto), la redacción de datos personales antes de enviar texto al modelo, y la fragmentación de tramas (definida, no implementada).
