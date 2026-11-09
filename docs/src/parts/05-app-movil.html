@@ -40,8 +40,8 @@
 </figure>
 <ol>
   <li><strong>Un toque</strong> en <em>SOS</em>, o en uno de los seis indicadores de situación, crea la revisión 0: tipo, ubicación (una sola lectura), hora, nivel de batería e indicadores. Se guarda y entra a la cola <em>en ese instante</em>.</li>
-  <li><strong>Un segundo toque</strong> (opcional) elige el rango de personas. Es la revisión 1, de pocos bytes.</li>
-  <li><strong>Una frase</strong> (opcional, hasta 140 bytes) es la revisión 2. Cada revisión reutiliza el mismo identificador de reporte: <em>enriquece</em>, no duplica.</li>
+  <li><strong>Un segundo toque</strong> (opcional) elige el rango de personas: si se marca antes del SOS viaja en la revisión 0; si es después, sale enseguida como una revisión del mismo reporte, de pocos bytes.</li>
+  <li><strong>Una frase</strong> (opcional, hasta 140 bytes) sólo se ofrece cuando ya hay un aviso vivo, y sale como otra revisión: el SOS <em>nunca</em> lleva texto. Cada revisión reutiliza el mismo identificador de reporte: <em>enriquece</em>, no duplica.
 </ol>
 <div class="callout">
   <p class="t">DECISIONES DE EXPERIENCIA</p>
@@ -60,6 +60,14 @@
   <li><strong>Franja de «sin señal»</strong> que dice con claridad que el SOS se guarda y saldrá solo.</li>
   <li><strong>Nada se mueve bajo el dedo.</strong> Cuadrícula de dos columnas con indicadores de tamaño fijo y una zona de estado de altura constante: ni el GPS que llega, ni el acuse del nodo, ni un detalle añadido desplazan los botones (la primera versión sí lo hacía y se descubrió usándola; ahora lo protegen pruebas).</li>
   <li><strong>Un icono por situación</strong>, texto de al menos 14–15 sp, objetivos táctiles de 64 dp, vibración al tocar SOS y etiquetas para el lector de pantalla («Atrapado, ya enviado»). El permiso de ubicación se pide <em>después</em> de pintar la primera pantalla.</li>
+</ul>
+
+<p><strong>Personas y frase, implementadas (B4).</strong> Lo que se construyó y se verificó (a mano en el emulador y con un recorrido automático en Android e iOS contra un nodo real) difiere del boceto en lo siguiente:</p>
+<ul>
+  <li><strong>La escala de personas la fija esta versión</strong> (el diseño sólo reservaba 3 bits): 0 no indicado, 1, 2–5, 6–20, 21–100 y más de 100; 6 y 7 quedan reservados y un nodo los lee como «no indicado». «No indicado» es lo que lleva un SOS sin detalle y no es una opción que se toque. Se puede <em>corregir</em> el rango tras el SOS (manda el último que indica algo, también si es menor), pero no «des-marcarlo» una vez enviado.</li>
+  <li><strong>El campo de la frase corta por bytes, no por letras.</strong> Una «ñ» pesa 2 bytes y un emoji 4 o más: el filtro de entrada impide pasar de 140 B UTF-8 y recorta por <em>grafemas</em> completos (un emoji o una letra con su acento combinante entra entero o no entra). El texto escrito sobrevive al refresco de cada segundo (cada cinco en ahorro), y personas y frase <em>desaparecen</em> en «sólo SOS».</li>
+  <li><strong>Nada se mueve bajo el dedo, tampoco aquí.</strong> Los rangos y el cuadro de la frase tienen tamaño fijo, marcados o no, con o sin texto; una prueba mide posiciones antes y después de cada cambio.</li>
+  <li><strong>Costes asumidos.</strong> El historial «Tus avisos» queda ≈ 330 dp más abajo; con el teclado abierto no se fija el SOS arriba (ocuparía ~390 dp de los ~640 que quedan): arrastrar la lista cierra el teclado y lo deja a un gesto de distancia. Verificado con el teclado flotante del emulador, no con un teclado físico ni con lector de pantalla.</li>
 </ul>
 
 <h2 id="s5-4">Datos locales y estados de entrega</h2>

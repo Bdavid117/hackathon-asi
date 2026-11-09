@@ -59,6 +59,7 @@
 </div>
 <h3>Quién procesa cada reporte</h3>
 <p>Para no calcular lo mismo en todos los nodos, cada reporte tiene un <strong>dueño</strong>: el nodo vivo con mayor <code>hash(nodo, report_id)</code> (<em>rendezvous hashing</em>). Si el dueño no produce el evento esperado dentro de un plazo, el siguiente en el orden lo toma. Si por una falsa alarma dos nodos lo procesan, no pasa nada grave: los eventos de salida son idempotentes y sólo se desperdicia cómputo.</p>
+<p><strong>Implementado (B5).</strong> El peso es el SHA-256 de <code>nodo|reporte</code> (primeros 8 bytes), fijado con valores de oro calculados aparte; no se usa <code>String.hashCode</code>. El dueño gobierna <em>sólo el trabajo caro y repetible</em> —la consulta al modelo y la auditoría de vínculos—: recibir, guardar, acusar y calcular las reglas siguen siendo de cada nodo, así que perder al dueño nunca deja a nadie sin respuesta. El dueño procesa también lo que le llega <em>por replicación</em> (descubierto al revisar el diseño: sin eso el «relevo» era el receptor haciéndolo todo tras esperar); el siguiente espera <code>posición × plazo</code> (10 s por omisión) y no consulta si el juicio del dueño llegó replicado antes. Medido: con dos modelos sanos, de 40 reportes que entran por A, A hace 24 y B 16 sin repetir ninguno; con el modelo de B colgado, A los cubre todos; tras <code>kill -9</code> de B, A es dueño de todo al instante (<code>docs/resultados/t12.md</code>).</p>
 <h3>Conflictos entre agentes</h3>
 <p>Dos nodos aislados pueden emitir juicios distintos sobre el mismo reporte (el modelo de lenguaje no es determinista). Ambos eventos se conservan. La proyección aplica una regla <strong>conservadora</strong>: para la urgencia muestra el valor más alto y marca «juicios discrepantes»; para el triaje de personas es preferible un falso positivo revisable que un falso negativo.</p>
 <h3>Recuperación de un nodo</h3>
@@ -163,6 +164,7 @@
     <tr><td>Respaldo · modelo</td><td>No aplica: no usa modelo.</td></tr>
   </tbody>
 </table>
+<p><strong>Implementado (B5).</strong> La parte observable: el estado de los pares vive <em>en memoria</em> (<code>/api/nodes</code>: sincronizado, atrasado, sin respuesta tras tres periodos, desconocido) y <strong>no</strong> se escribe un evento por latido —cada uno invalidaría la caché de la cola y haría crecer el log sin límite—. Tras reiniciar, todo par es «desconocido» y la vista se declara parcial hasta hablar con él; un nodo sin pares no declara vista parcial. Las tareas reasignadas se ven en el reparto del agente de arriba; no hay detector de fallos por latidos distinto del sondeo de replicación.</p>
 
 <table class="cards">
   <caption>Agente 6 · Coordinación de respuesta</caption>
@@ -178,6 +180,7 @@
     <tr><td>Respaldo · modelo</td><td>Plantilla de acción. Modelo sugerido: <code>claude-opus-5-5</code> (bajo volumen y mayor riesgo).</td></tr>
   </tbody>
 </table>
+<p><strong>Implementado (B4).</strong> Sólo la <em>plantilla</em>: una función pura, sin modelo, que propone una lista de acciones (rescate, bomberos, atención médica, despejar la vía; <em>una lista</em> porque un mismo incidente puede pedir rescate y ambulancia) y, para cada una, el recurso disponible más cercano de entre los declarados (<code>config/recursos.json</code>, <strong>sintético</strong>). Sólo las señales con evidencia verificable (un indicador marcado o una cita que es subcadena del texto de ese reporte) mueven recursos. Su salida —y la de cualquier proponente futuro, un modelo incluido— pasa por <em>una sola puerta</em>: lectura estricta del esquema y validación contra el incidente y los recursos <em>actuales</em> (recurso inexistente o no disponible, cita inventada, acción fuera del conjunto cerrado, texto libre donde van códigos, identificador que no corresponde a esta versión, falta de aprobación humana). El identificador es un hash de 16 hexadecimales de la <em>versión</em> (miembros y revisiones, urgencia, acciones y recursos): cambia si cambia el incidente y entonces la aprobación <strong>caduca</strong>. T13: 0 acciones o recursos inventados y 0 aprobaciones automáticas (<code>docs/resultados/b5.md</code>).</p>
 
 <h2 id="s6-5">Integración con modelos de lenguaje</h2>
 <p>Principio rector: <strong>el modelo es una mejora, no un requisito</strong>. En el Escenario 2 los proveedores de internet están caídos, así que un diseño cuya función esencial dependa de una API en la nube fallaría justo cuando más se necesita. Por eso el acceso al modelo es un <em>puerto</em> con tres implementaciones intercambiables: nube, modelo local y reglas.</p>
@@ -254,3 +257,23 @@
   <li><strong>Siguiente acción sugerida y aprobación.</strong> La recomendación del agente 6 aparece con sus requisitos pendientes; aprobar o rechazar queda registrado.</li>
   <li><strong>Frescura y funcionamiento sin Internet.</strong> Se indica qué nodos están sincronizados y cuándo; si faltan eventos, el tablero declara la «vista parcial». Sus recursos los sirve el nodo y el mapa es esquemático o con teselas precargadas.</li>
 </ul>
+
+<h3>Qué se implementó en B4–B5 y qué se midió</h3>
+<p>El tablero es una aplicación de Flutter Web que sirve el propio nodo (<code>--web-root</code>). <strong>El incidente es la unidad</strong>: el nodo lo calcula como <em>proyección de lectura</em> (una función pura de los reportes fundidos, las decisiones y los recursos declarados), en el mismo pase que la cola, y sirve un <strong>resumen</strong> por incidente y un <strong>detalle</strong> bajo demanda.</p>
+<ul>
+  <li><strong>Vista corta y contadores honestos.</strong> Por omisión: <em>todos</em> los P1 y P2, los 20 P3/P4 con información más recientes y <em>una</em> fila agregada de «N SOS sin detalle» (lo que más emitirá la app real). Los contadores son sobre el total real (por urgencia, incertidumbre alta, a revisar, SOS sin detalle y «en seguimiento fuera de la vista»); una barra de triaje P1–P4 proporcional que además filtra con un clic. La vista corta ignora la paginación a propósito: paginarla podría dejar un P1 fuera.</li>
+  <li><strong>Por qué.</strong> Cada incidente muestra las señales con su evidencia (indicador marcado o cita exacta del texto), las observaciones originales y la incertidumbre; <em>«contradicciones entre reportes: no evaluadas»</em>, porque la correlación no usa modelo.</li>
+  <li><strong>Recomendación y aprobación.</strong> La recomendación del agente 6 aparece con sus requisitos pendientes («antes de aprobar»). Aprobar o rechazar se <em>registra siempre</em> como evento, con el nombre y la versión que la persona vio; justo antes de registrar el tablero vuelve a leer el incidente y, si la recomendación cambió, <strong>no registra</strong> y muestra la nueva. «Vigente», «caduca» y «discrepante» se derivan al leer. Dos decisiones contradictorias de la misma versión se conservan: manda el rechazo y se marca la discrepancia hasta que una persona sustituya <em>explícitamente</em> una de ellas. El nombre es texto libre, <strong>sin autenticar</strong>.</li>
+  <li><strong>Frescura y vista parcial.</strong> Sin conexión, vista vieja (con su antigüedad), respuesta inválida y «vista parcial» (con el motivo y el nodo) se dicen con un aviso y se conserva la última vista válida. Un nodo recién reiniciado no se muestra «sincronizado». Un tablero que sondea sin cambios recibe <code>304</code> (<code>ETag</code> que distingue cada arranque).</li>
+</ul>
+<table class="tight">
+  <thead><tr><th style="width:44%">T14 estructural · 1 000 reportes, 5 semillas nuevas</th><th>Elementos a revisar para cubrir todos los P1</th></tr></thead>
+  <tbody>
+    <tr><td>(a) mensajes en orden de llegada</td><td>≈ 996</td></tr>
+    <tr><td>(b) reportes ordenados por urgencia, sin agrupar</td><td>≈ 184</td></tr>
+    <tr><td>(c) incidentes de la vista corta del tablero</td><td>≈ 183</td></tr>
+    <tr><td>Techo con agrupamiento perfecto (verdad del generador)</td><td>≈ 20</td></tr>
+  </tbody>
+  <caption>P1 fuera de la vista inicial: 0 en las cinco semillas (criterio cumplido); P1 a 0 clics, su detalle a 1.</caption>
+</table>
+<p><strong>Hallazgo que cambia la expectativa del diseño.</strong> La mejora de ≈ 996 a ≈ 184 viene de <em>ordenar por urgencia</em>; <strong>no</strong> de agrupar (184 → 183), porque el agrupamiento determinista casi no fusiona (B3). Un agrupamiento perfecto llevaría la cifra a ≈ 20: esa diferencia queda para el modelo y para la persona. Además, con datos sintéticos de ≈ 20 % de P1, «todos los P1 y P2» ya pesan ≈ 4 MB con 10 000 reportes: el criterio «ningún P1 fuera» manda, y una mezcla real tendría menos. <strong>No</strong> se hizo la prueba con coordinadores (tiempo y errores) que pide el documento; verificado en Chrome de escritorio y un emulador, sin lector de pantalla.</p>

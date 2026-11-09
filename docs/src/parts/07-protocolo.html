@@ -36,7 +36,7 @@
   </tbody>
   <caption>Campos de la trama <code>REPORT</code>. Se usa el orden de red (big-endian).</caption>
 </table>
-<p><strong>Carga útil fija.</strong> Tipo de incidente (4 b), ocho indicadores de situación (8 b: atrapado, herido, incendio, dificultad respiratoria, vía bloqueada, estructura inestable, menores o mayores, medicación), personas por rango (3 b), calidad de la ubicación (3 b), latitud y longitud cuantizadas (24 + 25 b, resolución cercana a 1,2 m), hora de captura en segundos (32 b), batería en 16 pasos (4 b) y un bit que indica si hay texto. Si la ubicación no está disponible (calidad 0 o manual), latitud y longitud se omiten.</p>
+<p><strong>Carga útil fija.</strong> Tipo de incidente (4 b), ocho indicadores de situación (8 b: atrapado, herido, incendio, dificultad respiratoria, vía bloqueada, estructura inestable, menores o mayores, medicación), personas por rango (3 b: 0 no indicado, 1, 2–5, 6–20, 21–100, más de 100; 6 y 7 reservados, se leen como «no indicado»), calidad de la ubicación (3 b), latitud y longitud cuantizadas (24 + 25 b, resolución cercana a 1,2 m), hora de captura en segundos (32 b), batería en 16 pasos (4 b) y un bit que indica si hay texto. Si la ubicación no está disponible (calidad 0 o manual), latitud y longitud se omiten.</p>
 <p><strong>Vector de prueba.</strong> Con la clave de prueba <code>clave-de-ejemplo</code>, el SOS de ejemplo del repositorio (<code>docs/src/tools/frame_size.py</code>) se codifica en estos 33 bytes. Una revisión añade 4 bytes de <code>ref_seq</code>:</p>
 <pre><code>01 60 9a3c51e07b2d44f1 00000011 00 0d 3c04a1cd82929348 6d4f3b6462 2bf36cc5
 ver|tipo · flags · device_id · seq · rev · len · carga (13 B) · etiqueta</code></pre>
