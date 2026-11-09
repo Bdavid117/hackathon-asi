@@ -150,7 +150,7 @@ void main() {
     test('un juicio válido cuenta como consulta usada', () async {
       final runner = PipelineRunner(log, llm: FakePort((_) async => p1Atrapado));
       await runner.enrich(rec(log, 'aa-1', 0));
-      expect(runner.llmStats!.toJson(), {'consultas': 1, 'usadas': 1, 'fallos': <String, int>{}});
+      expect(runner.llmStats!.toJson(), {'consultas': 1, 'usadas': 1, 'omitidas': 0, 'fallos': <String, int>{}});
     });
 
     test('cada fallo suma a su causa: un 400 NO se confunde con «el modelo coincidió con las reglas»', () async {

@@ -2,6 +2,7 @@
 //
 //   dart run packages/sim/bin/burst.dart [--reports 10000] [--concurrency 16] [--seed 1]
 //        [--port 8093] [--max-seconds 600] [--label etapa0] [--out docs/resultados/b5-rafaga.md]
+//        [--llm none|ok|hang|error]   # con un modelo FALSO: el nodo arranca con --llm on contra un servidor local
 //
 // Mide, con el nodo bajo carga: latencia de ACK (p50/p95/máx), capacidad de respuesta del nodo
 // (latencia de /api/health durante la ráfaga), cuánto tarda en verse en la cola un P1 y un P4
@@ -36,6 +37,7 @@ Future<void> main(List<String> args) async {
   final port = int.parse(o['port'] ?? '8093');
   final maxSeconds = int.parse(o['max-seconds'] ?? '600');
   final label = o['label'] ?? 'sin etiqueta';
+  final llmMode = switch (o['llm']) { 'ok' => FakeLlmMode.ok, 'hang' => FakeLlmMode.hang, 'error' => FakeLlmMode.error, _ => null };
   final out = o['out'] ?? 'docs/resultados/b5-rafaga.md';
 
   // ---- reportes sintéticos → tramas (dispositivos fijos, secuencia por dispositivo)
@@ -78,7 +80,14 @@ Future<void> main(List<String> args) async {
   final frames = [for (final r in reports) frame(r)];
 
   final dir = Directory.systemTemp.createTempSync('sard-burst-');
-  final node = await NodeProcess.start(id: 'A', port: port, dataDir: dir.path);
+  final fake = llmMode == null ? null : await FakeClaudeServer.start(mode: llmMode);
+  final node = await NodeProcess.start(
+    id: 'A',
+    port: port,
+    dataDir: dir.path,
+    extraArgs: [if (fake != null) ...['--llm', 'on', '--llm-url', fake.url.toString()]],
+    environment: {if (fake != null) 'ANTHROPIC_API_KEY': 'clave-falsa'},
+  );
   final client = http.Client();
   final base0 = node.url;
   final started = DateTime.now();
@@ -226,6 +235,8 @@ Future<void> main(List<String> args) async {
     health = null;
   }
   await node.stop();
+  final modelRequests = fake?.requests;
+  await fake?.close();
   client.close();
 
   String ms(double v) => '${v.toStringAsFixed(0)} ms';
@@ -233,7 +244,7 @@ Future<void> main(List<String> args) async {
     ..writeln('## Ráfaga · $label')
     ..writeln()
     ..writeln('- Fecha: ${DateTime.now().toIso8601String()} · reportes pedidos: $n · concurrencia: $conc · semilla: $seed · tope: $maxSeconds s')
-    ..writeln('- Nodo: un proceso real (`dart run`, JIT) con pares ninguno; reportes sintéticos con texto en la rev 0 (más pesados que un SOS real).')
+    ..writeln('- Nodo: un proceso real (`dart run`, JIT) con pares ninguno; reportes sintéticos con texto en la rev 0 (más pesados que un SOS real).${llmMode == null ? '' : ' **Modelo FALSO en modo `${o['llm']}`** (el nodo arranca con `--llm on`): peticiones recibidas por el servidor falso al terminar: $modelRequests.'}')
     ..writeln()
     ..writeln(aborted ? '**⚠️ ABORTADA por el tope de tiempo ($maxSeconds s): sólo se enviaron ${okCount + failCount} de $n tramas.**' : '- Ráfaga completa en ${burstSeconds.toStringAsFixed(1)} s (${(okCount / burstSeconds).toStringAsFixed(0)} tramas/s).')
     ..writeln()
@@ -251,6 +262,7 @@ Future<void> main(List<String> args) async {
     ..writeln('| Una página completa `?view=all&limit=1000` | ${(allBytes / 1024).toStringAsFixed(0)} KB, $allMs ms |')
     ..writeln('| Detalle `/api/incidents/<id>` | ${(detailBytes / 1024).toStringAsFixed(0)} KB, $detailMs ms$incidentNote |')
     ..writeln('| Eventos en el log del nodo | ${health?['events'] ?? '—'} |')
+    ..writeln('| Modelo (consultas / usadas / omitidas por el tope / respaldos) | ${health?['llm'] == null ? '—' : '${(health!['llm'] as Map)['consultas']} / ${(health['llm'] as Map)['usadas']} / ${(health['llm'] as Map)['omitidas'] ?? 'n/d'} / ${jsonEncode((health['llm'] as Map)['fallos'])}'} |')
     ..writeln();
   final f = File(out);
   if (!f.existsSync()) {
@@ -259,5 +271,6 @@ Future<void> main(List<String> args) async {
   }
   f.writeAsStringSync(b.toString(), mode: FileMode.append);
   stdout.writeln(b.toString());
-  exit(aborted || inQueue < expected || incidentTotal != inQueue || p1InShort != p1Total ? 1 : 0);
+  // falla si se abortó, si alguna trama no se acusó, si falta algo en la cola o algún P1 quedó fuera de la vista
+  exit(aborted || failCount > 0 || inQueue < expected || incidentTotal != inQueue || p1InShort != p1Total ? 1 : 0);
 }

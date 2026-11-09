@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:sard_agents/sard_agents.dart';
 
@@ -14,11 +15,16 @@ const String kAgentVersion = 'rules-2';
 class LlmStats {
   int consultas = 0;
   int usadas = 0;
+
+  /// Consultas que NO se hicieron porque ya había el máximo en vuelo y la espera estaba llena: esos
+  /// reportes se quedan con las reglas (más el juicio de otro nodo, si le toca).
+  int omitidas = 0;
   final Map<String, int> fallos = {};
 
   Map<String, Object?> toJson() => {
     'consultas': consultas,
     'usadas': usadas,
+    'omitidas': omitidas,
     'fallos': {for (final k in fallos.keys.toList()..sort()) k: fallos[k]!},
   };
 }
@@ -33,7 +39,7 @@ class LlmStats {
 /// no hay motivo para pagar su coste en la ruta del ACK. Si hay modelo de lenguaje, se consulta
 /// DESPUÉS ([enrich]) y deja su propio evento.
 class PipelineRunner {
-  PipelineRunner(this._log, {LlmPort? llm, this.onLlmFallback, DeviceBudget? budget, this.ownership})
+  PipelineRunner(this._log, {LlmPort? llm, this.onLlmFallback, DeviceBudget? budget, this.ownership, this.maxModelInFlight = 16, this.maxModelQueued = 1000})
     : _llm = llm,
       llmStats = llm == null ? null : LlmStats(),
       budget = budget ?? DeviceBudget();
@@ -43,6 +49,13 @@ class PipelineRunner {
 
   /// Reparto del modelo entre nodos (*rendezvous*); `null` = este nodo lo hace todo (un nodo solo).
   final OwnershipPolicy? ownership;
+
+  /// Tope de consultas al modelo **a la vez** y de consultas **en espera** de un hueco. Cada consulta
+  /// abierta es un socket: con un modelo colgado y cientos de tramas por segundo, sin tope se agotan los
+  /// descriptores de archivo (medido con el límite típico de 1 024: 2 726 de 5 000 tramas rechazadas y el
+  /// nodo muerto). Lo que excede el tope no se consulta: se queda con las reglas y se cuenta en `omitidas`.
+  final int maxModelInFlight;
+  final int maxModelQueued;
 
   /// Estadísticas del modelo; `null` si no hay modelo configurado.
   final LlmStats? llmStats;
@@ -56,8 +69,12 @@ class PipelineRunner {
 
   /// Espera a que terminen las consultas al modelo que estén en curso (para pruebas y apagado).
   Future<void> get idle async {
-    while (_jobs.isNotEmpty) {
-      await Future.wait(_jobs.toList());
+    while (_jobs.isNotEmpty || _waiting.isNotEmpty || _delayed > 0) {
+      if (_jobs.isNotEmpty) {
+        await Future.wait(_jobs.toList());
+      } else {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
     }
   }
 
@@ -105,24 +122,54 @@ class PipelineRunner {
   /// Reportes cuya consulta al modelo está pendiente en este nodo («clave#rev»): evita consultar dos veces
   /// el mismo cuando llega por la trama y además por replicación.
   final Set<String> _pending = {};
+  final Queue<(Event, String)> _waiting = Queue();
+  int _inFlight = 0;
+  int _delayed = 0;
 
   /// Programa la consulta al modelo de [received]: enseguida si este nodo es el dueño; si no, tras su
-  /// plazo de relevo (y sólo si el evento del dueño no llegó replicado entretanto).
+  /// plazo de relevo (y sólo si el evento del dueño no llegó replicado entretanto). Quien espera su turno
+  /// de relevo **no ocupa un hueco** del tope: sólo cuenta cuando ya le toca.
   void _scheduleModel(Event received) {
     final key = received.reportKey;
     if (_llm == null || key == null) return;
     final id = '$key#${received.rev}';
     if (!_pending.add(id)) return;
-    late final Future<void> job;
-    // Si no es el dueño, espera su turno de relevo: si el evento del dueño llega replicado antes,
-    // `enrich` ve el texto ya analizado y no consulta (no duplica).
     final wait = ownership?.delayFor(key) ?? Duration.zero;
-    job = (wait == Duration.zero ? enrich(received) : Future<void>.delayed(wait).then((_) => enrich(received)))
-        .then<void>((_) {}, onError: (Object _) {})
-        .whenComplete(() {
-          _jobs.remove(job);
-          _pending.remove(id);
-        });
+    if (wait == Duration.zero) {
+      _admit(received, id);
+      return;
+    }
+    _delayed++;
+    Future<void>.delayed(wait).then((_) {
+      _delayed--;
+      _admit(received, id);
+    });
+  }
+
+  /// Admite una consulta: la lanza si hay hueco, la deja en espera si cabe, o la omite (y la cuenta).
+  void _admit(Event received, String id) {
+    if (_inFlight < maxModelInFlight) {
+      _startModel(received, id);
+    } else if (_waiting.length < maxModelQueued) {
+      _waiting.add((received, id));
+    } else {
+      llmStats!.omitidas++;
+      _pending.remove(id); // podrá reintentarse cuando haya hueco
+    }
+  }
+
+  void _startModel(Event received, String id) {
+    _inFlight++;
+    late final Future<void> job;
+    job = enrich(received).then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
+      _jobs.remove(job);
+      _inFlight--;
+      _pending.remove(id);
+      while (_inFlight < maxModelInFlight && _waiting.isNotEmpty) {
+        final (e, nextId) = _waiting.removeFirst();
+        _startModel(e, nextId);
+      }
+    });
     _jobs.add(job);
   }
 

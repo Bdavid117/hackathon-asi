@@ -40,7 +40,16 @@ Map<String, String> _parse(List<String> args) {
   return out;
 }
 
-Future<void> main(List<String> args) async {
+/// Un nodo superviviente no muere por un error inesperado en una tarea de fondo: se registra con claridad y
+/// sigue sirviendo. (Medido: sin esto, agotar los descriptores de archivo mataba el proceso entero.)
+void main(List<String> args) {
+  runZonedGuarded(
+    () => _run(args),
+    (error, stack) => stderr.writeln('[nodo] error NO controlado en una tarea de fondo; el nodo sigue: $error\n$stack'),
+  );
+}
+
+Future<void> _run(List<String> args) async {
   final o = _parse(args);
   final id = o['id'];
   final data = o['data'];
@@ -90,7 +99,7 @@ Future<void> main(List<String> args) async {
   );
   // La auditoría de vínculos va por lotes, fuera de la ruta del ACK (a lo sumo cada 5 s y sólo si hay
   // reportes nuevos); con muchos reportes calcula en otro isolate.
-  final audit = AuditLinker(log, ownership: ownership);
+  final audit = AuditLinker(log, ownership: ownership, onError: (e, st) => stderr.writeln('[auditoría] el lote falló y se reintentará: $e'));
   Timer.periodic(const Duration(seconds: 2), (_) => unawaited(audit.tick()));
   final web = o['web-root'];
   final Handler handler = web == null

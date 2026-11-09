@@ -49,7 +49,7 @@ void main() {
     );
     final r = await Future.sync(() => h2(Request('GET', Uri.parse('http://localhost/api/health'))));
     final body = jsonDecode(await r.readAsString()) as Map<String, Object?>;
-    expect(body['llm'], {'consultas': 0, 'usadas': 0, 'fallos': <String, int>{}});
+    expect(body['llm'], {'consultas': 0, 'usadas': 0, 'omitidas': 0, 'fallos': <String, int>{}});
   });
 
   test('GET /api/queue dice la frescura: x-queue-stale y x-queue-age-ms', () async {

@@ -61,10 +61,10 @@ class AuditLinker {
     this.minInterval = const Duration(seconds: 5),
     List<Map<String, Object?>> Function(List<Event> received, Set<String> targets)? compute,
     this.ownership,
+    this.onError,
   }) : _clock = clock ?? DateTime.now,
        _compute = compute;
 
-  /// Reparto de la auditoría entre nodos (*rendezvous*); `null` = este nodo audita todo.
 
   /// Sustituye el cálculo (pruebas). Si se da, corre en este hilo.
   final List<Map<String, Object?>> Function(List<Event>, Set<String>)? _compute;
@@ -74,7 +74,12 @@ class AuditLinker {
   final Duration minInterval;
   final DateTime Function() _clock;
 
+  /// Reparto de la auditoría entre nodos (*rendezvous*); `null` = este nodo audita todo.
   final OwnershipPolicy? ownership;
+
+  /// Se llama si un lote falla (p. ej. «Too many open files»): el fallo de una tarea de fondo se avisa y
+  /// se reintenta, nunca derriba al nodo.
+  final void Function(Object error, StackTrace stack)? onError;
   final Set<String> _done = {}; // «clave|rev» ya examinados en esta vida del proceso
   DateTime? _nextDue; // cuándo vence lo diferido (el plazo de relevo más cercano)
   bool _running = false;
@@ -150,6 +155,10 @@ class AuditLinker {
     try {
       _lastReceived = count;
       await runOnce();
+    } on Object catch (e, st) {
+      _lastReceived = -1; // se reintenta en el siguiente tick
+      onError?.call(e, st);
+      return false;
     } finally {
       _running = false;
       final end = _clock();

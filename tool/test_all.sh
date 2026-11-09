@@ -38,6 +38,9 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   # T12: el modelo (falso) cuelga, falla o devuelve basura y el ACK no se entera; reparto y relevo entre nodos.
   # (los resultados se escriben en un archivo temporal: el informe oficial se regenera a mano con más tramas)
   run "T12 modelo colgado/roto + relevo (100 tramas)" dart run packages/sim/bin/t12.dart --reports 100 --out "$OUT.t12.md"
+  # Un modelo COLGADO + una ráfaga con el límite típico de 1 024 descriptores: el nodo debe seguir vivo y acusarlo todo
+  # (sin el tope de consultas simultáneas moría con «Too many open files»: 2 726 de 5 000 tramas rechazadas).
+  run "Ráfaga con el modelo colgado y ulimit 1024" bash -c 'ulimit -n 1024; dart run packages/sim/bin/burst.dart --reports 3000 --llm hang --max-seconds 240 --out "$0.burst.md"' "$OUT"
   # T14 estructural con una semilla: ningún P1 queda fuera de la vista inicial.
   run "T14 ningún P1 fuera de la vista (1 semilla)" dart run packages/sim/bin/t14.dart --seeds 401 --out "$OUT.t14.md"
   # El tablero COMPILADO, servido por un nodo real con un escenario fijo, abierto en Chrome sin cabeza.
@@ -47,5 +50,5 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   elif [ $rc -eq 77 ]; then echo "OMITIDA  $(tail -1 "$OUT")"
   else echo "FALLÓ"; tail -15 "$OUT"; fail=1; fi
 fi
-rm -f "$OUT" "$OUT.t12.md" "$OUT.t14.md"
+rm -f "$OUT" "$OUT.t12.md" "$OUT.t14.md" "$OUT.burst.md"
 [ "$fail" -eq 0 ] && echo "TODO EN VERDE" || { echo "HAY FALLOS"; exit 1; }

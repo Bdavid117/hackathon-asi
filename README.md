@@ -8,7 +8,7 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 
 **B0 a B5 implementados y medidos.** B4 y B5 —la app captura personas y frase; el nodo calcula incidentes con la recomendación del agente 6 y la aprobación registrada; el tablero del coordinador; el reparto del trabajo caro entre nodos; la ráfaga de 10 000 reportes y la demostración con una condición adversa— están en [`docs/resultados/b5.md`](docs/resultados/b5.md) (decisiones y mutaciones en [`b5-decisiones.md`](docs/resultados/b5-decisiones.md)). **Lo que NO se logró o no se probó:** el modelo de lenguaje nunca se consultó de verdad (todo con un servidor falso); el agrupamiento casi no fusiona, así que la ventaja del tablero es de orden y no de agrupación; no hubo prueba con coordinadores; las particiones fueron de 5–20 s; quien aprueba no está autenticado y la clave de integridad es compartida. ⚠️ En B3, **dos de los tres criterios medidos no se cumplen** (T06 recall de P1 78,5 % frente a 95 %; T07 sólo cumple «falsa fusión ≤ 1 %» en conjunto y porque casi no agrupa: una de cinco semillas nuevas llega a 2,9 %) y se reportan así, con su diagnóstico, en [`docs/resultados/b3.md`](docs/resultados/b3.md). Los datos son sintéticos y el modelo de lenguaje no se probó contra la API real. **`--llm on` envía el texto libre de los ciudadanos a un tercero sin redactar datos personales** (apagado por defecto; ver PDF §8). Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado y la app se comporta bien en sus condiciones: **se guarda sin red y sale solo al volver la señal** (en el emulador de Android: 1 s tras devolver la red), usa **GPS y batería reales** (ubicación como revisión del mismo reporte; modos normal, ahorro y sólo SOS) y reparte el envío con **envejecimiento y cuota anti-inanición**.
 
-- **1 079 pruebas automáticas** (el protocolo se cuenta en VM y en Chrome) en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
+- **1 088 pruebas automáticas** (el protocolo se cuenta en VM y en Chrome) en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
 - **Sin probar en hardware real ni con radio real** (todo en emuladores).
 
 | Qué | Dónde |
@@ -36,7 +36,7 @@ config/recursos.json   recursos declarados SINTÉTICOS que el agente 6 puede nom
 apps/mobile/           app ciudadana (Flutter)
 apps/dashboard/        tablero del coordinador (Flutter Web)
 spikes/sqlite_kill/    prueba técnica: SQLite ante kill -9
-tool/test_all.sh       toda la batería de pruebas (≈ 6 min)
+tool/test_all.sh       toda la batería de pruebas (≈ 4 min)
 tool/demo.sh           demostración adversa reproducible (partición, kill -9, decisiones contradictorias, misma semilla ⇒ misma huella)
 tool/web_smoke.sh      el tablero compilado, abierto en Chrome sin cabeza
 tool/device_check.sh   pruebas de integración en Android o iOS contra un nodo real
@@ -47,7 +47,7 @@ tool/android_*_check.sh  sin red → sale solo; batería real → modos
 
 ```bash
 dart pub get                                   # resuelve el workspace
-bash tool/test_all.sh                          # pruebas + análisis + H1 + demostración + T12 + T14 + tablero web (≈ 6 min)
+bash tool/test_all.sh                          # pruebas + análisis + H1 + demostración + T12 + T14 + tablero web (≈ 4 min)
 
 # Un nodo con el tablero (compilar el tablero antes)
 (cd apps/dashboard && flutter build web --no-web-resources-cdn)

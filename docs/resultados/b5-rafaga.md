@@ -120,3 +120,26 @@ Una sección por ejecución, para comparar entre etapas. Datos sintéticos; un s
 | Detalle `/api/incidents/<id>` | 4 KB, 6 ms (el mayor de la primera página tiene 3 reportes) |
 | Eventos en el log del nodo | 33922 |
 
+## Ráfaga · Etapa 6 · 5 000 tramas con el modelo COLGADO, ulimit 1024, con tope de consultas
+
+- Fecha: 2026-11-09T00:22:23.940462 · reportes pedidos: 5000 · concurrencia: 16 · semilla: 1 · tope: 300 s
+- Nodo: un proceso real (`dart run`, JIT) con pares ninguno; reportes sintéticos con texto en la rev 0 (más pesados que un SOS real). **Modelo FALSO en modo `hang`** (el nodo arranca con `--llm on`): peticiones recibidas por el servidor falso al terminar: 16.
+
+- Ráfaga completa en 1.6 s (3176 tramas/s).
+
+| Medida | Valor |
+|---|---|
+| Tramas acusadas / fallidas | 5002 / 0 |
+| Latencia del ACK p50 / p95 / máx | 3 ms / 9 ms / 91 ms |
+| Capacidad de respuesta del nodo (`/api/health` durante la ráfaga) p50 / p95 / máx | 4 ms / 71 ms / 71 ms |
+| Un **P1** plantado a mitad de la ráfaga aparece en la cola tras | 0.6 s |
+| Un **P4** plantado a la vez aparece en la cola tras (antigüedad atendida) | 0.6 s |
+| Reportes en la cola al final / acusados | 5002 / 5002 |
+| Tiempo extra hasta ver todo tras la última trama | 2.1 s |
+| Vista corta `/api/incidents` (lo que pide el tablero) | 2288 filas, 2024 KB, 8 ms · de 4866 incidentes (847 «SOS sin detalle» agregados, 1731 en seguimiento fuera de la vista) |
+| ¿Algún P1 fuera de la vista corta? | 909 de 909 P1 dentro |
+| Una página completa `?view=all&limit=1000` | 951 KB, 5 ms |
+| Detalle `/api/incidents/<id>` | 4 KB, 1 ms (el mayor de la primera página tiene 3 reportes) |
+| Eventos en el log del nodo | 17663 |
+| Modelo (consultas / usadas / omitidas por el tope / respaldos) | 16 / 0 / 3973 / {} |
+
