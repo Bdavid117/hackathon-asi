@@ -37,7 +37,7 @@ Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal
 - «Funciona con el modelo de lenguaje.» → Nunca se consultó la API real; todo fue con un servidor falso.
 - «Agrupa los reportes duplicados.» → Casi no agrupa (0,43 % de los pares verdaderos). Se *sugieren* posibles duplicados.
 - «Resiste una partición de 10 minutos.» → Se probó 5–20 s, por configuración, no por red.
-- «Es seguro.» → La clave de integridad es compartida y pública en el repositorio, y quien aprueba no está autenticado. Un atacante con acceso a la red del nodo puede falsificar tramas o registrar una decisión a nombre de otro.
+- «Es seguro.» → Con los códigos de acceso activos, el tablero y la réplica exigen un código compartido (sin ellos, el nodo está abierto). Ese código no dice quién aprobó, viaja sin cifrar (sin TLS) y no tiene límite de intentos; la clave de integridad de las tramas es compartida y pública en el repositorio, así que quien llegue por red puede falsificar tramas (`/frame` está abierto a propósito).
 - «Mejora el tiempo del coordinador.» → No hubo prueba con coordinadores. Lo medido es *elementos a revisar* con datos sintéticos.
 - «Probado en teléfonos.» → Emulador de Android y simulador de iOS; ningún teléfono real ni radio real.
 
