@@ -58,6 +58,10 @@ Future<void> main(List<String> args) async {
     }
   }
   final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, pipeline: PipelineRunner(log, llm: llm, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r')));
+  // La auditoría de vínculos va por lotes, fuera de la ruta del ACK (a lo sumo cada 5 s y sólo si hay
+  // reportes nuevos); con muchos reportes calcula en otro isolate.
+  final audit = AuditLinker(log);
+  Timer.periodic(const Duration(seconds: 2), (_) => unawaited(audit.tick()));
   final web = o['web-root'];
   final Handler handler = web == null
       ? api

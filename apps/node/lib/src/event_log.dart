@@ -53,6 +53,20 @@ class Event {
       };
 }
 
+/// Un evento por escribir con [EventLog.appendAll].
+class NewEvent {
+  const NewEvent(this.type, this.body, {this.reportKey, this.rev, this.inputs = const [], this.chainPrevious = false});
+
+  final String type;
+  final Map<String, Object?> body;
+  final String? reportKey;
+  final int? rev;
+  final List<String> inputs;
+
+  /// Añade a `inputs` el id del evento anterior del mismo lote.
+  final bool chainPrevious;
+}
+
 /// Log de eventos que sólo crece (SQLite en WAL, `synchronous=FULL`).
 ///
 /// Cada nodo numera sus propios eventos; los de otros nodos llegan con
@@ -78,6 +92,7 @@ class EventLog {
         PRIMARY KEY (origin, seq)
       )''');
     db.execute('CREATE INDEX IF NOT EXISTS events_report ON events(report_key, rev)');
+    db.execute('CREATE INDEX IF NOT EXISTS events_type ON events(type)');
     db.execute('''
       CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events
       BEGIN SELECT RAISE(ABORT, 'events es append-only'); END''');
@@ -118,6 +133,38 @@ class EventLog {
       _insert(e);
       _db.execute('COMMIT');
       return e;
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  /// Escribe varios eventos propios en **una sola transacción** (un solo `fsync`): o quedan todos o
+  /// ninguno, con ids consecutivos. Un evento con `chainPrevious` apunta al anterior del lote.
+  List<Event> appendAll(List<NewEvent> specs) {
+    if (specs.isEmpty) return const [];
+    _db.execute('BEGIN IMMEDIATE');
+    try {
+      var next = _db.select('SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM events WHERE origin = ?', [nodeId]).first['n'] as int;
+      final out = <Event>[];
+      for (final sp in specs) {
+        final e = Event(
+          id: idOf(nodeId, next),
+          origin: nodeId,
+          seq: next,
+          type: sp.type,
+          reportKey: sp.reportKey,
+          rev: sp.rev,
+          hlc: '${_clock().millisecondsSinceEpoch}-$next-$nodeId',
+          body: sp.body,
+          inputs: [...sp.inputs, if (sp.chainPrevious && out.isNotEmpty) out.last.id],
+        );
+        _insert(e);
+        out.add(e);
+        next++;
+      }
+      _db.execute('COMMIT');
+      return out;
     } catch (_) {
       _db.execute('ROLLBACK');
       rethrow;
@@ -193,6 +240,13 @@ class EventLog {
 
   /// Los eventos de un tipo, en orden de llegada (sin leer todo el log).
   List<Event> allOfType(String type) => _db.select('SELECT * FROM events WHERE type = ? ORDER BY rowid', [type]).map(_row).toList();
+
+  /// Cuántos eventos hay de estos tipos (sin cargarlos).
+  int countOfTypes(List<String> types) {
+    if (types.isEmpty) return 0;
+    final marks = List.filled(types.length, '?').join(',');
+    return _db.select('SELECT COUNT(*) AS c FROM events WHERE type IN ($marks)', types).first['c'] as int;
+  }
 
   /// Número de eventos del log (sin cargarlos).
   int count() => _db.select('SELECT COUNT(*) AS c FROM events').first['c'] as int;

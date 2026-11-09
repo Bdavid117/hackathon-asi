@@ -79,38 +79,11 @@ void main() {
     });
   });
 
-  group('agente 3: rastro de auditoría `incident.linked`', () {
+  test('run() no hace trabajo que crezca con el número de reportes: nunca escribe incident.linked (eso es un lote aparte)', () {
     const t = 'puente colapsado calle veinte carros abajo';
-
-    test('un reporte solo no deja ningún incident.linked', () {
-      final out = PipelineRunner(log).run(rec2('aa-1', text: t));
-      expect(out.map((e) => e.type), ['report.normalized', 'triage.assessed']);
-    });
-
-    test('un segundo reporte casi idéntico de otro dispositivo deja UN incident.linked con el primero', () {
-      PipelineRunner(log).run(rec2('aa-1', text: t));
-      final out = PipelineRunner(log).run(rec2('bb-1', lat: 5.0701, text: t));
-      expect(out.map((e) => e.type), ['report.normalized', 'triage.assessed', 'incident.linked']);
-      final linked = out.last;
-      final links = (linked.body['links']! as List).cast<Map<String, Object?>>();
-      expect(links.single['other'], 'aa-1');
-      expect(links.single['state'], 'same');
-      expect(linked.reportKey, 'bb-1');
-      expect(linked.inputs, [out[1].id]);
-    });
-
-    test('uno lejano o con otro texto no deja vínculo', () {
-      PipelineRunner(log).run(rec2('aa-1', text: t));
-      final out = PipelineRunner(log).run(rec2('bb-1', lat: 5.5, text: t));
-      expect(out.map((e) => e.type), ['report.normalized', 'triage.assessed']);
-    });
-
-    test('la pareja `possible` también deja rastro, marcada como tal', () {
-      PipelineRunner(log).run(rec2('aa-1'));
-      final out = PipelineRunner(log).run(rec2('bb-1', lat: 5.0701));
-      final links = (out.last.body['links']! as List).cast<Map<String, Object?>>();
-      expect(links.single['state'], 'possible');
-    });
+    PipelineRunner(log).run(rec2('aa-1', text: t));
+    final out = PipelineRunner(log).run(rec2('bb-1', lat: 5.0701, text: t));
+    expect(out.map((e) => e.type), ['report.normalized', 'triage.assessed']);
   });
 
   group('integrado en la API', () {

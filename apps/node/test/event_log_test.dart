@@ -130,4 +130,54 @@ void main() {
     expect(log.allOfType('report.received').map((e) => e.id), [a.id, c.id]);
     expect(log.allOfType('nada'), isEmpty);
   });
+
+  group('lotes y conteos baratos', () {
+    test('countOfTypes cuenta sólo los tipos pedidos', () {
+      final log = EventLog.open(':memory:', nodeId: 'A');
+      addTearDown(log.close);
+      log.append('report.received', {'n': 1}, reportKey: 'k-1', rev: 0);
+      log.append('report.normalized', {'n': 2}, reportKey: 'k-1', rev: 0);
+      log.append('incident.linked', {'n': 3}, reportKey: 'k-1', rev: 0);
+      log.append('report.received', {'n': 4}, reportKey: 'k-2', rev: 0);
+      expect(log.countOfTypes(['report.received']), 2);
+      expect(log.countOfTypes(['report.received', 'report.normalized']), 3);
+      expect(log.countOfTypes(['nada']), 0);
+      expect(log.countOfTypes(const []), 0);
+    });
+
+    test('appendAll escribe varios eventos en UNA transacción, con ids consecutivos y encadenando entradas', () {
+      final log = EventLog.open(':memory:', nodeId: 'A');
+      addTearDown(log.close);
+      final before = log.append('report.received', {'x': 1}, reportKey: 'k-1', rev: 0);
+      final out = log.appendAll([
+        NewEvent('report.normalized', {'a': 1}, reportKey: 'k-1', rev: 0, inputs: [before.id]),
+        NewEvent('triage.assessed', {'b': 2}, reportKey: 'k-1', rev: 0, chainPrevious: true),
+      ]);
+      expect(out.map((x) => x.id), ['A:000002', 'A:000003']);
+      expect(out[1].inputs, [out[0].id]);
+      expect(log.count(), 3);
+      expect(log.find('triage.assessed', 'k-1', 0)!.inputs, [out[0].id]);
+    });
+
+    test('appendAll es atómico: si un evento no se puede escribir no queda ninguno', () {
+      final log = EventLog.open(':memory:', nodeId: 'A');
+      addTearDown(log.close);
+      expect(
+        () => log.appendAll([
+          NewEvent('report.normalized', {'a': 1}, reportKey: 'k-1', rev: 0),
+          NewEvent('triage.assessed', {'b': Object()}, reportKey: 'k-1', rev: 0), // no es JSON
+        ]),
+        throwsA(anything),
+      );
+      expect(log.count(), 0);
+      // y el contador de secuencia no se desordena: el siguiente evento es el 1
+      expect(log.append('report.received', {'x': 1}, reportKey: 'k-9', rev: 0).id, 'A:000001');
+    });
+
+    test('appendAll con la lista vacía no hace nada', () {
+      final log = EventLog.open(':memory:', nodeId: 'A');
+      addTearDown(log.close);
+      expect(log.appendAll(const []), isEmpty);
+    });
+  });
 }

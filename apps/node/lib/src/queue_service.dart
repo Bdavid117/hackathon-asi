@@ -53,6 +53,11 @@ class QueueService {
   final DateTime Function() _clock;
   final Future<String> Function(List<Event>, List<Event>) _compute;
 
+  /// Los únicos eventos que cambian lo que muestra la cola: los reportes recibidos, el triaje (el del
+  /// modelo) y las aprobaciones. Los latidos, la auditoría y las normalizaciones NO la invalidan: si
+  /// no, cada uno forzaría un recálculo (segundos con muchos reportes) sin que nada relevante cambie.
+  static const List<String> relevantTypes = ['report.received', 'triage.assessed', 'approval.granted', 'approval.denied'];
+
   _Snap? _snap;
   Future<_Snap>? _job;
 
@@ -94,7 +99,7 @@ class QueueService {
   }
 
   Future<QueueRead> read() async {
-    final count = _log.count();
+    final count = _log.countOfTypes(relevantTypes);
     final snap = _snap;
     if (snap != null && snap.count == count) return _read(snap, stale: false);
     final tooOld = snap != null && _clock().difference(snap.computedAt).inMilliseconds > maxStaleMs;
@@ -102,6 +107,6 @@ class QueueService {
     final job = _job ?? _start(count);
     if (slow) return _read(snap, stale: true); // no esperar: el cálculo sigue en segundo plano
     final s = await job;
-    return _read(s, stale: s.count != _log.count()); // si llegaron eventos mientras tanto, se dice
+    return _read(s, stale: s.count != _log.countOfTypes(relevantTypes)); // si llegaron eventos mientras tanto, se dice
   }
 }

@@ -7,5 +7,6 @@ export 'src/merged_reports.dart';
 export 'src/queue_service.dart';
 export 'src/queue_view.dart';
 export 'src/api.dart';
+export 'src/audit.dart';
 export 'src/replicator.dart';
 export 'src/pipeline.dart';

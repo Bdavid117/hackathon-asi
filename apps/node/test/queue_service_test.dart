@@ -102,6 +102,22 @@ void main() {
       expect(computes, 1);
     });
 
+    test('sólo la invalidan los eventos que alimentan la cola: la auditoría y las normalizaciones no', () async {
+      final s = svc();
+      rec(log, 0, Random(1));
+      await s.read();
+      log.append('incident.linked', {'links': <Object?>[]}, reportKey: 'd0-1', rev: 0);
+      log.append('report.normalized', {'x': 1}, reportKey: 'd0-1', rev: 0);
+      await s.read();
+      expect(computes, 1, reason: 'nada de lo que cambió entra en la cola');
+      log.append('approval.granted', {'recommendationId': 'r'}, reportKey: 'd0-1', rev: 0);
+      await s.read();
+      expect(computes, 2, reason: 'una aprobación sí cambia lo que se muestra');
+      rec(log, 1, Random(1));
+      await s.read();
+      expect(computes, 3);
+    });
+
     test('si cambió y el cálculo es rápido, la lectura espera y devuelve lo fresco', () async {
       final s = svc();
       rec(log, 0, Random(1));
