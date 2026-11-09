@@ -168,7 +168,7 @@ seleccionar: ordenar por prioridad_efectiva = prio_hint − envejecimiento(edad)
     <tr><td>Permiso de ubicación denegado o tardío</td><td>Pedirlo en el primer arranque; flujo alternativo con referencia manual; calidad de ubicación en la trama.</td></tr>
     <tr><td>Reloj del teléfono incorrecto</td><td>La trama lleva <code>capturado_en</code>; el nodo registra su hora de llegada y el desfase estimado; el orden interno no depende del reloj del dispositivo.</td></tr>
     <tr><td>Enteros de 64 bits en Dart compilado a Web</td><td>Los <code>int</code> son de 64 bits en la VM pero de 53 en JavaScript, y el tablero (Flutter Web) comparte el protocolo. Modelar <code>device_id</code> como 8 bytes o hexadecimal, mantener cada campo empaquetado en 32 bits o menos y ejecutar los vectores con <code>dart test -p vm,chrome</code>.</td></tr>
-    <tr><td>Abuso o reportes falsos</td><td>Límite de tasa por dispositivo, etiqueta de integridad y peso de corroboración por independencia de fuentes ({{ref:s6-6}}).</td></tr>
+    <tr><td>Abuso o reportes falsos</td><td>Presupuesto por dispositivo que degrada (no rechaza), etiqueta de integridad y peso de corroboración por independencia de fuentes ({{ref:s6-6}}).</td></tr>
     <tr><td>Privacidad</td><td>Sin cuenta obligatoria; ubicación aproximada cuando se envía a servicios externos; aviso claro de qué se envía.</td></tr>
   </tbody>
   <caption>Riesgos de la app móvil y su mitigación.</caption>

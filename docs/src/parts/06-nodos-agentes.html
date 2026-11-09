@@ -205,7 +205,7 @@
     </ul></div>
   <div class="card g"><h4>Datos, costo y seguridad</h4>
     <ul>
-      <li><strong>Minimizar lo que sale a la nube:</strong> redactar teléfonos y nombres, redondear la ubicación a una celda <em>geohash</em> si no se necesita el punto exacto.</li>
+      <li><strong>Minimizar lo que sale a la nube:</strong> redactar teléfonos y nombres, redondear la ubicación a una celda <em>geohash</em> si no se necesita el punto exacto. <em>Recomendación de diseño: en esta versión la redacción no está implementada y la ubicación no se envía al modelo (ver {{ref:s8}}).</em></li>
       <li><strong>Instrucciones estables primero:</strong> un prompt de sistema largo y fijo por agente permite <em>prompt caching</em> y reduce costo y latencia.</li>
       <li><strong>Plazos cortos y reintentos acotados;</strong> pasado el plazo, respaldo determinista.</li>
       <li><strong>Auditoría:</strong> el evento guarda agente, versión, modo y modelo; la petición y la respuesta se archivan localmente.</li>

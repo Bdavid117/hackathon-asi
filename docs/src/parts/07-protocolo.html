@@ -92,7 +92,7 @@ ver|tipo · flags · device_id · seq · rev · len · carga (13 B) · etiqueta<
   <li><strong>Integridad.</strong> Una etiqueta de 4 bytes detecta corrupción y suplantación casual (probabilidad de acierto aleatorio de 1 entre 2<sup>32</sup> por intento).</li>
   <li><strong>Provisión de la clave (supuesto de v0).</strong> Un teléfono que se instala o se activa sin conexión no puede haber registrado una clave propia. Por eso, en la demostración, la etiqueta usa una <strong>clave de evento precompartida</strong> que se siembra en la app y en los nodos al preparar el entorno. Limitación: quien tenga la app puede falsificar tramas; protege contra corrupción y errores, no contra un adversario. Para producción: registro de una clave por instalación en el primer contacto con conexión, o firma asimétrica.</li>
   <li><strong>Límite honesto.</strong> Esta etiqueta <em>no</em> protege contra un atacante dedicado que pueda intentar millones de veces. Para producción se usaría una etiqueta más larga o una firma asimétrica, a costa de más bytes por trama.</li>
-  <li><strong>Abuso.</strong> Límite de tasa por dispositivo, reputación que reduce el <em>peso de corroboración</em> (no bloquea un SOS), y detección de copias de texto.</li>
+  <li><strong>Abuso.</strong> Presupuesto por dispositivo que degrada (no rechaza; sólo se omite el modelo), reputación que reduce el <em>peso de corroboración</em> (no bloquea un SOS), y detección de copias de texto.</li>
   <li><strong>Privacidad.</strong> Sin identidad obligatoria; <code>device_id</code> es un número aleatorio, no un identificador del teléfono; los canales con Internet usan TLS.</li>
 </ul>
 
