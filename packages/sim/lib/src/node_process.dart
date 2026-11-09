@@ -22,6 +22,7 @@ class NodeProcess {
     required int port,
     required String dataDir,
     List<String> peers = const [],
+    List<String> extraArgs = const [],
     String? nodeDir,
   }) async {
     final dir = nodeDir ?? _defaultNodeDir();
@@ -35,6 +36,7 @@ class NodeProcess {
       [
         'run', 'bin/sard_node.dart', '--id', id, '--port', '$port', '--data', dataDir,
         if (peers.isNotEmpty) ...['--peers', peers.join(',')],
+        ...extraArgs,
       ],
       workingDirectory: dir,
     );

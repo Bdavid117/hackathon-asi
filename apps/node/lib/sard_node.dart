@@ -2,8 +2,11 @@
 library;
 
 export 'src/event_log.dart';
+export 'src/incident_index.dart';
+export 'src/incidents.dart';
 export 'src/ingest.dart';
 export 'src/merged_reports.dart';
+export 'src/node_health.dart';
 export 'src/queue_service.dart';
 export 'src/queue_view.dart';
 export 'src/api.dart';

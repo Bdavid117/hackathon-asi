@@ -183,6 +183,42 @@ Future<void> main(List<String> args) async {
       visibleAfter[e.key] = DateTime.now().difference(e.value).inMilliseconds;
     }
   }
+  // Los incidentes tras la ráfaga: la vista corta (lo que pide el tablero), una página de la completa y un detalle.
+  var shortRows = 0, shortBytes = 0, shortMs = 0, allBytes = 0, allMs = 0, incidentTotal = 0, detailMs = 0, detailBytes = 0;
+  var p1Total = 0, p1InShort = 0, followUp = 0, bareCount = 0, incidentCount = 0;
+  String incidentNote = '';
+  try {
+    final sw = Stopwatch()..start();
+    final r = await client.get(base0.resolve('/api/incidents')).timeout(const Duration(seconds: 120));
+    shortMs = sw.elapsedMilliseconds;
+    shortBytes = r.bodyBytes.length;
+    final env = (jsonDecode(r.body) as Map).cast<String, Object?>();
+    final items = (env['items']! as List).cast<Map<String, Object?>>();
+    shortRows = items.length;
+    final c = (env['counters']! as Map).cast<String, Object?>();
+    incidentCount = c['incidents']! as int;
+    incidentTotal = c['reports']! as int;
+    followUp = c['followUp']! as int;
+    bareCount = c['bareSos']! as int;
+    p1Total = ((c['byUrgency']! as Map)['P1']! as int);
+    p1InShort = items.where((i) => i['urgency'] == 'P1').length;
+
+    final sw1 = Stopwatch()..start();
+    final ra = await client.get(base0.resolve('/api/incidents?view=all&limit=1000')).timeout(const Duration(seconds: 120));
+    allMs = sw1.elapsedMilliseconds;
+    allBytes = ra.bodyBytes.length;
+    final firstPage = ((jsonDecode(ra.body) as Map)['items']! as List).cast<Map<String, Object?>>();
+    if (firstPage.isNotEmpty) {
+      final big = firstPage.reduce((a, b) => (a['size']! as int) >= (b['size']! as int) ? a : b);
+      final sw2 = Stopwatch()..start();
+      final d = await client.get(base0.resolve('/api/incidents/${Uri.encodeComponent(big['id']! as String)}')).timeout(const Duration(seconds: 60));
+      detailMs = sw2.elapsedMilliseconds;
+      detailBytes = d.bodyBytes.length;
+      incidentNote = ' (el mayor de la primera página tiene ${big['size']} reportes)';
+    }
+  } on Object catch (e) {
+    incidentNote = ' (falló: $e)';
+  }
   Map<String, Object?>? health;
   try {
     health = (jsonDecode((await client.get(base0.resolve('/api/health'))).body) as Map).cast<String, Object?>();
@@ -210,6 +246,10 @@ Future<void> main(List<String> args) async {
     ..writeln('| Un **P4** plantado a la vez aparece en la cola tras (antigüedad atendida) | ${visibleAfter.containsKey(p4Key) ? '${(visibleAfter[p4Key]! / 1000).toStringAsFixed(1)} s' : '**no apareció**'} |')
     ..writeln('| Reportes en la cola al final / acusados | $inQueue / $expected |')
     ..writeln('| Tiempo extra hasta ver todo tras la última trama | ${settleSeconds.toStringAsFixed(1)} s |')
+    ..writeln('| Vista corta `/api/incidents` (lo que pide el tablero) | $shortRows filas, ${(shortBytes / 1024).toStringAsFixed(0)} KB, $shortMs ms · de $incidentCount incidentes ($bareCount «SOS sin detalle» agregados, $followUp en seguimiento fuera de la vista) |')
+    ..writeln('| ¿Algún P1 fuera de la vista corta? | $p1InShort de $p1Total P1 dentro |')
+    ..writeln('| Una página completa `?view=all&limit=1000` | ${(allBytes / 1024).toStringAsFixed(0)} KB, $allMs ms |')
+    ..writeln('| Detalle `/api/incidents/<id>` | ${(detailBytes / 1024).toStringAsFixed(0)} KB, $detailMs ms$incidentNote |')
     ..writeln('| Eventos en el log del nodo | ${health?['events'] ?? '—'} |')
     ..writeln();
   final f = File(out);
@@ -219,5 +259,5 @@ Future<void> main(List<String> args) async {
   }
   f.writeAsStringSync(b.toString(), mode: FileMode.append);
   stdout.writeln(b.toString());
-  exit(aborted || inQueue < expected ? 1 : 0);
+  exit(aborted || inQueue < expected || incidentTotal != inQueue || p1InShort != p1Total ? 1 : 0);
 }

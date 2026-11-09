@@ -59,6 +59,122 @@ void main() {
     expect(int.tryParse(r.headers['x-queue-age-ms'] ?? ''), isNotNull);
   });
 
+  group('GET /api/incidents y /api/incidents/<id>', () {
+    test('la lista trae un resumen por incidente, con las cabeceras de frescura', () async {
+      await post(vectorBytes('sos_min'));
+      final r = await get('/api/incidents');
+      expect(r.statusCode, 200);
+      expect(r.headers['x-queue-stale'], 'false');
+      expect(r.headers['x-queue-age-ms'], isNotNull);
+      final env = (await json(r))! as Map<String, Object?>;
+      expect(env['view'], 'short');
+      expect((env['counters']! as Map)['incidents'], 1);
+      final i = (env['items']! as List).single! as Map<String, Object?>;
+      for (final k in ['id', 'urgency', 'size', 'members', 'signals', 'people', 'peopleLabel', 'sources', 'uncertainty', 'needsReview', 'bareSos', 'recommendation', 'approval', 'sharedResources']) {
+        expect(i.containsKey(k), isTrue, reason: k);
+      }
+    });
+
+    test('el detalle de un incidente trae las observaciones originales, la recomendación y la aprobación', () async {
+      await post(vectorBytes('sos_min'));
+      final id = ((((await json(await get('/api/incidents?view=all')))! as Map)['items'] as List).single as Map)['id'] as String;
+      final r = await get('/api/incidents/$id');
+      expect(r.statusCode, 200);
+      expect(r.headers['x-queue-stale'], isNotNull);
+      final d = (await json(r))! as Map<String, Object?>;
+      expect(d['id'], id);
+      expect((d['members']! as List), isNotEmpty);
+      expect(d.containsKey('recommendation'), isTrue);
+      expect((d['approval']! as Map)['status'], 'pendiente');
+    });
+
+    test('parámetros inválidos responden 400 y no rompen: vista, urgencia, límite, desplazamiento, bare', () async {
+      for (final q in ['view=todo', 'view=all&urgency=P9', 'view=all&limit=0', 'view=all&limit=abc', 'view=all&offset=-1', 'view=all&bare=quizas', 'urgency=P1', 'bare=true']) {
+        expect((await get('/api/incidents?$q')).statusCode, 400, reason: q);
+      }
+      expect((await get('/api/health')).statusCode, 200);
+    });
+
+    test('la vista completa admite páginas y filtros', () async {
+      await post(vectorBytes('sos_min'));
+      final p = (await json(await get('/api/incidents?view=all&limit=1&offset=0&urgency=P1')))! as Map<String, Object?>;
+      expect(p['view'], 'all');
+      expect(p['limit'], 1);
+      final none = (await json(await get('/api/incidents?view=all&offset=99')))! as Map<String, Object?>;
+      expect(none['items'], isEmpty);
+    });
+
+    test('un incidente desconocido responde 404 (también con ids raros) y no rompe el nodo', () async {
+      await post(vectorBytes('sos_min'));
+      for (final id in ['no-existe-1', '..%2F..%2Fetc', '%00', 'a%20b', 'x' * 500]) {
+        expect((await get('/api/incidents/$id')).statusCode, 404, reason: id);
+      }
+      expect((await get('/api/health')).statusCode, 200);
+    });
+
+    test('sin la bandera --cors no llevan access-control-allow-origin', () async {
+      await post(vectorBytes('sos_min'));
+      final id = ((((await json(await get('/api/incidents?view=all')))! as Map)['items'] as List).single as Map)['id'] as String;
+      for (final p in ['/api/incidents', '/api/incidents/$id', '/api/nodes']) {
+        expect((await get(p)).headers.containsKey('access-control-allow-origin'), isFalse, reason: p);
+      }
+    });
+  });
+
+  group('ETag: un tablero que sondea sin cambios no vuelve a descargar nada', () {
+    Future<Response> getWith(String path, {String? ifNoneMatch}) => Future.sync(
+      () => handler(Request('GET', Uri.parse('http://localhost$path'), headers: {'if-none-match': ?ifNoneMatch})),
+    );
+
+    for (final path in ['/api/queue', '/api/incidents', '/api/incidents?view=all&limit=5']) {
+      test('$path: la segunda lectura con el mismo ETag responde 304 sin cuerpo, y sigue declarando su frescura', () async {
+        await post(vectorBytes('sos_min'));
+        final first = await get(path);
+        final tag = first.headers['etag'];
+        expect(tag, isNotNull);
+        final again = await getWith(path, ifNoneMatch: tag);
+        expect(again.statusCode, 304);
+        expect(await again.readAsString(), isEmpty);
+        expect(again.headers['x-queue-stale'], isNotNull);
+        expect(again.headers['x-queue-age-ms'], isNotNull);
+        expect(again.headers['etag'], tag);
+      });
+    }
+
+    test('si llega un reporte, el ETag cambia y la lectura vuelve a traer el cuerpo', () async {
+      await post(vectorBytes('sos_min'));
+      final tag = (await get('/api/incidents')).headers['etag'];
+      await post(sosFrame(2, deviceHex: 'aaaaaaaaaaaaaaaa'));
+      final r = await getWith('/api/incidents', ifNoneMatch: tag);
+      expect(r.statusCode, 200);
+      expect(r.headers['etag'], isNot(tag));
+    });
+
+    test('tras REINICIAR el nodo el ETag no se repite: un tablero con un ETag viejo no recibe un 304 falso', () async {
+      await post(vectorBytes('sos_min'));
+      final oldTag = (await get('/api/incidents')).headers['etag'];
+      // «reinicio»: otro proceso con el mismo log (misma versión calculada, datos que pueden diferir)
+      final restarted = buildHandler(ingest: Ingest(log: log, key: testKey), log: log);
+      final r = await Future.sync(() => restarted(Request('GET', Uri.parse('http://localhost/api/incidents'), headers: {'if-none-match': oldTag!})));
+      expect(r.statusCode, 200);
+      expect(r.headers['etag'], isNot(oldTag));
+    });
+
+    test('un ETag de otra consulta no vale: cada página tiene el suyo', () async {
+      await post(vectorBytes('sos_min'));
+      final shortTag = (await get('/api/incidents')).headers['etag'];
+      final r = await getWith('/api/incidents?view=all', ifNoneMatch: shortTag);
+      expect(r.statusCode, 200);
+    });
+
+    test('un ETag que no es el vigente (basura incluida) se ignora y se sirve el cuerpo', () async {
+      await post(vectorBytes('sos_min'));
+      for (final bad in ['W/"0:"', '*', '""', 'basura', 'x' * 500]) {
+        expect((await getWith('/api/queue', ifNoneMatch: bad)).statusCode, 200, reason: bad);
+      }
+    });
+  });
+
   group('CORS: por omisión una página ajena NO puede leer la cola ni la salud del nodo', () {
     test('sin la bandera no se envía access-control-allow-origin en ninguna ruta de lectura', () async {
       await post(vectorBytes('sos_min'));

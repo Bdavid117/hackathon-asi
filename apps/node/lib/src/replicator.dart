@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'event_log.dart';
+import 'node_health.dart';
 
 /// Replicación por sondeo (B1): pide a cada par los eventos que este nodo no tiene.
 ///
@@ -17,13 +18,16 @@ class PollingReplicator {
     required http.Client client,
     this.timeout = const Duration(seconds: 3),
     this.pageSize = 500,
+    NodeHealth? health,
   })  : _log = log,
         _peers = peers,
-        _client = client;
+        _client = client,
+        _health = health;
 
   final EventLog _log;
   final List<Uri> _peers;
   final http.Client _client;
+  final NodeHealth? _health;
   final Duration timeout;
   final int pageSize;
 
@@ -33,8 +37,9 @@ class PollingReplicator {
     for (final peer in _peers) {
       try {
         added += await _pullFrom(peer);
-      } on Exception {
+      } on Exception catch (e) {
         // Par caído, lento o con una respuesta inválida: se reintenta en el siguiente sondeo.
+        _health?.recordFailure(peer, e is TimeoutException ? 'tiempo agotado' : '$e');
         continue;
       }
     }
@@ -50,6 +55,18 @@ class PollingReplicator {
   Future<int> _pullFrom(Uri peer) async {
     final health = (await _getJson(peer.resolve('/api/health')))['body']! as Map<String, Object?>;
     final remote = (health['versionVector']! as Map).cast<String, int>();
+    int missing() {
+      final local = _log.versionVector();
+      var n = 0;
+      for (final e in remote.entries) {
+        if (e.key == _log.nodeId) continue;
+        final d = e.value - (local[e.key] ?? 0);
+        if (d > 0) n += d;
+      }
+      return n;
+    }
+
+    final missingBefore = missing();
     var added = 0;
     for (final entry in remote.entries) {
       final origin = entry.key;
@@ -67,6 +84,7 @@ class PollingReplicator {
         local = next;
       }
     }
+    _health?.recordContact(peer, missingBefore: missingBefore, missingAfter: missing());
     return added;
   }
 }

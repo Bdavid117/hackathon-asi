@@ -1,0 +1,15 @@
+{
+  "nota": "Datos SINTÉTICOS de demostración (Manizales). Ninguna de estas unidades existe.",
+  "resources": [
+    {"id": "AMB-01", "kind": "ambulancia", "label": "Ambulancia 1 · Base Centro",       "lat": 5.0689, "lon": -75.5174, "available": true},
+    {"id": "AMB-02", "kind": "ambulancia", "label": "Ambulancia 2 · Base Chipre",       "lat": 5.0603, "lon": -75.5071, "available": true},
+    {"id": "AMB-03", "kind": "ambulancia", "label": "Ambulancia 3 · Base Palogrande",   "lat": 5.0580, "lon": -75.4890, "available": true},
+    {"id": "AMB-04", "kind": "ambulancia", "label": "Ambulancia 4 · Base La Enea",      "lat": 5.0300, "lon": -75.4700, "available": false},
+    {"id": "BOM-01", "kind": "bomberos",   "label": "Bomberos · Estación Central",      "lat": 5.0702, "lon": -75.5139, "available": true},
+    {"id": "BOM-02", "kind": "bomberos",   "label": "Bomberos · Estación Sur",          "lat": 5.0450, "lon": -75.4950, "available": true},
+    {"id": "RES-01", "kind": "rescate",    "label": "Rescate estructural 1",            "lat": 5.0715, "lon": -75.5100, "available": true},
+    {"id": "RES-02", "kind": "rescate",    "label": "Rescate estructural 2",            "lat": 5.0500, "lon": -75.4850, "available": true},
+    {"id": "TRA-01", "kind": "transito",   "label": "Tránsito · Unidad vial 1",         "lat": 5.0670, "lon": -75.5120, "available": true},
+    {"id": "TRA-02", "kind": "transito",   "label": "Tránsito · Unidad vial 2",         "lat": 5.0560, "lon": -75.4980, "available": true}
+  ]
+}

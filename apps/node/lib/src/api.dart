@@ -7,6 +7,7 @@ import 'package:shelf_router/shelf_router.dart';
 import 'approvals.dart';
 import 'event_log.dart';
 import 'ingest.dart';
+import 'node_health.dart';
 import 'pipeline.dart';
 import 'queue_service.dart';
 
@@ -35,7 +36,28 @@ Response _json(Object? body, {int status = 200, bool cors = false}) => Response(
 /// - `GET /api/health`: identidad del nodo y vector de versiones.
 ///
 /// Si se da [pipeline], cada trama recién guardada pasa por los agentes de reglas.
-Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRunner? pipeline, QueueService? queue, bool cors = false}) {
+/// Cabeceras de una lectura de la proyección: JSON + frescura honesta (si es una versión anterior del
+/// log se dice, y cuánto) + `ETag` (la versión calculada y la consulta exacta).
+Map<String, String> _freshHeaders(QueueRead r, bool cors, String etag) => {
+  'content-type': 'application/json; charset=utf-8',
+  if (cors) ..._devCors,
+  'x-queue-stale': '${r.stale}',
+  'x-queue-age-ms': '${r.ageMs}',
+  'etag': etag,
+  if (cors) 'access-control-expose-headers': 'x-queue-stale, x-queue-age-ms, etag',
+};
+
+/// La respuesta de una lectura de la proyección. Si el cliente ya tiene esta versión (`If-None-Match`
+/// igual al ETag) se responde **304 sin cuerpo**: un tablero que sondea sin cambios no vuelve a bajar
+/// megabytes. La frescura se declara igual en los dos casos. Un ETag ajeno o basura se ignora.
+Response _projectionResponse(Request req, QueueRead r, bool cors, String body) {
+  final etag = 'W/"${r.epoch}.${r.version}:${req.url.path}?${req.url.query}"';
+  final headers = _freshHeaders(r, cors, etag);
+  if (req.headers['if-none-match'] == etag) return Response(304, headers: {...headers}..remove('content-type'));
+  return Response.ok(body, headers: headers);
+}
+
+Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRunner? pipeline, QueueService? queue, NodeHealth? health, bool cors = false}) {
   final queueService = queue ?? QueueService(log);
   final router = Router()
     ..post('/frame', (Request req) async {
@@ -88,18 +110,35 @@ Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRun
     })
     ..get('/api/queue', (Request req) async {
       final r = await queueService.read();
-      return Response.ok(
-        r.json,
-        headers: {
-          'content-type': 'application/json; charset=utf-8',
-          if (cors) ..._devCors,
-          // frescura honesta: si es una versión anterior del log, se dice y se dice cuánto
-          'x-queue-stale': '${r.stale}',
-          'x-queue-age-ms': '${r.ageMs}',
-          if (cors) 'access-control-expose-headers': 'x-queue-stale, x-queue-age-ms',
-        },
-      );
+      return _projectionResponse(req, r, cors, r.json);
     })
+    ..get('/api/incidents', (Request req) async {
+      final q = req.url.queryParameters;
+      final int offset, limit;
+      final bool? bare;
+      try {
+        offset = q.containsKey('offset') ? int.parse(q['offset']!) : 0;
+        limit = q.containsKey('limit') ? int.parse(q['limit']!) : 200;
+        bare = switch (q['bare']) { null => null, 'true' => true, 'false' => false, _ => throw const FormatException('bare debe ser true o false') };
+      } on FormatException catch (e) {
+        return Response(400, body: 'parámetros inválidos: ${e.message}');
+      }
+      final r = await queueService.read();
+      final String body;
+      try {
+        body = r.incidentsPage(view: q['view'] ?? 'short', urgency: q['urgency'], bare: bare, offset: offset, limit: limit);
+      } on ArgumentError catch (e) {
+        return Response(400, body: 'parámetros inválidos: ${e.message}');
+      }
+      return _projectionResponse(req, r, cors, body);
+    })
+    ..get('/api/incidents/<id>', (Request req, String id) async {
+      final r = await queueService.read();
+      final detail = r.detailOf(Uri.decodeComponent(id));
+      if (detail == null) return Response(404, body: 'incidente desconocido (puede haberse fusionado o dividido: vuelve a pedir la lista)');
+      return _projectionResponse(req, r, cors, detail);
+    })
+    ..get('/api/nodes', (Request req) => _json(health?.snapshot(log) ?? NodeHealth(nodeId: log.nodeId, peers: const []).snapshot(log), cors: cors))
     ..get('/api/events', (Request req) {
       final q = req.url.queryParameters;
       final origin = q['origin'];

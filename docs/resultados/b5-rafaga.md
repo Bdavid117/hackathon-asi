@@ -56,3 +56,45 @@ Una sección por ejecución, para comparar entre etapas. Datos sintéticos; un s
 | Tiempo extra hasta ver todo tras la última trama | 4.9 s |
 | Eventos en el log del nodo | 33767 |
 
+## Ráfaga · Etapa 3 · con incidentes, recomendaciones y estado de nodos (n=10 000)
+
+- Fecha: 2026-11-08T22:51:05.180485 · reportes pedidos: 10000 · concurrencia: 16 · semilla: 1 · tope: 900 s
+- Nodo: un proceso real (`dart run`, JIT) con pares ninguno; reportes sintéticos con texto en la rev 0 (más pesados que un SOS real).
+
+- Ráfaga completa en 10.1 s (990 tramas/s).
+
+| Medida | Valor |
+|---|---|
+| Tramas acusadas / fallidas | 10002 / 0 |
+| Latencia del ACK p50 / p95 / máx | 12 ms / 30 ms / 173 ms |
+| Capacidad de respuesta del nodo (`/api/health` durante la ráfaga) p50 / p95 / máx | 16 ms / 40 ms / 123 ms |
+| Un **P1** plantado a mitad de la ráfaga aparece en la cola tras | 2.8 s |
+| Un **P4** plantado a la vez aparece en la cola tras (antigüedad atendida) | 2.8 s |
+| Reportes en la cola al final / acusados | 10002 / 10002 |
+| Tiempo extra hasta ver todo tras la última trama | 5.1 s |
+| Incidentes tras la ráfaga: `/api/incidents` | 9758 filas, 7742 KB, 51 ms; suma de tamaños 10002 (reportes acusados: 10002) |
+| Detalle de un incidente: `/api/incidents/<id>` | 5 KB, 5 ms (el mayor tiene 5 reportes) |
+| Eventos en el log del nodo | 33868 |
+
+## Ráfaga · Etapa 3 · vista corta de incidentes (n=10 000)
+
+- Fecha: 2026-11-08T22:56:50.710066 · reportes pedidos: 10000 · concurrencia: 16 · semilla: 1 · tope: 900 s
+- Nodo: un proceso real (`dart run`, JIT) con pares ninguno; reportes sintéticos con texto en la rev 0 (más pesados que un SOS real).
+
+- Ráfaga completa en 9.6 s (1042 tramas/s).
+
+| Medida | Valor |
+|---|---|
+| Tramas acusadas / fallidas | 10002 / 0 |
+| Latencia del ACK p50 / p95 / máx | 12 ms / 31 ms / 123 ms |
+| Capacidad de respuesta del nodo (`/api/health` durante la ráfaga) p50 / p95 / máx | 17 ms / 47 ms / 108 ms |
+| Un **P1** plantado a mitad de la ráfaga aparece en la cola tras | 2.4 s |
+| Un **P4** plantado a la vez aparece en la cola tras (antigüedad atendida) | 2.4 s |
+| Reportes en la cola al final / acusados | 10002 / 10002 |
+| Tiempo extra hasta ver todo tras la última trama | 5.0 s |
+| Vista corta `/api/incidents` (lo que pide el tablero) | 4463 filas, 3985 KB, 17 ms · de 9758 incidentes (1751 «SOS sin detalle» agregados, 3544 en seguimiento fuera de la vista) |
+| ¿Algún P1 fuera de la vista corta? | 1909 de 1909 P1 dentro |
+| Una página completa `?view=all&limit=1000` | 975 KB, 20 ms |
+| Detalle `/api/incidents/<id>` | 4 KB, 5 ms (el mayor de la primera página tiene 3 reportes) |
+| Eventos en el log del nodo | 33959 |
+

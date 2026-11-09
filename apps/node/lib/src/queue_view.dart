@@ -196,7 +196,8 @@ List<QueueItem> buildQueueFromEvents(List<Event> received, List<Event> triageEve
   return items;
 }
 
-const List<String> _codeOrder = [
+/// Señales en orden canónico (para que dos nodos produzcan listas idénticas).
+const List<String> kSignalCodeOrder = [
   'atrapado',
   'herido',
   'incendio',
@@ -234,7 +235,7 @@ TriageResult _effective(TriageResult rules, List<Event> model, String? text) {
       if (ev is! Map) continue;
       final code = ev['code'], quote = ev['quote'];
       if (code is! String || quote is! String || quote.isEmpty || text == null || !text.contains(quote)) continue;
-      if (!_codeOrder.contains(code)) continue;
+      if (!kSignalCodeOrder.contains(code)) continue;
       evidence.add(Signal(code, quote: quote));
     }
   }
@@ -245,7 +246,7 @@ TriageResult _effective(TriageResult rules, List<Event> model, String? text) {
   if (modelUrgencies.length > 1 || modelUrgencies.any((u) => u != rules.urgency)) uncertainty.add('juicios_discrepantes');
   return TriageResult(
     urgency: urgency,
-    signals: [for (final c in _codeOrder) if (signals.contains(c)) c],
+    signals: [for (final c in kSignalCodeOrder) if (signals.contains(c)) c],
     mode: 'rules+llm',
     evidence: evidence,
     confidence: rules.confidence,
@@ -262,8 +263,8 @@ List<Map<String, String>> _evidenceJson(List<Signal> evidence) {
   for (final e in evidence) {
     final row = {'code': e.code, if (e.field != null) 'field': e.field!, if (e.quote != null) 'quote': e.quote!};
     if (!seen.add(jsonEncode(row))) continue;
-    final order = _codeOrder.indexOf(e.code);
-    rows.add((order < 0 ? _codeOrder.length : order, e.field ?? '', e.quote ?? '', row));
+    final order = kSignalCodeOrder.indexOf(e.code);
+    rows.add((order < 0 ? kSignalCodeOrder.length : order, e.field ?? '', e.quote ?? '', row));
   }
   rows.sort((a, b) {
     final c = a.$1.compareTo(b.$1);

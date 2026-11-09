@@ -63,9 +63,12 @@ Future<void> main(List<String> args) async {
     return out;
   }
 
+  // Recursos declarados sintéticos (el agente 6 sólo puede nombrar estos).
+  final repoRoot = File.fromUri(Platform.script).parent.parent.parent.parent.path;
+  final nodeArgs = ['--resources', '$repoRoot/config/recursos.json'];
   try {
-    a = await NodeProcess.start(id: 'A', port: portA, dataDir: '${data.path}/A', peers: [urlB.toString()]);
-    b = await NodeProcess.start(id: 'B', port: portB, dataDir: '${data.path}/B', peers: [urlA.toString()]);
+    a = await NodeProcess.start(id: 'A', port: portA, dataDir: '${data.path}/A', peers: [urlB.toString()], extraArgs: nodeArgs);
+    b = await NodeProcess.start(id: 'B', port: portB, dataDir: '${data.path}/B', peers: [urlA.toString()], extraArgs: nodeArgs);
 
     final outbox = Outbox.open(':memory:', key: key);
     Channel link(Uri node, int s) =>
@@ -138,14 +141,14 @@ Future<void> main(List<String> args) async {
         stdout.writeln('· kill -9 al nodo A con $sentCount/${outbox.all().length} tramas acusadas');
       }
       if (killed && !restarted && DateTime.now().isAfter(restartAt!)) {
-        a = await NodeProcess.start(id: 'A', port: portA, dataDir: '${data.path}/A', peers: [urlB.toString()]);
+        a = await NodeProcess.start(id: 'A', port: portA, dataDir: '${data.path}/A', peers: [urlB.toString()], extraArgs: nodeArgs);
         restarted = true;
         stdout.writeln('· nodo A reiniciado (misma carpeta de datos)');
       }
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
     if (!restarted) {
-      a = await NodeProcess.start(id: 'A', port: portA, dataDir: '${data.path}/A', peers: [urlB.toString()]);
+      a = await NodeProcess.start(id: 'A', port: portA, dataDir: '${data.path}/A', peers: [urlB.toString()], extraArgs: nodeArgs);
     }
 
     // Espera a que ambos nodos converjan (mismos eventos).
@@ -186,6 +189,72 @@ Future<void> main(List<String> args) async {
     check(keysA.length == total && keysB.length == total, 'ambas colas tienen exactamente $total reportes (A=${keysA.length}, B=${keysB.length})');
     final withText = (total + 4) ~/ 5;
     check(qa.where((i) => i['text'] != null).length == withText, 'las $withText revisiones con texto se fundieron con su reporte');
+
+    // ── Incidentes, recomendación y aprobación (Etapas 2 y 3) sobre los dos procesos reales ──
+    Future<List<Map<String, Object?>>> incidents(Uri node) async =>
+        ((jsonDecode((await client.get(node.resolve('/api/incidents?view=all&limit=1000'))).body) as Map)['items'] as List).cast<Map<String, Object?>>();
+    final ia = await incidents(urlA), ib = await incidents(urlB);
+    String view(List<Map<String, Object?>> l) => jsonEncode([
+      for (final i in l) [i['id'], i['urgency'], i['size'], (i['recommendation']! as Map)['id'], (i['recommendation']! as Map)['state']],
+    ]);
+    check(view(ia) == view(ib), 'ambos nodos muestran los mismos incidentes y las mismas recomendaciones (${ia.length} incidentes)');
+    check(ia.fold<int>(0, (n, i) => n + (i['size']! as int)) == total, 'cada reporte está en exactamente un incidente');
+    final shortEnv = (jsonDecode((await client.get(urlA.resolve('/api/incidents'))).body) as Map).cast<String, Object?>();
+    final shortIds = {for (final i in shortEnv['items']! as List) (i as Map)['id']};
+    check(ia.where((i) => i['urgency'] == 'P1').every((i) => shortIds.contains(i['id'])), 'ningún P1 queda fuera de la vista corta (${ia.where((i) => i['urgency'] == 'P1').length} P1)');
+    final counters = (shortEnv['counters']! as Map).cast<String, Object?>();
+    check(counters['incidents'] == ia.length && counters['reports'] == total, 'los contadores son sobre el total real (${counters['incidents']} incidentes, ${counters['reports']} reportes)');
+    final proposed = ia.where((i) => (i['recommendation']! as Map)['state'] == 'propuesta').toList();
+    check(proposed.isNotEmpty, 'hay incidentes con recomendación propuesta (${proposed.length})');
+    final declared = (jsonDecode(File('$repoRoot/config/recursos.json').readAsStringSync()) as Map)['resources'] as List;
+    final declaredIds = {for (final r in declared) (r as Map)['id'] as String};
+    check(
+      proposed.every((i) => ((i['recommendation']! as Map)['resourceIds'] as List).every(declaredIds.contains)),
+      'toda recomendación nombra sólo recursos declarados',
+    );
+    check(
+      !(await allEvents(urlA)).any((e) => (e['type'] as String).startsWith('approval.')),
+      '0 aprobaciones automáticas: ningún evento de aprobación existe sin que una persona lo pida',
+    );
+
+    // Una persona aprueba en A; la decisión se replica y B la ve aprobada.
+    if (proposed.isNotEmpty) {
+      final target = proposed.first;
+      final detail = jsonDecode((await client.get(urlA.resolve('/api/incidents/${Uri.encodeComponent(target['id']! as String)}'))).body) as Map;
+      check((detail['recommendation'] as Map)['requires_approval'] == true, 'la recomendación exige aprobación humana');
+      final body = jsonEncode({
+        'recommendationId': (target['recommendation'] as Map)['id'],
+        'incidentId': target['id'],
+        'members': detail['members'] is List ? [for (final m in detail['members'] as List) (m as Map)['reportKey']] : <String>[],
+        'decision': 'granted',
+        'note': 'prueba H1',
+        'who': 'coordinación de prueba',
+      });
+      final wrong = await client.post(urlA.resolve('/api/approval'), headers: {'content-type': 'text/plain'}, body: body);
+      check(wrong.statusCode == 415, 'sin content-type JSON la aprobación se rechaza con 415 (${wrong.statusCode})');
+      final okResp = await client.post(urlA.resolve('/api/approval'), headers: {'content-type': 'application/json'}, body: body);
+      check(okResp.statusCode == 200, 'la aprobación en A se registra (${okResp.statusCode})');
+      String? seenOnB;
+      final until = DateTime.now().add(const Duration(seconds: 15));
+      while (DateTime.now().isBefore(until)) {
+        final row = (await incidents(urlB)).firstWhere((i) => i['id'] == target['id'], orElse: () => const {});
+        seenOnB = row.isEmpty ? null : (row['approval']! as Map)['status'] as String?;
+        if (seenOnB == 'aprobada') break;
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      check(seenOnB == 'aprobada', 'la aprobación registrada en A se replica y B la ve «aprobada» (vio: $seenOnB)');
+    }
+
+    // Estado de los nodos: tras convergir, A ve a B sincronizado y la vista no es parcial.
+    Map<String, Object?>? nodesA;
+    final nodesBy = DateTime.now().add(const Duration(seconds: 15));
+    while (DateTime.now().isBefore(nodesBy)) {
+      nodesA = (jsonDecode((await client.get(urlA.resolve('/api/nodes'))).body) as Map).cast<String, Object?>();
+      if (nodesA['partialView'] == false) break;
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    final peerStates = [for (final p in (nodesA?['peers'] as List? ?? const [])) '${(p as Map)['state']}'];
+    check(nodesA?['partialView'] == false && peerStates.every((st) => st == 'sincronizado'), 'A ve a sus pares sincronizados y sin «vista parcial» (pares: $peerStates)');
 
     // Recepciones por (reporte, revisión): cada nodo que recibe una trama escribe la suya, así que
     // tras un reintento con failover puede haber una por nodo. La proyección las funde.

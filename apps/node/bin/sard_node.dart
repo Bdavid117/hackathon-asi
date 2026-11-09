@@ -20,6 +20,7 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
   --peers     URLs de los nodos pares separadas por comas, p. ej. http://localhost:8082
   --web-root  directorio con el tablero compilado (apps/dashboard/build/web)
   --cors      «on» sólo en DESARROLLO (tablero en otro origen). Por omisión no hay CORS: una página ajena no puede leer la cola.
+  --resources archivo JSON con los recursos declarados (ver config/recursos.json); sin él el agente 6 propone la acción pero no recursos.
   --llm       «on» para consultar al modelo de lenguaje (usa la variable ANTHROPIC_API_KEY); por defecto apagado.
               Sin clave o sin red el nodo sigue con las reglas. NO verificado contra la API real.
 ''';
@@ -58,7 +59,29 @@ Future<void> main(List<String> args) async {
       llm = ClaudeHttpPort(client: http.Client(), apiKey: apiKey);
     }
   }
-  final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, cors: o['cors'] == 'on', pipeline: PipelineRunner(log, llm: llm, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r')));
+  var resources = <Resource>[];
+  final resourcesPath = o['resources'];
+  if (resourcesPath != null) {
+    try {
+      resources = parseResources(File(resourcesPath).readAsStringSync());
+    } on FileSystemException catch (e) {
+      stderr.writeln('No se pudo leer --resources: ${e.message} (${e.path})');
+      exit(64);
+    } on FormatException catch (e) {
+      stderr.writeln('Archivo de recursos inválido: ${e.message}');
+      exit(64);
+    }
+  }
+  final peers = (o['peers'] ?? '').split(',').where((u) => u.isNotEmpty).map(Uri.parse).toList();
+  final health = NodeHealth(nodeId: id, peers: peers);
+  final api = buildHandler(
+    ingest: Ingest(log: log, key: key),
+    log: log,
+    cors: o['cors'] == 'on',
+    health: health,
+    queue: QueueService(log, resources: resources),
+    pipeline: PipelineRunner(log, llm: llm, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r')),
+  );
   // La auditoría de vínculos va por lotes, fuera de la ruta del ACK (a lo sumo cada 5 s y sólo si hay
   // reportes nuevos); con muchos reportes calcula en otro isolate.
   final audit = AuditLinker(log);
@@ -68,9 +91,8 @@ Future<void> main(List<String> args) async {
       ? api
       : Cascade().add(api).add(createStaticHandler(web, defaultDocument: 'index.html')).handler;
 
-  final peers = (o['peers'] ?? '').split(',').where((u) => u.isNotEmpty).map(Uri.parse).toList();
   if (peers.isNotEmpty) {
-    final replicator = PollingReplicator(log: log, peers: peers, client: http.Client());
+    final replicator = PollingReplicator(log: log, peers: peers, client: http.Client(), health: health);
     var running = false;
     Timer.periodic(const Duration(seconds: 3), (_) async {
       if (running) return; // no solapar sondeos
@@ -84,7 +106,7 @@ Future<void> main(List<String> args) async {
   }
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
-  stdout.writeln('sard_node $id escuchando en :${server.port} (${log.all().length} eventos en el log)');
+  stdout.writeln('sard_node $id escuchando en :${server.port} (${log.count()} eventos en el log, ${resources.length} recursos declarados)');
 
   Future<void> shutdown(ProcessSignal _) async {
     await server.close(force: true);

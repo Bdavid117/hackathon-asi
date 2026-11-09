@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:sard_agents/sard_agents.dart';
 import 'package:sard_node/sard_node.dart';
 import 'package:test/test.dart';
 
@@ -221,6 +222,69 @@ void main() {
       expect(got.ageMs, greaterThanOrEqualTo(3000));
       gate!.complete();
       await s.idle;
+    });
+  });
+
+  group('la misma pasada sirve la cola y los incidentes', () {
+    test('con el cálculo por omisión, read() trae la cola, el resumen de incidentes y el detalle de cada uno', () async {
+      rec(log, 0, Random(1));
+      rec(log, 1, Random(1));
+      final got = await QueueService(log).read();
+      final queue = jsonDecode(got.json) as List;
+      final incidents = (jsonDecode(got.incidentsPage(view: 'all')) as Map)['items'] as List;
+      expect(queue, hasLength(2));
+      expect(incidents, isNotEmpty);
+      final id = (incidents.first as Map)['id'] as String;
+      final detail = jsonDecode(got.detailOf(id)!) as Map;
+      expect(detail['id'], id);
+      expect(detail['members'], isNotEmpty);
+      expect(got.detailOf('no-existe-9'), isNull);
+    });
+
+    test('también con el cálculo en otro isolate (cola grande)', () async {
+      final r = Random(2);
+      for (var i = 0; i < 450; i++) {
+        rec(log, i, r);
+      }
+      final got = await QueueService(log, isolateAbove: 100).read();
+      final incidents = (jsonDecode(got.incidentsPage(view: 'all', limit: 1000)) as Map)['items'] as List;
+      final queue = jsonDecode(got.json) as List;
+      expect(incidents.fold<int>(0, (n, i) => n + ((i as Map)['size'] as int)), queue.length, reason: 'cada reporte está en exactamente un incidente');
+      for (final i in incidents.take(5)) {
+        expect(jsonDecode(got.detailOf((i as Map)['id'] as String)!), isA<Map>());
+      }
+    });
+
+    test('los recursos declarados llegan a las recomendaciones', () async {
+      log.append(
+        'report.received',
+        {'device_id': 'aa', 'frame_seq': 1, 'flags': 0x40, 'incident_type': 1, 'loc_quality': 2, 'lat': 5.07, 'lon': -75.51, 'text': null, 'captured_at': 1786370851, 'received_at': 5000},
+        reportKey: 'aa-1',
+        rev: 0,
+      );
+      final res = parseResources('{"resources":[{"id":"AMB-7","kind":"ambulancia","label":"Amb 7","lat":5.07,"lon":-75.51,"available":true}]}');
+      final got = await QueueService(log, resources: res).read();
+      final rec0 = (((jsonDecode(got.incidentsPage(view: 'all')) as Map)['items'] as List).single as Map)['recommendation'] as Map;
+      expect(rec0['resourceIds'], ['AMB-7']);
+    });
+
+    test('una aprobación nueva invalida la caché y el estado se actualiza', () async {
+      log.append(
+        'report.received',
+        {'device_id': 'aa', 'frame_seq': 1, 'flags': 0x40, 'incident_type': 1, 'loc_quality': 2, 'lat': 5.07, 'lon': -75.51, 'text': null, 'captured_at': 1786370851, 'received_at': 5000},
+        reportKey: 'aa-1',
+        rev: 0,
+      );
+      final s = QueueService(log);
+      final first = (((jsonDecode((await s.read()).incidentsPage(view: 'all')) as Map)['items'] as List).single as Map);
+      expect((first['approval'] as Map)['status'], 'pendiente');
+      log.append(
+        'approval.granted',
+        {'recommendationId': (first['recommendation'] as Map)['id'], 'incidentId': 'aa-1', 'members': ['aa-1'], 'note': '', 'who': 'Ana'},
+        reportKey: 'aa-1',
+      );
+      final second = (((jsonDecode((await s.read()).incidentsPage(view: 'all')) as Map)['items'] as List).single as Map);
+      expect((second['approval'] as Map)['status'], 'aprobada');
     });
   });
 
