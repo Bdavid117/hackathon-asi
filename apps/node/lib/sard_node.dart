@@ -14,5 +14,6 @@ export 'src/api.dart';
 export 'src/approvals.dart';
 export 'src/audit.dart';
 export 'src/device_budget.dart';
+export 'src/dispatch.dart';
 export 'src/replicator.dart';
 export 'src/pipeline.dart';

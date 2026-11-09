@@ -53,6 +53,10 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   printf '%-34s' "Códigos de acceso (3 nodos)"
   bash tool/access_check.sh > "$OUT" 2>&1; rc=$?
   if [ $rc -eq 0 ]; then echo "OK    $(tail -1 "$OUT")"; else echo "FALLÓ"; tail -20 "$OUT"; fail=1; fi
+  # El canal del despachador con 3 nodos reales (puertos 8194–8196): registro, reintento, conflicto, kill -9, códigos, réplica.
+  printf '%-34s' "Informe de despachador (3 nodos)"
+  bash tool/dispatch_check.sh > "$OUT" 2>&1; rc=$?
+  if [ $rc -eq 0 ]; then echo "OK    $(grep 'INFORME DE DESPACHADOR' "$OUT" | tail -1)"; else echo "FALLÓ"; tail -20 "$OUT"; fail=1; fi
 fi
 rm -f "$OUT" "$OUT.t12.md" "$OUT.t14.md" "$OUT.burst.md"
 [ "$fail" -eq 0 ] && echo "TODO EN VERDE" || { echo "HAY FALLOS"; exit 1; }

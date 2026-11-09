@@ -19,6 +19,10 @@ class MergedReport {
     this.people = 0,
     required this.capturedAt,
     required this.receivedAtMs,
+    this.sourceClass = 'app',
+    this.medium,
+    this.origin,
+    this.registeredBy,
   });
 
   final String reportKey;
@@ -43,9 +47,19 @@ class MergedReport {
   /// Cuándo recibió este nodo la primera trama del reporte.
   final int receivedAtMs;
 
+  /// De dónde viene: `app` (una trama del teléfono) o `radio` (información de segunda mano que registró un
+  /// despachador). La credibilidad base del agente 3 depende de ella.
+  final String sourceClass;
+
+  /// Sólo en informes de despachador: por dónde le llegó (`radio`, `telefono`, `presencial`), de quién viene la
+  /// información (si se sabe) y quién la registró (declarado, no autenticado).
+  final String? medium;
+  final String? origin;
+  final String? registeredBy;
+
   bool get hasLocation => lat != null && lon != null;
 
-  /// Lo que el agente 3 sabe del reporte. Todo lo que llega por una trama es de la app.
+  /// Lo que el agente 3 sabe del reporte. La clase de fuente sale del propio evento (`app` para toda trama).
   Observation toObservation() => Observation(
     reportKey: reportKey,
     deviceId: deviceId,
@@ -56,7 +70,7 @@ class MergedReport {
     locQuality: hasLocation ? locQuality : LocQuality.none,
     capturedAtMs: capturedAt * 1000,
     text: text,
-    sourceClass: 'app',
+    sourceClass: sourceClass,
   );
 }
 
@@ -77,6 +91,8 @@ List<MergedReport> mergeReports(Iterable<Event> received) {
     var q = LocQuality.none;
     String? text;
     var people = 0;
+    var sourceClass = 'app';
+    String? medium, origin, registeredBy;
     var receivedAt = (events.first.body['received_at'] as num?)?.toInt() ?? 0;
     final device = (events.first.body['device_id'] as String?) ?? key.split('-').first;
     for (final e in events) {
@@ -90,6 +106,13 @@ List<MergedReport> mergeReports(Iterable<Event> received) {
         q = LocQuality.values[qi.clamp(0, LocQuality.values.length - 1)];
       }
       if (b['text'] != null) text = b['text'] as String;
+      // Tolerante: un valor de otro tipo o vacío se ignora (y la fuente queda como «app»).
+      final sc = b['source_class'];
+      if (sc is String && sc.isNotEmpty) sourceClass = sc;
+      final md = b['medium'], og = b['origin'], rb = b['registered_by'];
+      if (md is String) medium = md;
+      if (og is String) origin = og;
+      if (rb is String) registeredBy = rb;
       // Un código reservado o desconocido se lee como «no indicado»: no pisa lo que ya se había dicho.
       final pb = PeopleBucket.fromCode((b['people_bucket'] as num?)?.toInt());
       if (pb != PeopleBucket.unknown) people = pb.code;
@@ -112,6 +135,10 @@ List<MergedReport> mergeReports(Iterable<Event> received) {
         people: people,
         capturedAt: capturedAt,
         receivedAtMs: receivedAt,
+        sourceClass: sourceClass,
+        medium: medium,
+        origin: origin,
+        registeredBy: registeredBy,
       ),
     );
   });

@@ -30,7 +30,13 @@ class Ingest {
     // Reconstruye qué tramas guarda este nodo (incluidas las replicadas) a partir del log.
     for (final e in _log.all()) {
       if (e.type != kReceivedType) continue;
-      _tracker(e.body['device_id']! as String).record(e.body['frame_seq']! as int);
+      // Sólo las que vienen de una trama: un `report.received` de otra forma (el informe de un despachador no
+      // tiene `frame_seq`) no pertenece a ningún dispositivo y no debe tumbar el arranque. Se comprueba la
+      // FORMA del cuerpo, no el canal, para cubrir también cualquier evento futuro con otra forma.
+      final device = e.body['device_id'];
+      final seq = e.body['frame_seq'];
+      if (device is! String || seq is! int) continue;
+      _tracker(device).record(seq);
     }
   }
 

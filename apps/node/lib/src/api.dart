@@ -5,6 +5,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
 import 'approvals.dart';
+import 'dispatch.dart';
 import 'event_log.dart';
 import 'ingest.dart';
 import 'node_health.dart';
@@ -106,6 +107,9 @@ Handler buildHandler({
   PipelineRunner? pipeline,
   QueueService? queue,
   NodeHealth? health,
+
+  /// Registro de informes de despachador (`POST /api/dispatch`). Por omisión se crea uno sobre [log].
+  Dispatch? dispatch,
   bool cors = false,
 
   /// Código de acceso del coordinador (`--coordinator-token`): lo que ve y decide. NO es identidad.
@@ -115,6 +119,7 @@ Handler buildHandler({
   String? peerToken,
 }) {
   final queueService = queue ?? QueueService(log);
+  final dispatcher = dispatch ?? Dispatch(log);
   final router = Router()
     ..post('/frame', (Request req) async {
       final chunks = BytesBuilder(copy: false);
@@ -163,6 +168,34 @@ Handler buildHandler({
         inputs: a.supersedes,
       );
       return _json({'id': e.id}, cors: cors);
+    })
+    ..post('/api/dispatch', (Request req) async {
+      // Igual que la aprobación: sólo JSON (un formulario de otra página llega como texto y no exige comprobación
+      // previa), con tope de tamaño, y la autorización —si hay código— ya se comprobó antes de llegar aquí.
+      final mime = (req.headers['content-type'] ?? '').split(';').first.trim().toLowerCase();
+      if (mime != 'application/json') return Response(415, body: 'se exige content-type: application/json');
+      final declared = int.tryParse(req.headers['content-length'] ?? '');
+      if (declared != null && declared > kMaxDispatchBytes) return Response(413, body: 'cuerpo demasiado grande');
+      final chunks = BytesBuilder(copy: false);
+      await for (final chunk in req.read()) {
+        chunks.add(chunk);
+        if (chunks.length > kMaxDispatchBytes) return Response(413, body: 'cuerpo demasiado grande');
+      }
+      final DispatchRequest d;
+      try {
+        d = parseDispatchRequest(jsonDecode(utf8.decode(chunks.takeBytes())));
+      } on FormatException catch (e) {
+        return Response(400, body: e.message);
+      }
+      final DispatchResult r;
+      try {
+        r = dispatcher.register(d);
+      } on DispatchConflict catch (e) {
+        return Response(409, body: e.toString());
+      }
+      // Los agentes de reglas corren sobre lo recién guardado (un reintento no los repite).
+      if (!r.duplicate) pipeline?.run(r.event);
+      return _json({'id': r.event.id, 'reportKey': r.event.reportKey, 'duplicate': r.duplicate}, cors: cors);
     })
     ..get('/api/queue', (Request req) async {
       final r = await queueService.read();

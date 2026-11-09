@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:sard_agents/sard_agents.dart';
 
 import 'device_budget.dart';
+import 'dispatch.dart';
 import 'event_log.dart';
 import 'merged_reports.dart';
 import 'ownership.dart';
@@ -126,12 +127,18 @@ class PipelineRunner {
   int _inFlight = 0;
   int _delayed = 0;
 
+  /// El texto de un informe de despachador NO se envía al modelo: por radio es más probable que traiga nombres,
+  /// teléfonos y direcciones que la frase de 140 B de la app, y hoy no se redacta ningún dato personal antes de
+  /// enviar. Se queda con las reglas hasta que exista esa redacción.
+  static bool _sinModelo(Event received) => received.body['channel'] == Dispatch.kChannel;
+
   /// Programa la consulta al modelo de [received]: enseguida si este nodo es el dueño; si no, tras su
   /// plazo de relevo (y sólo si el evento del dueño no llegó replicado entretanto). Quien espera su turno
   /// de relevo **no ocupa un hueco** del tope: sólo cuenta cuando ya le toca.
   void _scheduleModel(Event received) {
     final key = received.reportKey;
     if (_llm == null || key == null) return;
+    if (_sinModelo(received)) return;
     final id = '$key#${received.rev}';
     if (!_pending.add(id)) return;
     final wait = ownership?.delayFor(key) ?? Duration.zero;
@@ -188,6 +195,7 @@ class PipelineRunner {
     final llm = _llm;
     final key = received.reportKey;
     if (llm == null || key == null) return null;
+    if (_sinModelo(received)) return null;
     // Sólo los eventos DE ESTE reporte (por el índice): el coste no crece con el tamaño del log.
     MergedReport? me() {
       final merged = mergeReports(_log.eventsFor(key, type: 'report.received'));

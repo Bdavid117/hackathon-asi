@@ -29,6 +29,10 @@ class QueueItem {
     this.uncertainty = const [],
     this.escalate = false,
     this.similar = const [],
+    this.source = 'app',
+    this.medium,
+    this.origin,
+    this.registeredBy,
   });
 
   final String reportKey;
@@ -79,6 +83,13 @@ class QueueItem {
   /// Reportes que *podrían* ser el mismo suceso (vínculos `possible`): sólo se sugieren.
   final List<String> similar;
 
+  /// De dónde viene: `app` o `radio` (informe de segunda mano que registró un despachador). Sólo en los de
+  /// despachador hay medio, origen y quién lo registró.
+  final String source;
+  final String? medium;
+  final String? origin;
+  final String? registeredBy;
+
   Map<String, Object?> toJson() => {
     'reportKey': reportKey,
     'urgency': urgency.name.toUpperCase(),
@@ -101,6 +112,10 @@ class QueueItem {
     'uncertainty': uncertainty,
     'escalate': escalate,
     'similar': similar,
+    'source': source,
+    'medium': medium,
+    'origin': origin,
+    'registeredBy': registeredBy,
   };
 }
 
@@ -184,6 +199,10 @@ List<QueueItem> buildQueueFromEvents(List<Event> received, List<Event> triageEve
         uncertainty: ({...t.uncertainty, ...a.uncertainty}.toList()..sort()),
         escalate: t.escalateToHuman,
         similar: [for (final s in sug.take(5)) s.$2],
+        source: m.sourceClass,
+        medium: m.medium,
+        origin: m.origin,
+        registeredBy: m.registeredBy,
       ),
     );
   }
