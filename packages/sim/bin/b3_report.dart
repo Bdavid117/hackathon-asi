@@ -5,7 +5,9 @@
 // Reglas que se impuso este informe:
 //  · los umbrales se calibran con las semillas 1–5 y se reporta con semillas NO vistas;
 //  · las semillas 101–105 se usaron para la PRIMERA medición (diseño tal como estaba en el PDF) y
-//    por tanto ya no son «no vistas»: el diseño revisado se reporta con 201–205;
+//    por tanto ya no son «no vistas». Las 201–205 se usaron MIENTRAS SE AFINABA el diseño revisado (se
+//    leyeron sus cifras y después se cambiaron umbrales, política de bloqueo y regla anti-puente), así que
+//    tampoco son «no vistas». La cifra principal sale de 301–305, generadas DESPUÉS de congelar el código;
 //  · nunca se toca el generador ni el léxico del triaje para que una cifra salga mejor;
 //  · si un criterio no se cumple, se dice.
 import 'dart:io';
@@ -15,7 +17,8 @@ import 'package:sard_sim/sard_sim.dart';
 
 const List<int> calibrationSeeds = [1, 2, 3, 4, 5];
 const List<int> firstSeeds = [101, 102, 103, 104, 105]; // primera medición (diseño v1)
-const List<int> reportSeeds = [201, 202, 203, 204, 205]; // nunca vistas antes del diseño revisado
+const List<int> tuneSeeds = [201, 202, 203, 204, 205]; // usadas mientras se afinaba (ya vistas)
+const List<int> reportSeeds = [301, 302, 303, 304, 305]; // nunca vistas: generadas con el código congelado
 const List<double> hiGrid = [0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95];
 const List<double> noLocGrid = [0.85, 0.90, 0.92, 0.95, 0.98];
 
@@ -75,6 +78,7 @@ void main(List<String> args) {
   stderr.writeln('generando y puntuando semillas…');
   final calib = [for (final s in calibrationSeeds) run(s)];
   final held = [for (final s in reportSeeds) run(s)];
+  final tuned = [for (final s in tuneSeeds) run(s)];
   stderr.writeln('puntuado en ${sw.elapsed.inSeconds} s');
   final nReports = held.fold<int>(0, (a, r) => a + r.ds.reports.length);
 
@@ -131,6 +135,10 @@ void main(List<String> args) {
     curveRows.add([f2(hi), pct(precOf(s)), pct(recallOf(s), d: 2), pct(fmOf(s), d: 2), '${s.mixed}', '${s.groups}']);
   }
   final t07Pass = fmOf(atChosen) <= 0.01;
+  final atChosenTuned = sumPairs(tuned, chosen.hi, chosen.noLoc);
+  final perSeedFmTuned = [for (final r in tuned) pairMetrics(groupsAt(r.obs, r.links, chosen.hi, chosen.noLoc), r.truth).falseMergeRate];
+  final fmTunedMax = perSeedFmTuned.reduce((a, b) => a > b ? a : b), fmTunedMin = perSeedFmTuned.reduce((a, b) => a < b ? a : b);
+  final overOnePct = perSeedFm.where((x) => x > 0.01).length;
   // Estabilidad con los umbrales del PDF: una sola unión de dos gemelos cambia mucho la cifra.
   final calibDefault = sumPairs(calib, defaults.hi, defaults.noLoc);
   final perSeedFmDefault = [for (final r in held) pairMetrics(groupsAt(r.obs, r.links, defaults.hi, defaults.noLoc), r.truth).falseMergeRate];
@@ -242,13 +250,13 @@ void main(List<String> args) {
   b.writeln();
   b.writeln('Generado con `dart run packages/sim/bin/b3_report.dart`. Datos **sintéticos**; léase «Qué demuestra y qué no» antes de citar una cifra.');
   b.writeln();
-  b.writeln('| Prueba | Criterio del PDF | Resultado (diseño revisado, semillas nuevas) | ¿Cumple? |');
+  b.writeln('| Prueba | Criterio del PDF | Resultado (diseño final, semillas nunca vistas 301–305) | ¿Cumple? |');
   b.writeln('|---|---|---|---|');
   b.writeln('| **T06** triaje | recall de P1 ≥ 95 % | recall **${pct(t06.global.recall)}** por reporte (${pct(minSeed)}–${pct(maxSeed)} por semilla); ${pct(t06.global.recallWithEscalation)} si se cuenta «revisión humana» como acierto, **a costa de escalar el ${pct(nEsc / nAll)} de todos los reportes** (y el tablero aún no muestra ese aviso) | **${t06Pass ? 'sí' : 'NO'}** |');
-  b.writeln('| **T07** deduplicación | falsa fusión ≤ 1 % | **${pct(fmOf(atChosen), d: 2)}** con θ calibrado, que es el que usa el nodo (${pct(fmMin, d: 2)}–${pct(fmMax, d: 2)} por semilla), **a costa de agrupar sólo el ${pct(recallOf(atChosen), d: 2)} de los pares verdaderos**; con los umbrales del PDF: ${pct(fmOf(atDefault), d: 2)} de falsa fusión y ${pct(recallOf(atDefault), d: 2)} de recall, **pero inestable**: ${pct(fmDefMin, d: 2)}–${pct(fmDefMax, d: 2)} según la semilla y ${pct(fmOf(calibDefault), d: 2)} en las semillas de calibración | **${t07Pass ? 'sí (trivialmente: casi no agrupa)' : 'NO'}** |');
+  b.writeln('| **T07** deduplicación | falsa fusión ≤ 1 % | **${pct(fmOf(atChosen), d: 2)}** con θ calibrado, que es el que usa el nodo (${pct(fmMin, d: 2)}–${pct(fmMax, d: 2)} por semilla), **a costa de agrupar sólo el ${pct(recallOf(atChosen), d: 2)} de los pares verdaderos**; con los umbrales del PDF: ${pct(fmOf(atDefault), d: 2)} de falsa fusión y ${pct(recallOf(atDefault), d: 2)} de recall, **pero inestable**: ${pct(fmDefMin, d: 2)}–${pct(fmDefMax, d: 2)} según la semilla y ${pct(fmOf(calibDefault), d: 2)} en las semillas de calibración | **${t07Pass ? (overOnePct == 0 ? 'sí (trivialmente: casi no agrupa)' : 'sí en conjunto, pero NO en $overOnePct de ${reportSeeds.length} semillas, y sólo trivialmente (casi no agrupa)') : 'NO'}** |');
   b.writeln('| **T08** rumor frente a corroboración | confianza(rumor) < confianza(corroborado) | ${f2(rumor1000.confidence)} frente a ${f2(corro5.confidence)} sobre grupos dados; **de punta a punta las 5 fuentes independientes forman $corro5Groups grupos, no uno** | **${t08Pass ? 'sí (sobre grupos dados)' : 'NO'}** |');
   b.writeln();
-  b.writeln('Semillas de calibración ${calibrationSeeds.join(', ')}; cifras del diseño revisado con las semillas **nunca vistas** ${reportSeeds.join(', ')} ($nReports reportes). Léase primero la sección siguiente.');
+  b.writeln('Semillas de calibración ${calibrationSeeds.join(', ')}; cifras del diseño final con las semillas **nunca vistas** ${reportSeeds.join(', ')} (generadas con el código congelado; las ${tuneSeeds.join(', ')} se usaron al afinar) ($nReports reportes). Léase primero la sección siguiente.');
   b.writeln();
 
   b.writeln('## Historial: qué se midió, qué falló y qué se cambió');
@@ -273,12 +281,12 @@ void main(List<String> args) {
   b.writeln();
   b.writeln('**3. Cambio hecho:** la similitud de texto se pondera por la **masa de evidencia** (`mín(1, palabras compartidas / 5)`): coincidir en una frase genérica casi no cuenta; coincidir en cinco o más palabras, sí. No se cambiaron pesos, umbrales por defecto, ni el generador, ni el léxico del triaje.');
   b.writeln();
-  b.writeln('**4. Medición del diseño revisado** con semillas nunca vistas (201–205): el resto de este documento. Las semillas 101–105 ya no se consideran «no vistas» porque la primera medición influyó en el diagnóstico.');
+  b.writeln('**4. Medición del diseño revisado.** Tras la primera medición se hicieron más cambios mirando resultados (umbral por omisión, política de bloqueo, regla anti-puente, umbral sin ubicación, motivos de caída del modelo). Las semillas 101–105 y 201–205 **ya se vieron y se usaron al afinar: no son «no vistas»**. Con el código **congelado** se generaron las semillas **301–305**, que nadie había visto: las cifras principales de este documento salen de ellas, y se muestran al lado las de 201–205 para ver cuánto optimismo había.');
   b.writeln();
 
   b.writeln('## T06 · Calidad del triaje (agente 2, reglas)');
   b.writeln();
-  b.writeln('Todos los reportes de las semillas nuevas, evaluados **uno por uno** (lo que sabría el nodo de cada reporte): banderas + texto, sin modelo de lenguaje. El léxico del triaje es el mismo de la primera medición.');
+  b.writeln('Todos los reportes de las semillas nunca vistas, evaluados **uno por uno** (lo que sabría el nodo de cada reporte): banderas + texto, sin modelo de lenguaje. El léxico del triaje es el mismo de la primera medición.');
   b.writeln();
   b.writeln(table(
     ['Medida', 'Valor'],
@@ -368,7 +376,21 @@ void main(List<String> args) {
   b.writeln();
   b.writeln(table(['θhi', 'Precisión', 'Recall', 'Falsa fusión', 'Grupos mezclados', 'Grupos'], curveRows));
   b.writeln();
-  b.writeln('**Estabilidad:** con los umbrales del PDF la falsa fusión por semilla va de ${pct(fmDefMin, d: 2)} a ${pct(fmDefMax, d: 2)} en las semillas nuevas y es ${pct(fmOf(calibDefault), d: 2)} en las de calibración: depende de si un único vínculo une un suceso con su gemelo (un vínculo falso fusiona decenas de pares). Por eso el umbral se calibró hacia el lado conservador y aun así no hay garantía.\n\n**Lectura honesta:** el criterio «falsa fusión ≤ 1 %» **se cumple sólo porque el agente casi no fusiona nada**; un sistema que no agrupa jamás lo cumpliría igual. El criterio es necesario pero no suficiente: por eso se reporta también el recall. El agente determinista **no puede** separar un duplicado verdadero de un suceso vecino casi idéntico (gemelo adversarial) usando sólo espacio, tiempo, tipo y texto léxico; el PDF reserva esa franja `possible` para el modelo y para el coordinador, y en B3 el modelo no se usa en la correlación.');
+  b.writeln('**Cuánto optimismo había:** misma configuración (la que usa el nodo), dos conjuntos de semillas.');
+  b.writeln();
+  b.writeln(table(
+    ['Semillas', 'Falsa fusión (todas juntas)', 'Falsa fusión por semilla', 'Recall de pares', 'Grupos mezclados'],
+    [
+      ['${tuneSeeds.join(', ')} — usadas al afinar (ya vistas)', pct(fmOf(atChosenTuned), d: 2), '${pct(fmTunedMin, d: 2)}–${pct(fmTunedMax, d: 2)}', pct(recallOf(atChosenTuned), d: 2), '${atChosenTuned.mixed}'],
+      ['${reportSeeds.join(', ')} — nunca vistas', pct(fmOf(atChosen), d: 2), '${pct(fmMin, d: 2)}–${pct(fmMax, d: 2)}', pct(recallOf(atChosen), d: 2), '${atChosen.mixed}'],
+    ],
+  ));
+  b.writeln();
+  b.writeln(overOnePct == 0
+      ? 'Ninguna de las semillas nunca vistas supera el 1 % de falsa fusión. **Pero** un solo vínculo entre gemelos mueve la cifra varios puntos (con los umbrales del PDF se vio de 0 % a 1,8 % según la semilla): un 0,00 % con 5 semillas no garantiza un 0,00 % con otras.'
+      : '⚠️ **$overOnePct de ${reportSeeds.length} semillas nunca vistas superan el 1 % de falsa fusión** (hasta ${pct(fmMax, d: 2)}): el criterio **no** se sostiene con datos nuevos.');
+  b.writeln();
+  b.writeln('**Estabilidad:** con los umbrales del PDF la falsa fusión por semilla va de ${pct(fmDefMin, d: 2)} a ${pct(fmDefMax, d: 2)} en las semillas nunca vistas y es ${pct(fmOf(calibDefault), d: 2)} en las de calibración: depende de si un único vínculo une un suceso con su gemelo (un vínculo falso fusiona decenas de pares). Por eso el umbral se calibró hacia el lado conservador y aun así no hay garantía.\n\n**Lectura honesta:** el criterio «falsa fusión ≤ 1 %» **se cumple sólo porque el agente casi no fusiona nada**; un sistema que no agrupa jamás lo cumpliría igual. El criterio es necesario pero no suficiente: por eso se reporta también el recall. El agente determinista **no puede** separar un duplicado verdadero de un suceso vecino casi idéntico (gemelo adversarial) usando sólo espacio, tiempo, tipo y texto léxico; el PDF reserva esa franja `possible` para el modelo y para el coordinador, y en B3 el modelo no se usa en la correlación.');
   b.writeln();
 
   b.writeln('## T08 · Rumor frente a corroboración');
@@ -382,7 +404,7 @@ void main(List<String> args) {
   b.writeln();
   b.writeln('- **Los datos son sintéticos y los escribió la misma persona que las reglas.** Un generador y un léxico del mismo autor comparten vocabulario: las cifras de T06 miden qué tan bien las reglas reconocen *este* generador, no a personas reales. Se intentó que no fuera circular (paráfrasis, faltas de ortografía, textos sin pistas, banderas equivocadas, GPS con ruido, reloj desfasado), pero eso no lo elimina.');
   b.writeln('- **Las fracciones de casos difíciles son supuestos** (de los reportes de sucesos P1: 55 % banderas coherentes, 20 % parciales con texto, 10 % sin banderas con texto, 10 % sin pistas, 5 % banderas equivocadas). Se fijaron en la prueba del generador **antes** de escribir las reglas. Con otras fracciones el recall cambia.');
-  b.writeln('- **El diseño del agente 3 se revisó después de ver resultados** (ver «Historial»). Lo revisado se midió con semillas nuevas, pero el diagnóstico salió de datos del mismo generador.');
+  b.writeln('- **El diseño del agente 3 se revisó después de ver resultados** (ver «Historial»). Lo revisado se midió finalmente con semillas nunca vistas (301–305), pero el diagnóstico y los ajustes salieron de datos del mismo generador.');
   b.writeln('- **T07: ≤ 1 % de falsa fusión no es una buena noticia por sí sola** (ver la lectura honesta). **T08 se cumple sobre grupos dados**, no de punta a punta para fuentes independientes.');
   b.writeln('- **El agrupamiento es léxico y determinista:** no hay modelo de lenguaje en la correlación, por lo que las **contradicciones quedan «no evaluadas»** y los pares `possible` sólo se sugieren.');
   b.writeln('- **El texto de los reportes es dato no confiable** y no cambia la urgencia más allá de los términos del léxico (probado con inyección de instrucciones).');

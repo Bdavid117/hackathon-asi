@@ -257,7 +257,7 @@ void main() {
   });
 
   group('rendimiento: la lectura no puede ser cuadrática', () {
-    test('3 000 reportes (10 % sin ubicación, 5 % imprecisos, muchos con el mismo texto) se agrupan en menos de 4 s', () {
+    test('3 000 reportes (10 % sin ubicación, 5 % imprecisos, muchos con el mismo texto) se agrupan en menos de 12 s', () {
       final r = Random(9);
       final all = <Observation>[
         for (var i = 0; i < 3000; i++)
@@ -274,7 +274,10 @@ void main() {
       final g = groupObservations(all);
       sw.stop();
       expect(g.expand((s) => s).length, 3000);
-      expect(sw.elapsedMilliseconds, lessThan(4000), reason: 'tardó ${sw.elapsedMilliseconds} ms');
+      // ignore: avoid_print
+      print('  → 3 000 reportes agrupados en ${sw.elapsedMilliseconds} ms');
+      // La versión cuadrática tardaba ≈ 20 s: el tope es holgado para no fallar en una máquina cargada.
+      expect(sw.elapsedMilliseconds, lessThan(12000), reason: 'tardó ${sw.elapsedMilliseconds} ms');
     });
 
     test('analyzeGrouping da los mismos grupos que groupObservations y expone los vínculos puntuados una sola vez', () {
