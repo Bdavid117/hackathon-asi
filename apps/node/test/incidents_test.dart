@@ -16,7 +16,7 @@ List<IncidentData> incidentsOf(EventLog log, {List<Resource>? resources}) {
   return buildIncidents(items, approvals: readApprovals([...log.allOfType('approval.granted'), ...log.allOfType('approval.denied')]), resources: resources ?? testResources());
 }
 
-IncidentData byMember(List<IncidentData> all, String key) => all.firstWhere((i) => (i.detail['members']! as List).any((m) => (m as Map)['reportKey'] == key));
+IncidentData byMember(List<IncidentData> all, String key) => all.firstWhere((i) => (i.detail['observations']! as List).any((m) => (m as Map)['reportKey'] == key));
 
 Map<String, Object?> rec(IncidentData i) => (i.summary['recommendation']! as Map).cast<String, Object?>();
 Map<String, Object?> appr(IncidentData i) => (i.summary['approval']! as Map).cast<String, Object?>();
@@ -70,7 +70,8 @@ void main() {
       expect(all.single.summary['size'], 25);
       expect((all.single.summary['members']! as List).length, kSummaryMembers);
       expect(all.single.detail['membersTotal'], 25);
-      expect((all.single.detail['members']! as List).length, 25);
+      expect((all.single.detail['observations']! as List).length, 25);
+      expect((all.single.detail['members']! as List).length, 25, reason: 'el detalle trae TODAS las claves, no sólo las primeras');
     });
 
     test('la ubicación del incidente es el CENTRO de sus reportes localizados', () {
@@ -104,14 +105,14 @@ void main() {
       expect((i.summary['evidence']! as List).length, kSummaryEvidence, reason: 'el resumen lleva sólo unas pocas citas');
       expect((i.detail['evidence']! as List).length, greaterThan(kSummaryEvidence), reason: 'el detalle las lleva todas');
       expect(jsonEncode(i.summary).length, lessThan(2500), reason: 'una fila resumen debe pesar pocos KB aunque el incidente sea grande');
-      expect((i.detail['members']! as List), hasLength(6));
+      expect((i.detail['observations']! as List), hasLength(6));
       expect(jsonEncode(i.detail).length, greaterThan(jsonEncode(i.summary).length));
     });
 
     test('el detalle trae las observaciones originales, de la más antigua a la más reciente, con su texto y su evidencia', () {
       received(log, 'bb-1', 0, text: t2, lat: 5.0704, flags: SituationFlags.atrapado, capturedAt: 1786370900);
       received(log, 'aa-1', 0, text: t, flags: SituationFlags.atrapado, capturedAt: 1786370851);
-      final members = (incidentsOf(log).single.detail['members']! as List).cast<Map<String, Object?>>();
+      final members = (incidentsOf(log).single.detail['observations']! as List).cast<Map<String, Object?>>();
       expect(members.map((m) => m['reportKey']), ['aa-1', 'bb-1']);
       expect(members.first['text'], t);
       expect(members.first['evidence'], isNotEmpty);
@@ -204,6 +205,9 @@ void main() {
       expect(res.first, containsPair('label', 'Rescate 1'));
       expect(res.first['distanceMeters'], isA<num>());
       expect((d['justification']! as List), isNotEmpty);
+      for (final dup in ['resource_ids', 'incident_id']) {
+        expect(d.containsKey(dup), isFalse, reason: 'el detalle no repite en snake_case lo que ya trae en camelCase: $dup');
+      }
     });
 
     test('dos incidentes que proponen el MISMO recurso se calculan por separado y se marcan', () {

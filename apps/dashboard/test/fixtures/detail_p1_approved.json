@@ -1,0 +1,154 @@
+{
+  "id": "00000000000000a1-1",
+  "urgency": "P1",
+  "size": 1,
+  "members": [
+    "00000000000000a1-1"
+  ],
+  "signals": [
+    "atrapado",
+    "herido"
+  ],
+  "people": 2,
+  "peopleLabel": "2–5",
+  "sources": 1,
+  "confidence": 0.6,
+  "uncertainty": [
+    "fuente_unica"
+  ],
+  "needsReview": false,
+  "highUncertainty": false,
+  "bareSos": false,
+  "lat": 5.070303384679761,
+  "lon": -75.51380442124021,
+  "firstAt": 1786370851,
+  "lastAt": 1786370851,
+  "receivedAt": 1794197853485,
+  "similar": [],
+  "evidence": [
+    {
+      "reportKey": "00000000000000a1-1",
+      "code": "atrapado",
+      "field": "flags.atrapado"
+    },
+    {
+      "reportKey": "00000000000000a1-1",
+      "code": "herido",
+      "field": "flags.herido"
+    }
+  ],
+  "recommendation": {
+    "state": "propuesta",
+    "id": "3fa8370868b2c56c",
+    "actions": [
+      "rescate",
+      "atencion_medica"
+    ],
+    "resourceIds": [
+      "RES-01",
+      "AMB-01"
+    ],
+    "pending": [
+      "confirmar_segunda_fuente"
+    ],
+    "justification": [
+      {
+        "signal": "atrapado",
+        "report_key": "00000000000000a1-1",
+        "field": "flags.atrapado"
+      },
+      {
+        "signal": "herido",
+        "report_key": "00000000000000a1-1",
+        "field": "flags.herido"
+      },
+      {
+        "signal": "ubicacion",
+        "report_key": "00000000000000a1-1",
+        "field": "location"
+      }
+    ],
+    "uncertainty": [
+      "fuente_unica"
+    ],
+    "requires_approval": true,
+    "resources": [
+      {
+        "id": "RES-01",
+        "kind": "rescate",
+        "label": "Rescate estructural 1",
+        "lat": 5.0715,
+        "lon": -75.51,
+        "available": true,
+        "distanceMeters": 442
+      },
+      {
+        "id": "AMB-01",
+        "kind": "ambulancia",
+        "label": "Ambulancia 1 · Base Centro",
+        "lat": 5.0689,
+        "lon": -75.5174,
+        "available": true,
+        "distanceMeters": 428
+      }
+    ]
+  },
+  "approval": {
+    "status": "aprobada",
+    "discrepancy": false,
+    "current": [
+      {
+        "eventId": "A:000031",
+        "recommendationId": "3fa8370868b2c56c",
+        "incidentId": "00000000000000a1-1",
+        "decision": "granted",
+        "note": "Visto con el equipo; sale el rescate.",
+        "who": "Ana Gómez",
+        "at": 1794197854675,
+        "supersedes": []
+      }
+    ],
+    "stale": []
+  },
+  "sharedResources": [],
+  "observations": [
+    {
+      "reportKey": "00000000000000a1-1",
+      "urgency": "P1",
+      "rev": 1,
+      "flags": 192,
+      "lat": 5.070303384679761,
+      "lon": -75.51380442124021,
+      "text": "mi mamá no puede salir del segundo piso, hay mucho polvo",
+      "people": 2,
+      "peopleLabel": "2–5",
+      "evidence": [
+        {
+          "code": "atrapado",
+          "field": "flags.atrapado"
+        },
+        {
+          "code": "herido",
+          "field": "flags.herido"
+        }
+      ],
+      "capturedAt": 1786370851,
+      "receivedAt": 1794197853485,
+      "signals": [
+        "atrapado",
+        "herido"
+      ],
+      "group": "00000000000000a1-1",
+      "groupSize": 1,
+      "groupUrgency": "P1",
+      "sources": 1,
+      "confidence": 0.6,
+      "uncertainty": [
+        "fuente_unica"
+      ],
+      "escalate": false,
+      "similar": []
+    }
+  ],
+  "membersTotal": 1
+}

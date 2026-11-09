@@ -1,0 +1,141 @@
+{
+  "view": "all",
+  "counters": {
+    "incidents": 8,
+    "reports": 9,
+    "byUrgency": {
+      "P1": 1,
+      "P2": 1,
+      "P3": 6,
+      "P4": 0
+    },
+    "bareSos": 3,
+    "highUncertainty": 1,
+    "needsReview": 1,
+    "inShortView": 5,
+    "followUp": 0
+  },
+  "total": 3,
+  "offset": 0,
+  "limit": 200,
+  "bareSos": null,
+  "items": [
+    {
+      "id": "00000000000000e1-1",
+      "urgency": "P3",
+      "size": 1,
+      "members": [
+        "00000000000000e1-1"
+      ],
+      "signals": [],
+      "people": 0,
+      "peopleLabel": "No indicado",
+      "sources": 1,
+      "confidence": 0.6,
+      "uncertainty": [
+        "fuente_unica",
+        "sin_detalle"
+      ],
+      "needsReview": false,
+      "highUncertainty": false,
+      "bareSos": true,
+      "lat": 5.090098088389524,
+      "lon": -75.5301015237004,
+      "firstAt": 1786371031,
+      "lastAt": 1786371031,
+      "receivedAt": 1794197853548,
+      "similar": [],
+      "evidence": [],
+      "recommendation": {
+        "state": "informacion_requerida",
+        "missing": [
+          "situacion"
+        ]
+      },
+      "approval": {
+        "status": "pendiente",
+        "discrepancy": false,
+        "decisions": 0
+      },
+      "sharedResources": []
+    },
+    {
+      "id": "00000000000000e2-1",
+      "urgency": "P3",
+      "size": 1,
+      "members": [
+        "00000000000000e2-1"
+      ],
+      "signals": [],
+      "people": 0,
+      "peopleLabel": "No indicado",
+      "sources": 1,
+      "confidence": 0.6,
+      "uncertainty": [
+        "fuente_unica",
+        "sin_detalle"
+      ],
+      "needsReview": false,
+      "highUncertainty": false,
+      "bareSos": true,
+      "lat": 5.041099491184923,
+      "lon": -75.47009514183088,
+      "firstAt": 1786371051,
+      "lastAt": 1786371051,
+      "receivedAt": 1794197853555,
+      "similar": [],
+      "evidence": [],
+      "recommendation": {
+        "state": "informacion_requerida",
+        "missing": [
+          "situacion"
+        ]
+      },
+      "approval": {
+        "status": "pendiente",
+        "discrepancy": false,
+        "decisions": 0
+      },
+      "sharedResources": []
+    },
+    {
+      "id": "00000000000000e3-1",
+      "urgency": "P3",
+      "size": 1,
+      "members": [
+        "00000000000000e3-1"
+      ],
+      "signals": [],
+      "people": 0,
+      "peopleLabel": "No indicado",
+      "sources": 1,
+      "confidence": 0.6,
+      "uncertainty": [
+        "fuente_unica",
+        "sin_detalle"
+      ],
+      "needsReview": false,
+      "highUncertainty": false,
+      "bareSos": true,
+      "lat": 5.020103157764865,
+      "lon": -75.56009935021696,
+      "firstAt": 1786371071,
+      "lastAt": 1786371071,
+      "receivedAt": 1794197853560,
+      "similar": [],
+      "evidence": [],
+      "recommendation": {
+        "state": "informacion_requerida",
+        "missing": [
+          "situacion"
+        ]
+      },
+      "approval": {
+        "status": "pendiente",
+        "discrepancy": false,
+        "decisions": 0
+      },
+      "sharedResources": []
+    }
+  ]
+}

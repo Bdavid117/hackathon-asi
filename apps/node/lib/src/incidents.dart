@@ -206,7 +206,11 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
   });
   final recFull = <String, Object?>{
     ..._briefRecommendation(o),
-    if (o is Recommendation) ...o.toJson(),
+    if (o is Recommendation) ...{
+      'justification': [for (final c in o.justification) c.toJson()],
+      'uncertainty': o.uncertainty,
+      'requires_approval': o.requiresApproval,
+    },
     if (o is Recommendation)
       'resources': [
         for (final rid in o.resourceIds)
@@ -219,7 +223,9 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
   };
   final detail = {
     ...summary,
-    'members': [for (final m in byTime) m.toJson()],
+    // todas las claves (el resumen sólo lleva las primeras) y, aparte, las observaciones originales
+    'members': [for (final m in members) m.reportKey],
+    'observations': [for (final m in byTime) m.toJson()],
     'evidence': evidence,
     'membersTotal': members.length,
     'recommendation': recFull,

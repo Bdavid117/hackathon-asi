@@ -83,7 +83,8 @@ void main() {
       expect(r.headers['x-queue-stale'], isNotNull);
       final d = (await json(r))! as Map<String, Object?>;
       expect(d['id'], id);
-      expect((d['members']! as List), isNotEmpty);
+      expect((d['observations']! as List), isNotEmpty);
+      expect((d['members']! as List).first, isA<String>(), reason: 'members son las claves; las observaciones van aparte');
       expect(d.containsKey('recommendation'), isTrue);
       expect((d['approval']! as Map)['status'], 'pendiente');
     });

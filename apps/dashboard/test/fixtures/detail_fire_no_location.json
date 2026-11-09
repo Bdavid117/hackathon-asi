@@ -1,0 +1,84 @@
+{
+  "id": "00000000000000c1-1",
+  "urgency": "P2",
+  "size": 1,
+  "members": [
+    "00000000000000c1-1"
+  ],
+  "signals": [
+    "incendio"
+  ],
+  "people": 0,
+  "peopleLabel": "No indicado",
+  "sources": 1,
+  "confidence": 0.6,
+  "uncertainty": [
+    "fuente_unica",
+    "ubicacion_ausente"
+  ],
+  "needsReview": false,
+  "highUncertainty": true,
+  "bareSos": false,
+  "lat": null,
+  "lon": null,
+  "firstAt": 1786370971,
+  "lastAt": 1786370971,
+  "receivedAt": 1794197853536,
+  "similar": [],
+  "evidence": [
+    {
+      "reportKey": "00000000000000c1-1",
+      "code": "incendio",
+      "field": "flags.incendio"
+    }
+  ],
+  "recommendation": {
+    "state": "informacion_requerida",
+    "missing": [
+      "ubicacion"
+    ]
+  },
+  "approval": {
+    "status": "pendiente",
+    "discrepancy": false,
+    "current": [],
+    "stale": []
+  },
+  "sharedResources": [],
+  "observations": [
+    {
+      "reportKey": "00000000000000c1-1",
+      "urgency": "P2",
+      "rev": 0,
+      "flags": 32,
+      "lat": null,
+      "lon": null,
+      "text": null,
+      "people": 0,
+      "peopleLabel": "No indicado",
+      "evidence": [
+        {
+          "code": "incendio",
+          "field": "flags.incendio"
+        }
+      ],
+      "capturedAt": 1786370971,
+      "receivedAt": 1794197853536,
+      "signals": [
+        "incendio"
+      ],
+      "group": "00000000000000c1-1",
+      "groupSize": 1,
+      "groupUrgency": "P2",
+      "sources": 1,
+      "confidence": 0.6,
+      "uncertainty": [
+        "fuente_unica",
+        "ubicacion_ausente"
+      ],
+      "escalate": false,
+      "similar": []
+    }
+  ],
+  "membersTotal": 1
+}

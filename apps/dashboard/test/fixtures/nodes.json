@@ -1,0 +1,14 @@
+{
+  "self": {
+    "id": "A",
+    "events": 31,
+    "versionVector": {
+      "A": 31
+    },
+    "uptimeMs": 1751
+  },
+  "peers": [],
+  "periodMs": 3000,
+  "partialView": false,
+  "reasons": []
+}

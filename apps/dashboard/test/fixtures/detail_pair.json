@@ -1,0 +1,146 @@
+{
+  "id": "00000000000000b1-1",
+  "urgency": "P3",
+  "size": 2,
+  "members": [
+    "00000000000000b1-1",
+    "00000000000000b2-1"
+  ],
+  "signals": [
+    "via_bloqueada"
+  ],
+  "people": 0,
+  "peopleLabel": "No indicado",
+  "sources": 2,
+  "confidence": 0.84,
+  "uncertainty": [],
+  "needsReview": false,
+  "highUncertainty": false,
+  "bareSos": false,
+  "lat": 5.065250102594504,
+  "lon": -75.50950215785211,
+  "firstAt": 1786370911,
+  "lastAt": 1786370941,
+  "receivedAt": 1794197853531,
+  "similar": [],
+  "evidence": [
+    {
+      "reportKey": "00000000000000b1-1",
+      "code": "via_bloqueada",
+      "field": "flags.via_bloqueada"
+    },
+    {
+      "reportKey": "00000000000000b2-1",
+      "code": "via_bloqueada",
+      "field": "flags.via_bloqueada"
+    }
+  ],
+  "recommendation": {
+    "state": "propuesta",
+    "id": "78987b5a09f78a3a",
+    "actions": [
+      "despejar_via"
+    ],
+    "resourceIds": [
+      "TRA-01"
+    ],
+    "pending": [
+      "confirmar_personas"
+    ],
+    "justification": [
+      {
+        "signal": "via_bloqueada",
+        "report_key": "00000000000000b1-1",
+        "field": "flags.via_bloqueada"
+      },
+      {
+        "signal": "ubicacion",
+        "report_key": "00000000000000b1-1",
+        "field": "location"
+      }
+    ],
+    "uncertainty": [],
+    "requires_approval": true,
+    "resources": [
+      {
+        "id": "TRA-01",
+        "kind": "transito",
+        "label": "Tránsito · Unidad vial 1",
+        "lat": 5.067,
+        "lon": -75.512,
+        "available": true,
+        "distanceMeters": 338
+      }
+    ]
+  },
+  "approval": {
+    "status": "pendiente",
+    "discrepancy": false,
+    "current": [],
+    "stale": []
+  },
+  "sharedResources": [],
+  "observations": [
+    {
+      "reportKey": "00000000000000b1-1",
+      "urgency": "P3",
+      "rev": 0,
+      "flags": 8,
+      "lat": 5.065196458411009,
+      "lon": -75.50950215785211,
+      "text": "puente colapsado calle veinte carros abajo",
+      "people": 0,
+      "peopleLabel": "No indicado",
+      "evidence": [
+        {
+          "code": "via_bloqueada",
+          "field": "flags.via_bloqueada"
+        }
+      ],
+      "capturedAt": 1786370911,
+      "receivedAt": 1794197853526,
+      "signals": [
+        "via_bloqueada"
+      ],
+      "group": "00000000000000b1-1",
+      "groupSize": 2,
+      "groupUrgency": "P3",
+      "sources": 2,
+      "confidence": 0.84,
+      "uncertainty": [],
+      "escalate": false,
+      "similar": []
+    },
+    {
+      "reportKey": "00000000000000b2-1",
+      "urgency": "P3",
+      "rev": 0,
+      "flags": 8,
+      "lat": 5.0653037467779995,
+      "lon": -75.50950215785211,
+      "text": "puente colapsado calle veinte carros gente",
+      "people": 0,
+      "peopleLabel": "No indicado",
+      "evidence": [
+        {
+          "code": "via_bloqueada",
+          "field": "flags.via_bloqueada"
+        }
+      ],
+      "capturedAt": 1786370941,
+      "receivedAt": 1794197853531,
+      "signals": [
+        "via_bloqueada"
+      ],
+      "group": "00000000000000b1-1",
+      "groupSize": 2,
+      "groupUrgency": "P3",
+      "sources": 2,
+      "confidence": 0.84,
+      "uncertainty": [],
+      "escalate": false,
+      "similar": []
+    }
+  ],
+  "membersTotal": 2
+}

@@ -237,7 +237,7 @@ void main() {
       final id = (incidents.first as Map)['id'] as String;
       final detail = jsonDecode(got.detailOf(id)!) as Map;
       expect(detail['id'], id);
-      expect(detail['members'], isNotEmpty);
+      expect(detail['observations'], isNotEmpty);
       expect(got.detailOf('no-existe-9'), isNull);
     });
 

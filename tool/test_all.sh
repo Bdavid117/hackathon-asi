@@ -35,6 +35,12 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   run "H1 con cola grande: rama del isolate (350 reportes)" dart run packages/sim/bin/e2e_skeleton.dart --seed 7 --reports 350
   # T09/T10/T15: partición + kill -9 + reconexión, y la MISMA semilla debe dar la MISMA huella.
   run "Demostración adversa (partición, kill -9, huella reproducible)" env PART=4 bash tool/demo.sh 42
+  # El tablero COMPILADO, servido por un nodo real con un escenario fijo, abierto en Chrome sin cabeza.
+  printf '%-34s' "Tablero web compilado (Chrome)"
+  bash tool/web_smoke.sh > "$OUT" 2>&1; rc=$?
+  if [ $rc -eq 0 ]; then echo "OK    $(tail -1 "$OUT")"
+  elif [ $rc -eq 77 ]; then echo "OMITIDA  $(tail -1 "$OUT")"
+  else echo "FALLÓ"; tail -15 "$OUT"; fail=1; fi
 fi
 rm -f "$OUT"
 [ "$fail" -eq 0 ] && echo "TODO EN VERDE" || { echo "HAY FALLOS"; exit 1; }

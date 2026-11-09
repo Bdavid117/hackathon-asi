@@ -225,7 +225,7 @@ Future<void> main(List<String> args) async {
       final body = jsonEncode({
         'recommendationId': (target['recommendation'] as Map)['id'],
         'incidentId': target['id'],
-        'members': detail['members'] is List ? [for (final m in detail['members'] as List) (m as Map)['reportKey']] : <String>[],
+        'members': (detail['members'] as List).cast<String>(),
         'decision': 'granted',
         'note': 'prueba H1',
         'who': 'coordinación de prueba',
