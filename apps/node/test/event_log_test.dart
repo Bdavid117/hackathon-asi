@@ -180,4 +180,17 @@ void main() {
       expect(log.appendAll(const []), isEmpty);
     });
   });
+
+  group('eventById', () {
+    test('devuelve el evento con ese identificador, y null si no existe o está mal formado', () {
+      final log = EventLog.open(':memory:', nodeId: 'A');
+      addTearDown(log.close);
+      final e = log.append('x.y', {'k': 1});
+      expect(log.eventById(e.id)?.id, e.id);
+      expect(log.eventById(e.id)?.body, {'k': 1});
+      for (final bad in ['', 'A', 'A:', 'A:abc', 'A:1', 'A:0001', 'A:0000001', 'B:000001', 'A:999999', ':000001', 'A:000001:000002', "A:1'; DROP TABLE events;--"]) {
+        expect(log.eventById(bad), isNull, reason: bad);
+      }
+    });
+  });
 }

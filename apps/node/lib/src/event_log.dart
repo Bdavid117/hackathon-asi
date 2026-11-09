@@ -229,6 +229,17 @@ class EventLog {
     return rows.isEmpty ? null : _row(rows.first);
   }
 
+  /// El evento con ese identificador (`<origen>:<seq de 6 cifras>`), o `null` si no existe o el
+  /// identificador está mal formado. Consulta por clave primaria, con parámetros.
+  Event? eventById(String id) {
+    final m = RegExp(r'^([^:]+):(\d{1,12})$').firstMatch(id);
+    if (m == null) return null;
+    final rows = _db.select('SELECT * FROM events WHERE origin = ? AND seq = ?', [m.group(1), int.parse(m.group(2)!)]);
+    if (rows.isEmpty) return null;
+    final e = _row(rows.first);
+    return e.id == id ? e : null; // el formato canónico (ceros a la izquierda) es parte de la identidad
+  }
+
   /// Eventos de [origin] con `seq > afterSeq`, en orden.
   List<Event> readAfter(String origin, int afterSeq, {int limit = 500}) => _db
       .select('SELECT * FROM events WHERE origin = ? AND seq > ? ORDER BY seq LIMIT ?', [origin, afterSeq, limit])

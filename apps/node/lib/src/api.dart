@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+import 'approvals.dart';
 import 'event_log.dart';
 import 'ingest.dart';
 import 'pipeline.dart';
@@ -50,6 +51,40 @@ Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRun
         return Response(400, body: 'trama rechazada');
       }
       return Response.ok(result.ack, headers: {'content-type': 'application/octet-stream'});
+    })
+    ..post('/api/approval', (Request req) async {
+      // Un formulario de otra página llega como texto o «form-urlencoded» y no exige comprobación
+      // previa; JSON sí. Exigirlo es lo que impide que una página ajena lance una aprobación.
+      final mime = (req.headers['content-type'] ?? '').split(';').first.trim().toLowerCase();
+      if (mime != 'application/json') return Response(415, body: 'se exige content-type: application/json');
+      final declared = int.tryParse(req.headers['content-length'] ?? '');
+      if (declared != null && declared > kMaxApprovalBytes) return Response(413, body: 'cuerpo demasiado grande');
+      final chunks = BytesBuilder(copy: false);
+      await for (final chunk in req.read()) {
+        chunks.add(chunk);
+        if (chunks.length > kMaxApprovalBytes) return Response(413, body: 'cuerpo demasiado grande');
+      }
+      final ApprovalRequest a;
+      try {
+        a = parseApprovalRequest(jsonDecode(utf8.decode(chunks.takeBytes())));
+      } on FormatException catch (e) {
+        return Response(400, body: e.message);
+      }
+      for (final id in a.supersedes) {
+        final target = log.eventById(id);
+        if (target == null || (target.type != 'approval.granted' && target.type != 'approval.denied')) {
+          return Response(400, body: 'supersedes: «$id» no es una decisión registrada');
+        }
+      }
+      // SIEMPRE se guarda (sin 409): la cola puede ir unos segundos atrás y un nodo aislado puede no
+      // ver aún a los miembros. Lo vigente o caducado se deriva al leer.
+      final e = log.append(
+        a.granted ? 'approval.granted' : 'approval.denied',
+        {'recommendationId': a.recommendationId, 'incidentId': a.incidentId, 'members': a.members, 'note': a.note, 'who': a.who},
+        reportKey: a.incidentId,
+        inputs: a.supersedes,
+      );
+      return _json({'id': e.id}, cors: cors);
     })
     ..get('/api/queue', (Request req) async {
       final r = await queueService.read();
