@@ -9,11 +9,16 @@ import 'queue_screen.dart';
 /// nodo con `--web-root`). En desarrollo: `--dart-define=NODE=http://localhost:8081`.
 const String _node = String.fromEnvironment('NODE');
 
-Future<List<Map<String, Object?>>> _fetchQueue() async {
+Future<QueueSnapshot> _fetchQueue() async {
   final base = _node.isEmpty ? Uri.base : Uri.parse(_node);
   final r = await http.get(base.resolve('/api/queue')).timeout(const Duration(seconds: 3));
   if (r.statusCode != 200) throw http.ClientException('HTTP ${r.statusCode}');
-  return (jsonDecode(utf8.decode(r.bodyBytes)) as List).cast<Map<String, Object?>>();
+  // El nodo avisa si sirve una versión anterior de la cola (cabeceras x-queue-stale / x-queue-age-ms).
+  return QueueSnapshot(
+    (jsonDecode(utf8.decode(r.bodyBytes)) as List).cast<Map<String, Object?>>(),
+    stale: r.headers['x-queue-stale'] == 'true',
+    ageMs: int.tryParse(r.headers['x-queue-age-ms'] ?? '') ?? 0,
+  );
 }
 
 void main() => runApp(

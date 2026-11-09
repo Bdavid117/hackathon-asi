@@ -2,12 +2,22 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+/// Lo que sirvió el nodo: los reportes y si es una vista vieja (con su antigüedad).
+class QueueSnapshot {
+  const QueueSnapshot(this.items, {this.stale = false, this.ageMs = 0});
+  final List<Map<String, Object?>> items;
+
+  /// El log del nodo cambió después de calcular esto y el nodo sirvió igualmente la versión anterior.
+  final bool stale;
+  final int ageMs;
+}
+
 /// Lista priorizada del coordinador. Consulta al nodo cada [every] y conserva la última
 /// vista si el nodo deja de responder (avisa en vez de borrar).
 class QueueScreen extends StatefulWidget {
   const QueueScreen({super.key, required this.fetch, this.every = const Duration(seconds: 2)});
 
-  final Future<List<Map<String, Object?>>> Function() fetch;
+  final Future<QueueSnapshot> Function() fetch;
 
   /// Periodo de consulta; `null` la desactiva (pruebas).
   final Duration? every;
@@ -19,6 +29,8 @@ class QueueScreen extends StatefulWidget {
 class _QueueScreenState extends State<QueueScreen> {
   List<Map<String, Object?>> _items = const [];
   bool _offline = false;
+  bool _stale = false;
+  int _ageMs = 0;
   bool _loading = false;
   Timer? _timer;
 
@@ -40,10 +52,12 @@ class _QueueScreenState extends State<QueueScreen> {
     if (_loading) return;
     _loading = true;
     try {
-      final items = await widget.fetch();
+      final snap = await widget.fetch();
       if (mounted) {
         setState(() {
-          _items = items;
+          _items = snap.items;
+          _stale = snap.stale;
+          _ageMs = snap.ageMs;
           _offline = false;
         });
       }
@@ -74,6 +88,17 @@ class _QueueScreenState extends State<QueueScreen> {
               color: const Color(0xFFFBF3DC),
               padding: const EdgeInsets.all(8),
               child: const Text('Sin conexión con el nodo: se muestra la última vista.', style: TextStyle(color: Colors.black87)),
+            ),
+          if (_stale)
+            Container(
+              key: const Key('stale_banner'),
+              width: double.infinity,
+              color: const Color(0xFFFBF3DC),
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                'Vista de hace ${(_ageMs / 1000).round()} s: el nodo está recalculando y puede faltar algún reporte reciente.',
+                style: const TextStyle(color: Colors.black87),
+              ),
             ),
           Expanded(
             child: _items.isEmpty
