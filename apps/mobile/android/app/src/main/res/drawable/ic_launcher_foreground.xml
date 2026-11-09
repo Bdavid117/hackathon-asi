@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Capa de marca del ícono adaptativo (se dibuja con make_icons: tool/brand/build_icons.py). Todo dentro del
+     círculo de 66 dp que el sistema garantiza: el anillo termina en el radio 33. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#D23B2E" android:pathData="M54,54m-31,0a31,31 0 1,0 62,0a31,31 0 1,0 -62,0"/>
+    <path android:strokeColor="#E5857C" android:strokeWidth="4" android:pathData="M54,54m-31,0a31,31 0 1,0 62,0a31,31 0 1,0 -62,0"/>
+    <path android:strokeColor="#EEF1F5" android:strokeWidth="7" android:strokeLineCap="round" android:pathData="M66 40C60 32 42 33 42 43C42 48 46 50 50 51.4M58 56.6C62 58 66 60 66 65C66 75 48 76 42 68"/>
+    <path android:fillColor="#12161C" android:pathData="M66,40m-5.4,0a5.4,5.4 0 1,0 10.8,0a5.4,5.4 0 1,0 -10.8,0"/>
+    <path android:fillColor="#EEF1F5" android:pathData="M66,40m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0"/>
+    <path android:fillColor="#12161C" android:pathData="M42,68m-5.4,0a5.4,5.4 0 1,0 10.8,0a5.4,5.4 0 1,0 -10.8,0"/>
+    <path android:fillColor="#EEF1F5" android:pathData="M42,68m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0"/>
+</vector>

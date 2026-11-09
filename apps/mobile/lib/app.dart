@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:sard_client_core/sard_client_core.dart';
 import 'package:sard_protocol/sard_protocol.dart';
 
+import 'brand.dart';
 import 'incidents.dart';
 import 'reports_screen.dart';
 import 'sos_screen.dart';
@@ -404,7 +405,16 @@ class _SardAppState extends State<SardApp> {
       debugShowCheckedModeBanner: false,
       theme: sardTheme(),
       home: Scaffold(
-        appBar: AppBar(title: const Text('SARD')),
+        appBar: AppBar(
+          title: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SardMark(key: Key('brand_mark'), size: 30),
+              SizedBox(width: 10),
+              Text('SARD'),
+            ],
+          ),
+        ),
         body: SafeArea(
           child: Column(
             children: [
