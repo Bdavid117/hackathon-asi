@@ -2,6 +2,7 @@
 library;
 
 export 'src/b3_metrics.dart';
+export 'src/fake_llm.dart';
 export 'src/fake_node.dart';
 export 'src/fingerprint.dart';
 export 'src/frames.dart';

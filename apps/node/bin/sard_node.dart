@@ -21,6 +21,9 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
   --web-root  directorio con el tablero compilado (apps/dashboard/build/web)
   --cors      «on» sólo en DESARROLLO (tablero en otro origen). Por omisión no hay CORS: una página ajena no puede leer la cola.
   --resources archivo JSON con los recursos declarados (ver config/recursos.json); sin él el agente 6 propone la acción pero no recursos.
+  --llm-url   URL base del modelo (sólo PRUEBAS y demostración: un servidor falso; por omisión la API real).
+  --takeover  segundos que espera cada nodo del relevo antes de hacer el trabajo caro (modelo, auditoría) de un
+              reporte que no es suyo según el reparto por rendezvous (por omisión 10).
   --llm       «on» para consultar al modelo de lenguaje (usa la variable ANTHROPIC_API_KEY); por defecto apagado.
               Sin clave o sin red el nodo sigue con las reglas. NO verificado contra la API real.
 ''';
@@ -56,7 +59,7 @@ Future<void> main(List<String> args) async {
     if (apiKey == null || apiKey.isEmpty) {
       stderr.writeln('--llm on pide la variable ANTHROPIC_API_KEY; sin ella el nodo sigue sólo con reglas.');
     } else {
-      llm = ClaudeHttpPort(client: http.Client(), apiKey: apiKey);
+      llm = ClaudeHttpPort(client: http.Client(), apiKey: apiKey, baseUrl: o['llm-url'] == null ? null : Uri.parse(o['llm-url']!));
     }
   }
   var resources = <Resource>[];
@@ -74,17 +77,20 @@ Future<void> main(List<String> args) async {
   }
   final peers = (o['peers'] ?? '').split(',').where((u) => u.isNotEmpty).map(Uri.parse).toList();
   final health = NodeHealth(nodeId: id, peers: peers);
+  // El trabajo caro (modelo, auditoría) se reparte entre los nodos vivos; lo esencial no depende de esto.
+  final ownership = OwnershipPolicy(selfId: id, liveNodes: health.liveNodeIds, takeoverAfter: Duration(seconds: int.tryParse(o['takeover'] ?? '10') ?? 10));
+  final pipeline = PipelineRunner(log, llm: llm, ownership: ownership, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r'));
   final api = buildHandler(
     ingest: Ingest(log: log, key: key),
     log: log,
     cors: o['cors'] == 'on',
     health: health,
     queue: QueueService(log, resources: resources),
-    pipeline: PipelineRunner(log, llm: llm, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r')),
+    pipeline: pipeline,
   );
   // La auditoría de vínculos va por lotes, fuera de la ruta del ACK (a lo sumo cada 5 s y sólo si hay
   // reportes nuevos); con muchos reportes calcula en otro isolate.
-  final audit = AuditLinker(log);
+  final audit = AuditLinker(log, ownership: ownership);
   Timer.periodic(const Duration(seconds: 2), (_) => unawaited(audit.tick()));
   final web = o['web-root'];
   final Handler handler = web == null
@@ -92,7 +98,11 @@ Future<void> main(List<String> args) async {
       : Cascade().add(api).add(createStaticHandler(web, defaultDocument: 'index.html')).handler;
 
   if (peers.isNotEmpty) {
-    final replicator = PollingReplicator(log: log, peers: peers, client: http.Client(), health: health);
+    final replicator = PollingReplicator(log: log, peers: peers, client: http.Client(), health: health, onReplicated: (events) {
+      for (final e in events) {
+        pipeline.onReplicated(e);
+      }
+    });
     var running = false;
     Timer.periodic(const Duration(seconds: 3), (_) async {
       if (running) return; // no solapar sondeos

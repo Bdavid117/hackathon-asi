@@ -35,6 +35,11 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   run "H1 con cola grande: rama del isolate (350 reportes)" dart run packages/sim/bin/e2e_skeleton.dart --seed 7 --reports 350
   # T09/T10/T15: partición + kill -9 + reconexión, y la MISMA semilla debe dar la MISMA huella.
   run "Demostración adversa (partición, kill -9, huella reproducible)" env PART=4 bash tool/demo.sh 42
+  # T12: el modelo (falso) cuelga, falla o devuelve basura y el ACK no se entera; reparto y relevo entre nodos.
+  # (los resultados se escriben en un archivo temporal: el informe oficial se regenera a mano con más tramas)
+  run "T12 modelo colgado/roto + relevo (100 tramas)" dart run packages/sim/bin/t12.dart --reports 100 --out "$OUT.t12.md"
+  # T14 estructural con una semilla: ningún P1 queda fuera de la vista inicial.
+  run "T14 ningún P1 fuera de la vista (1 semilla)" dart run packages/sim/bin/t14.dart --seeds 401 --out "$OUT.t14.md"
   # El tablero COMPILADO, servido por un nodo real con un escenario fijo, abierto en Chrome sin cabeza.
   printf '%-34s' "Tablero web compilado (Chrome)"
   bash tool/web_smoke.sh > "$OUT" 2>&1; rc=$?
@@ -42,5 +47,5 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   elif [ $rc -eq 77 ]; then echo "OMITIDA  $(tail -1 "$OUT")"
   else echo "FALLÓ"; tail -15 "$OUT"; fail=1; fi
 fi
-rm -f "$OUT"
+rm -f "$OUT" "$OUT.t12.md" "$OUT.t14.md"
 [ "$fail" -eq 0 ] && echo "TODO EN VERDE" || { echo "HAY FALLOS"; exit 1; }

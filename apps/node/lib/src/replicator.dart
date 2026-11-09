@@ -19,6 +19,7 @@ class PollingReplicator {
     this.timeout = const Duration(seconds: 3),
     this.pageSize = 500,
     NodeHealth? health,
+    this.onReplicated,
   })  : _log = log,
         _peers = peers,
         _client = client,
@@ -30,6 +31,11 @@ class PollingReplicator {
   final NodeHealth? _health;
   final Duration timeout;
   final int pageSize;
+
+  /// Se llama con los eventos que SÍ se añadieron al log (no los que ya estaban), tras cada página.
+  /// Sirve para que el dueño de un reporte lo procese aunque haya entrado por otro nodo. Si falla, la
+  /// replicación sigue.
+  final void Function(List<Event> added)? onReplicated;
 
   /// Sondea a todos los pares una vez. Devuelve cuántos eventos nuevos se añadieron.
   Future<int> pullOnce() async {
@@ -55,6 +61,7 @@ class PollingReplicator {
   Future<int> _pullFrom(Uri peer) async {
     final health = (await _getJson(peer.resolve('/api/health')))['body']! as Map<String, Object?>;
     final remote = (health['versionVector']! as Map).cast<String, int>();
+    final peerNode = health['node'] is String ? health['node']! as String : null;
     int missing() {
       final local = _log.versionVector();
       var n = 0;
@@ -76,15 +83,27 @@ class PollingReplicator {
         final uri = peer.resolve('/api/events?origin=$origin&after=$local&limit=$pageSize');
         final page = ((await _getJson(uri))['body']! as List).cast<Map<String, Object?>>();
         if (page.isEmpty) break;
+        final fresh = <Event>[];
         for (final j in page) {
-          if (_log.appendReplicated(Event.fromJson(j))) added++;
+          final e = Event.fromJson(j);
+          if (_log.appendReplicated(e)) {
+            added++;
+            fresh.add(e);
+          }
+        }
+        if (fresh.isNotEmpty) {
+          try {
+            onReplicated?.call(fresh);
+          } on Object {
+            // un fallo del consumidor no debe detener la replicación
+          }
         }
         final next = _log.versionVector()[origin] ?? 0;
         if (next <= local) break; // sin avance: evita un bucle si el par devuelve huecos
         local = next;
       }
     }
-    _health?.recordContact(peer, missingBefore: missingBefore, missingAfter: missing());
+    _health?.recordContact(peer, nodeId: peerNode, missingBefore: missingBefore, missingAfter: missing());
     return added;
   }
 }

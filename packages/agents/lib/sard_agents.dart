@@ -7,6 +7,7 @@ export 'src/llm_port.dart';
 export 'src/grouping.dart';
 export 'src/normalize.dart';
 export 'src/recommendation.dart';
+export 'src/rendezvous.dart';
 export 'src/resources.dart';
 export 'src/sources.dart';
 export 'src/text_signals.dart';

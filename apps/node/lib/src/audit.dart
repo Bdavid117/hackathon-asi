@@ -5,6 +5,7 @@ import 'package:sard_agents/sard_agents.dart';
 
 import 'event_log.dart';
 import 'merged_reports.dart';
+import 'ownership.dart';
 import 'pipeline.dart';
 
 /// Los vínculos de cada reporte `target` contra el resto, para dejar rastro de auditoría.
@@ -59,8 +60,11 @@ class AuditLinker {
     DateTime Function()? clock,
     this.minInterval = const Duration(seconds: 5),
     List<Map<String, Object?>> Function(List<Event> received, Set<String> targets)? compute,
+    this.ownership,
   }) : _clock = clock ?? DateTime.now,
        _compute = compute;
+
+  /// Reparto de la auditoría entre nodos (*rendezvous*); `null` = este nodo audita todo.
 
   /// Sustituye el cálculo (pruebas). Si se da, corre en este hilo.
   final List<Map<String, Object?>> Function(List<Event>, Set<String>)? _compute;
@@ -70,8 +74,9 @@ class AuditLinker {
   final Duration minInterval;
   final DateTime Function() _clock;
 
+  final OwnershipPolicy? ownership;
   final Set<String> _done = {}; // «clave|rev» ya examinados en esta vida del proceso
-  Set<String>? _existing; // «clave|rev» con incident.linked en el log
+  DateTime? _nextDue; // cuándo vence lo diferido (el plazo de relevo más cercano)
   bool _running = false;
   DateTime? _nextAllowed;
   int _lastReceived = -1;
@@ -79,11 +84,30 @@ class AuditLinker {
   Future<int> runOnce() async {
     final received = _log.allOfType('report.received');
     final merged = mergeReports(received);
-    final existing = _existing ??= {for (final e in _log.allOfType('incident.linked')) '${e.reportKey}|${e.rev}'};
-    final targets = <String, int>{
-      for (final m in merged)
-        if (!_done.contains('${m.reportKey}|${m.rev}')) m.reportKey: m.rev,
+    // Lo ya examinado, por este nodo o por otro (las marcas de lote y los vínculos replican).
+    final examined = <String>{
+      for (final b in _log.allOfType('audit.batch')) ...((b.body['examined'] as List?) ?? const []).whereType<String>(),
+      for (final e in _log.allOfType('incident.linked')) '${e.reportKey}|${e.rev}',
     };
+    final now = _clock();
+    final targets = <String, int>{};
+    DateTime? nextDue;
+    for (final m in merged) {
+      final id = '${m.reportKey}|${m.rev}';
+      if (_done.contains(id) || examined.contains(id)) continue;
+      final policy = ownership;
+      if (policy != null) {
+        final receivedAt = DateTime.fromMillisecondsSinceEpoch(m.receivedAtMs, isUtc: true);
+        if (!policy.due(m.reportKey, receivedAt, now)) {
+          // todavía no le toca a este nodo: se anota cuándo vence para volver a mirar sin esperar reportes nuevos
+          final due = receivedAt.add(policy.delayFor(m.reportKey));
+          if (nextDue == null || due.isBefore(nextDue)) nextDue = due;
+          continue;
+        }
+      }
+      targets[m.reportKey] = m.rev;
+    }
+    _nextDue = nextDue;
     if (targets.isEmpty) return 0;
     final keys = targets.keys.toSet();
     final custom = _compute;
@@ -95,7 +119,6 @@ class AuditLinker {
     var written = 0;
     for (final r in results) {
       final key = r['key']! as String, rev = r['rev']! as int;
-      if (existing.contains('$key|$rev')) continue;
       final src = _log.find('report.received', key, rev);
       _log.append(
         'incident.linked',
@@ -104,9 +127,11 @@ class AuditLinker {
         rev: rev,
         inputs: [if (src != null) src.id],
       );
-      existing.add('$key|$rev');
       written++;
     }
+    // UNA marca por lote (no una por reporte): así los demás nodos saben qué se examinó aunque no haya
+    // dejado vínculos, y un relevo no lo repite.
+    _log.append('audit.batch', {'examined': [for (final e in targets.entries) '${e.key}|${e.value}'], 'agent_version': kAgentVersion});
     for (final e in targets.entries) {
       _done.add('${e.key}|${e.value}');
     }
@@ -119,7 +144,8 @@ class AuditLinker {
     final now = _clock();
     if (_nextAllowed != null && now.isBefore(_nextAllowed!)) return false;
     final count = _log.countOfTypes(['report.received']);
-    if (count == _lastReceived) return false;
+    final dueNow = _nextDue != null && !now.isBefore(_nextDue!);
+    if (count == _lastReceived && !dueNow) return false;
     _running = true;
     try {
       _lastReceived = count;

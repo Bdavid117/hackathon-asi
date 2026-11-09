@@ -42,13 +42,17 @@ Future<void> main(List<String> args) async {
   String stamp() => '${DateTime.now().difference(t0).inMilliseconds / 1000}'.padLeft(5);
   void say(String s) => stdout.writeln('[${stamp()} s] $s');
 
+  // Recursos declarados sintéticos: el agente 6 sólo puede nombrar estos.
+  final repo = File.fromUri(Platform.script).parent.parent.parent.parent.path;
+  final res = ['--resources', '$repo/config/recursos.json'];
+
   Uri urlOf(NodeProcess? x, int port) => Uri.parse('http://localhost:$port');
   final urlA = urlOf(null, pa), urlB = urlOf(null, pb);
 
   say('DEMO semilla=$seed · $total reportes sintéticos (${ds.incidents.length} sucesos) · partición de ${partition.inSeconds} s');
   say('Fase 0 · dos nodos A y B SIN pares: la red está partida');
-  var a = await NodeProcess.start(id: 'A', port: pa, dataDir: '${dir.path}/A');
-  var b = await NodeProcess.start(id: 'B', port: pb, dataDir: '${dir.path}/B');
+  var a = await NodeProcess.start(id: 'A', port: pa, dataDir: '${dir.path}/A', extraArgs: res);
+  var b = await NodeProcess.start(id: 'B', port: pb, dataDir: '${dir.path}/B', extraArgs: res);
 
   final acked = <String>{};
   final ackedByA = <String>{};
@@ -117,7 +121,7 @@ Future<void> main(List<String> args) async {
   say('   · ráfaga terminada: ${acked.length} reportes acusados en total');
 
   say('Fase 3 · se reinicia A con su mismo disco');
-  a = await NodeProcess.start(id: 'A', port: pa, dataDir: '${dir.path}/A');
+  a = await NodeProcess.start(id: 'A', port: pa, dataDir: '${dir.path}/A', extraArgs: res);
   final rtoHealth = DateTime.now().difference(tKill);
   Future<List<Map<String, Object?>>> freshQueue(Uri node, {int? expect}) async {
     final deadline = DateTime.now().add(const Duration(seconds: 60));
@@ -158,8 +162,8 @@ Future<void> main(List<String> args) async {
   say('Fase 5 · se restablece la red: A y B se reinician con sus pares (como al volver la conectividad)');
   await a.stop();
   await b.stop();
-  a = await NodeProcess.start(id: 'A', port: pa, dataDir: '${dir.path}/A', peers: [urlB.toString()]);
-  b = await NodeProcess.start(id: 'B', port: pb, dataDir: '${dir.path}/B', peers: [urlA.toString()]);
+  a = await NodeProcess.start(id: 'A', port: pa, dataDir: '${dir.path}/A', peers: [urlB.toString()], extraArgs: res);
+  b = await NodeProcess.start(id: 'B', port: pb, dataDir: '${dir.path}/B', peers: [urlA.toString()], extraArgs: res);
   final tReconnect = DateTime.now();
   Future<Map<String, Object?>> health(Uri n) async => (jsonDecode((await client.get(n.resolve('/api/health'))).body) as Map).cast<String, Object?>();
   var converged = false;
@@ -179,12 +183,63 @@ Future<void> main(List<String> args) async {
   final keysAll = {...{for (final i in qa) i['reportKey']! as String}, ...{for (final i in qb) i['reportKey']! as String}};
   check(acked.every(keysAll.contains), 'cero reportes acusados perdidos: ${acked.length} acusados, ${keysAll.length} en las colas — T09');
   check(qa.length == total && qb.length == total, 'ambas colas tienen $total reportes (A=${qa.length}, B=${qb.length}) sin duplicados');
-  final fa = projectionFingerprint(qa), fb = projectionFingerprint(qb);
-  check(fa == fb, 'A y B muestran EXACTAMENTE las mismas proyecciones tras la partición (huellas idénticas) — T10');
+  Future<List<Map<String, Object?>>> freshIncidents(Uri node, {bool Function(List<Map<String, Object?>>)? until}) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    List<Map<String, Object?>> last = const [];
+    while (DateTime.now().isBefore(deadline)) {
+      try {
+        final r = await client.get(node.resolve('/api/incidents?view=all&limit=1000')).timeout(const Duration(seconds: 30));
+        final env = (jsonDecode(r.body) as Map).cast<String, Object?>();
+        last = (env['items'] as List).cast<Map<String, Object?>>();
+        final counters = (env['counters'] as Map).cast<String, Object?>();
+        if (r.headers['x-queue-stale'] == 'false' && counters['reports'] == total && (until == null || until(last))) return last;
+      } on Object {
+        // reintenta
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    return last;
+  }
+
+  final ia = await freshIncidents(urlA), ib = await freshIncidents(urlB);
+  final fa0 = projectionFingerprint(qa, incidents: ia), fb0 = projectionFingerprint(qb, incidents: ib);
+  check(fa0 == fb0, 'A y B muestran EXACTAMENTE las mismas proyecciones tras la partición: cola, incidentes y recomendaciones (huellas idénticas) — T10');
+
+  say('Fase 6 · dos coordinadores deciden A LA VEZ, uno en cada nodo, y se contradicen');
+  final target = ia.firstWhere((i) => (i['recommendation'] as Map)['state'] == 'propuesta' && i['urgency'] == 'P1', orElse: () => ia.firstWhere((i) => (i['recommendation'] as Map)['state'] == 'propuesta'));
+  final detail = (jsonDecode((await client.get(urlA.resolve('/api/incidents/${Uri.encodeComponent(target['id']! as String)}'))).body) as Map).cast<String, Object?>();
+  Future<int> decide(Uri node, bool granted, String who) async => (await client.post(
+    node.resolve('/api/approval'),
+    headers: {'content-type': 'application/json'},
+    body: jsonEncode({
+      'recommendationId': (target['recommendation'] as Map)['id'],
+      'incidentId': target['id'],
+      'members': (detail['members'] as List).cast<String>(),
+      'decision': granted ? 'granted' : 'denied',
+      'note': 'decisión de la demostración',
+      'who': who,
+    }),
+  )).statusCode;
+  final codes = await Future.wait([decide(urlA, true, 'Ana (nodo A)'), decide(urlB, false, 'Luis (nodo B)')]);
+  check(codes.every((c) => c == 200), 'las dos decisiones contradictorias se registran, cada una en su nodo (HTTP ${codes.join('/')})');
+  bool resolved(List<Map<String, Object?>> l) {
+    final row = l.where((i) => i['id'] == target['id']);
+    if (row.isEmpty) return false;
+    final ap = row.first['approval'] as Map;
+    return ap['status'] == 'denegada' && ap['discrepancy'] == true;
+  }
+
+  final ja = await freshIncidents(urlA, until: resolved), jb = await freshIncidents(urlB, until: resolved);
+  check(resolved(ja) && resolved(jb), 'tras replicarse, AMBOS nodos muestran el incidente «denegada» con la discrepancia marcada: se conservan las dos decisiones y manda el rechazo');
+  final qa2 = await freshQueue(urlA, expect: total), qb2 = await freshQueue(urlB, expect: total);
+  final fa = projectionFingerprint(qa2, incidents: ja), fb = projectionFingerprint(qb2, incidents: jb);
+  check(fa == fb, 'A y B vuelven a mostrar exactamente lo mismo, ya con las decisiones (huellas idénticas) — T10');
+  check(fa != fa0, 'la huella cambió: las decisiones contradictorias SÍ forman parte de lo que se compara');
 
   final groups = {for (final i in qa) i['group'] as String}.length;
   say('   · ${qa.length} reportes en $groups grupos; ${qa.where((i) => i['urgency'] == 'P1').length} P1');
   stdout.writeln('HUELLA: $fa');
+  stdout.writeln('HUELLA_ANTES_DE_DECIDIR: $fa0');
   stdout.writeln('RTO_HEALTH_MS: ${rtoHealth.inMilliseconds}');
   stdout.writeln('RTO_COLA_MS: ${rtoQueue.inMilliseconds}');
   stdout.writeln('CONVERGENCIA_MS: ${convergence.inMilliseconds}');

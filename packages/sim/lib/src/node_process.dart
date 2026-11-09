@@ -23,6 +23,7 @@ class NodeProcess {
     required String dataDir,
     List<String> peers = const [],
     List<String> extraArgs = const [],
+    Map<String, String> environment = const {},
     String? nodeDir,
   }) async {
     final dir = nodeDir ?? _defaultNodeDir();
@@ -39,6 +40,7 @@ class NodeProcess {
         ...extraArgs,
       ],
       workingDirectory: dir,
+      environment: environment.isEmpty ? null : environment,
     );
     p.stdout.listen(log.add);
     p.stderr.listen(log.add);

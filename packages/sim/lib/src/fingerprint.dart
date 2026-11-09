@@ -9,7 +9,7 @@ import 'package:crypto/crypto.dart';
 /// Entra: cada reporte con su urgencia, señales, revisión, personas…; a qué **conjunto de reportes**
 /// pertenece (no cómo se llama el grupo), sus fuentes, confianza redondeada e incertidumbre.
 /// NO entra: cuándo llegó o se capturó, ni los nombres de grupo, ni el orden de la lista.
-String projectionFingerprint(List<Map<String, Object?>> queue) {
+String projectionFingerprint(List<Map<String, Object?>> queue, {List<Map<String, Object?>> incidents = const []}) {
   final membersOf = <Object?, List<String>>{};
   for (final i in queue) {
     (membersOf[i['group']] ??= []).add(i['reportKey']! as String);
@@ -39,5 +39,29 @@ String projectionFingerprint(List<Map<String, Object?>> queue) {
         membersOf[i['group']]!.join('+'),
       ].join('|'),
   ]..sort();
-  return sha256.convert(utf8.encode(rows.join('\n'))).toString();
+  // Incidentes (opcional): quiénes lo forman (no cómo se llama), urgencia, señales, la recomendación (estado,
+  // versión, acciones, recursos, requisitos pendientes) y la aprobación derivada (estado y discrepancia).
+  // Nunca relojes (captura, llegada) ni quién decidió.
+  final incidentRows = [
+    for (final i in incidents)
+      () {
+        final rec = (i['recommendation'] as Map?)?.cast<String, Object?>() ?? const {};
+        final ap = (i['approval'] as Map?)?.cast<String, Object?>() ?? const {};
+        return [
+          'INC',
+          list(i['members']),
+          i['size'],
+          i['urgency'],
+          list(i['signals']),
+          rec['state'],
+          rec['id'],
+          list(rec['actions']),
+          list(rec['resourceIds']),
+          list(rec['pending']),
+          ap['status'],
+          ap['discrepancy'],
+        ].join('|');
+      }(),
+  ]..sort();
+  return sha256.convert(utf8.encode([...rows, ...incidentRows].join('\n'))).toString();
 }

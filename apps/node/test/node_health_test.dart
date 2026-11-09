@@ -131,6 +131,29 @@ void main() {
       expect((h.snapshot(a)['peers']! as List), hasLength(1));
     });
 
+    test('liveNodeIds: este nodo y los pares con identificador conocido que están sincronizados o atrasados', () {
+      final h = health([peerB, peerC]);
+      expect(h.liveNodeIds(), {'A'}, reason: 'nadie contactado todavía: sólo este nodo');
+      h.recordContact(peerB, nodeId: 'B', missingBefore: 0, missingAfter: 0);
+      expect(h.liveNodeIds(), {'A', 'B'});
+      h.recordContact(peerC, nodeId: 'C', missingBefore: 9, missingAfter: 4);
+      expect(h.liveNodeIds(), {'A', 'B', 'C'}, reason: 'un par atrasado sigue vivo');
+      clock.advance(const Duration(seconds: 10));
+      expect(h.liveNodeIds(), {'A'}, reason: 'pasados 3 periodos sin verlos ya no cuentan como vivos');
+    });
+
+    test('un contacto sin identificador del par no lo hace «vivo» para el reparto (no se sabe quién es)', () {
+      final h = health([peerB]);
+      h.recordContact(peerB, missingBefore: 0, missingAfter: 0);
+      expect(h.liveNodeIds(), {'A'});
+    });
+
+    test('el identificador del par se publica en /api/nodes', () {
+      final h = health([peerB]);
+      h.recordContact(peerB, nodeId: 'B', missingBefore: 0, missingAfter: 0);
+      expect(peerOf(h.snapshot(a), peerB)['nodeId'], 'B');
+    });
+
     test('NO escribe nada en el log: ni por latido ni por cambio de estado', () {
       final h = health([peerB]);
       final before = a.count();
@@ -160,6 +183,12 @@ void main() {
       final p = peerOf(h.snapshot(a), peerB);
       expect(p['state'], 'sincronizado');
       expect(p['missingEvents'], 0);
+    });
+
+    test('el replicador toma el identificador del par de su /api/health', () async {
+      final h = health([peerB]);
+      await PollingReplicator(log: a, peers: [peerB], client: clientFor(handlerB), health: h).pullOnce();
+      expect(h.liveNodeIds(), {'A', 'B'});
     });
 
     test('un par caído: se registra el fallo y el estado sigue «desconocido»', () async {

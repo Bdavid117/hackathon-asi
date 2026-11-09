@@ -5,6 +5,7 @@ import 'package:sard_agents/sard_agents.dart';
 import 'device_budget.dart';
 import 'event_log.dart';
 import 'merged_reports.dart';
+import 'ownership.dart';
 
 /// Versión de las reglas de los agentes; queda escrita en cada evento que producen.
 const String kAgentVersion = 'rules-2';
@@ -32,13 +33,16 @@ class LlmStats {
 /// no hay motivo para pagar su coste en la ruta del ACK. Si hay modelo de lenguaje, se consulta
 /// DESPUÉS ([enrich]) y deja su propio evento.
 class PipelineRunner {
-  PipelineRunner(this._log, {LlmPort? llm, this.onLlmFallback, DeviceBudget? budget})
+  PipelineRunner(this._log, {LlmPort? llm, this.onLlmFallback, DeviceBudget? budget, this.ownership})
     : _llm = llm,
       llmStats = llm == null ? null : LlmStats(),
       budget = budget ?? DeviceBudget();
 
   /// Presupuesto de trabajo caro por dispositivo (degrada, no rechaza).
   final DeviceBudget budget;
+
+  /// Reparto del modelo entre nodos (*rendezvous*); `null` = este nodo lo hace todo (un nodo solo).
+  final OwnershipPolicy? ownership;
 
   /// Estadísticas del modelo; `null` si no hay modelo configurado.
   final LlmStats? llmStats;
@@ -94,12 +98,39 @@ class PipelineRunner {
     final withinBudget = budget.take(received.body['device_id'] as String? ?? received.reportKey ?? '?');
 
     // El modelo (si hay) se consulta DESPUÉS: el ACK y los eventos de reglas no esperan por él.
-    if (_llm != null && withinBudget) {
-      late final Future<void> job;
-      job = enrich(received).then<void>((_) {}, onError: (Object _) {}).whenComplete(() => _jobs.remove(job));
-      _jobs.add(job);
-    }
+    if (_llm != null && withinBudget) _scheduleModel(received);
     return out;
+  }
+
+  /// Reportes cuya consulta al modelo está pendiente en este nodo («clave#rev»): evita consultar dos veces
+  /// el mismo cuando llega por la trama y además por replicación.
+  final Set<String> _pending = {};
+
+  /// Programa la consulta al modelo de [received]: enseguida si este nodo es el dueño; si no, tras su
+  /// plazo de relevo (y sólo si el evento del dueño no llegó replicado entretanto).
+  void _scheduleModel(Event received) {
+    final key = received.reportKey;
+    if (_llm == null || key == null) return;
+    final id = '$key#${received.rev}';
+    if (!_pending.add(id)) return;
+    late final Future<void> job;
+    // Si no es el dueño, espera su turno de relevo: si el evento del dueño llega replicado antes,
+    // `enrich` ve el texto ya analizado y no consulta (no duplica).
+    final wait = ownership?.delayFor(key) ?? Duration.zero;
+    job = (wait == Duration.zero ? enrich(received) : Future<void>.delayed(wait).then((_) => enrich(received)))
+        .then<void>((_) {}, onError: (Object _) {})
+        .whenComplete(() {
+          _jobs.remove(job);
+          _pending.remove(id);
+        });
+    _jobs.add(job);
+  }
+
+  /// Un evento llegó por replicación. Si es un reporte recibido en OTRO nodo, este nodo (si es su dueño,
+  /// o cuando le toque el relevo) consulta al modelo igual que si la trama hubiera llegado aquí. Las
+  /// reglas y el ACK ya los hizo el nodo que recibió la trama: aquí sólo se reparte el trabajo caro.
+  void onReplicated(Event event) {
+    if (event.type == 'report.received') _scheduleModel(event);
   }
 
   /// Consulta al modelo de lenguaje sobre el texto vigente de un reporte y, si responde con un
@@ -110,15 +141,14 @@ class PipelineRunner {
     final llm = _llm;
     final key = received.reportKey;
     if (llm == null || key == null) return null;
+    // Sólo los eventos DE ESTE reporte (por el índice): el coste no crece con el tamaño del log.
     MergedReport? me() {
-      for (final m in mergeReports(_log.allOfType('report.received'))) {
-        if (m.reportKey == key) return m;
-      }
-      return null;
+      final merged = mergeReports(_log.eventsFor(key, type: 'report.received'));
+      return merged.isEmpty ? null : merged.first;
     }
 
-    bool analyzed(String text) => _log.allOfType('triage.assessed').any(
-      (e) => e.reportKey == key && e.body['mode'] == 'rules+llm' && e.body['analyzed_text'] == text,
+    bool analyzed(String text) => _log.eventsFor(key, type: 'triage.assessed').any(
+      (e) => e.body['mode'] == 'rules+llm' && e.body['analyzed_text'] == text,
     );
 
     final m = me();

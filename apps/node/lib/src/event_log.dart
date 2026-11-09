@@ -240,6 +240,16 @@ class EventLog {
     return e.id == id ? e : null; // el formato canónico (ceros a la izquierda) es parte de la identidad
   }
 
+  /// Los eventos de UN reporte (opcionalmente de un tipo), en orden. Usa el índice por (reporte, revisión):
+  /// cuesta lo que pesa ese reporte, no el tamaño del log.
+  List<Event> eventsFor(String reportKey, {String? type}) => _db
+      .select(
+        type == null ? 'SELECT * FROM events WHERE report_key = ? ORDER BY rowid' : 'SELECT * FROM events WHERE report_key = ? AND type = ? ORDER BY rowid',
+        [reportKey, ?type],
+      )
+      .map(_row)
+      .toList();
+
   /// Eventos de [origin] con `seq > afterSeq`, en orden.
   List<Event> readAfter(String origin, int afterSeq, {int limit = 500}) => _db
       .select('SELECT * FROM events WHERE origin = ? AND seq > ? ORDER BY seq LIMIT ?', [origin, afterSeq, limit])

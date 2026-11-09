@@ -98,3 +98,25 @@ Una sección por ejecución, para comparar entre etapas. Datos sintéticos; un s
 | Detalle `/api/incidents/<id>` | 4 KB, 5 ms (el mayor de la primera página tiene 3 reportes) |
 | Eventos en el log del nodo | 33959 |
 
+## Ráfaga · Etapa 5 · con reparto del trabajo caro entre nodos (n=10 000, un nodo)
+
+- Fecha: 2026-11-08T23:44:35.331067 · reportes pedidos: 10000 · concurrencia: 16 · semilla: 1 · tope: 900 s
+- Nodo: un proceso real (`dart run`, JIT) con pares ninguno; reportes sintéticos con texto en la rev 0 (más pesados que un SOS real).
+
+- Ráfaga completa en 10.1 s (992 tramas/s).
+
+| Medida | Valor |
+|---|---|
+| Tramas acusadas / fallidas | 10002 / 0 |
+| Latencia del ACK p50 / p95 / máx | 12 ms / 32 ms / 209 ms |
+| Capacidad de respuesta del nodo (`/api/health` durante la ráfaga) p50 / p95 / máx | 17 ms / 70 ms / 129 ms |
+| Un **P1** plantado a mitad de la ráfaga aparece en la cola tras | 2.6 s |
+| Un **P4** plantado a la vez aparece en la cola tras (antigüedad atendida) | 2.6 s |
+| Reportes en la cola al final / acusados | 10002 / 10002 |
+| Tiempo extra hasta ver todo tras la última trama | 5.3 s |
+| Vista corta `/api/incidents` (lo que pide el tablero) | 4463 filas, 3985 KB, 30 ms · de 9758 incidentes (1751 «SOS sin detalle» agregados, 3544 en seguimiento fuera de la vista) |
+| ¿Algún P1 fuera de la vista corta? | 1909 de 1909 P1 dentro |
+| Una página completa `?view=all&limit=1000` | 975 KB, 18 ms |
+| Detalle `/api/incidents/<id>` | 4 KB, 6 ms (el mayor de la primera página tiene 3 reportes) |
+| Eventos en el log del nodo | 33922 |
+

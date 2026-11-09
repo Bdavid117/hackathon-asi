@@ -68,4 +68,55 @@ void main() {
     expect(projectionFingerprint(base), matches(RegExp(r'^[0-9a-f]{64}$')));
     expect(projectionFingerprint(const []), isNot(projectionFingerprint(base)));
   });
+
+  group('con incidentes (recomendación y aprobación entran en la huella)', () {
+    Map<String, Object?> inc(String id, {List<String> members = const ['a-1'], String urgency = 'P2', List<String> signals = const ['atrapado'], String recState = 'propuesta', String recId = '0123456789abcdef', List<String> actions = const ['rescate'], List<String> resources = const ['RES-01'], List<String> pending = const [], String approval = 'pendiente', bool discrepancy = false, int firstAt = 100, int lastAt = 100, int receivedAt = 5000, int size = 1}) => {
+      'id': id,
+      'members': members,
+      'size': size,
+      'urgency': urgency,
+      'signals': signals,
+      'recommendation': {'state': recState, 'id': recId, 'actions': actions, 'resourceIds': resources, 'pending': pending},
+      'approval': {'status': approval, 'discrepancy': discrepancy, 'decisions': 0},
+      'firstAt': firstAt,
+      'lastAt': lastAt,
+      'receivedAt': receivedAt,
+    };
+    final q = [it('a-1'), it('b-1')];
+    final base = [inc('a-1'), inc('b-1', members: ['b-1'], recId: 'fedcba9876543210')];
+
+    test('mismos incidentes ⇒ misma huella, aunque cambie el orden y los relojes (captura, llegada)', () {
+      final other = [inc('b-1', members: ['b-1'], recId: 'fedcba9876543210', firstAt: 9, lastAt: 9, receivedAt: 1), inc('a-1', firstAt: 7, lastAt: 8, receivedAt: 2)];
+      expect(projectionFingerprint(q, incidents: other), projectionFingerprint(q, incidents: base));
+    });
+
+    test('no depende de cómo se llame el incidente, sólo de quiénes lo forman', () {
+      expect(projectionFingerprint(q, incidents: [inc('zzz'), inc('b-1', members: ['b-1'], recId: 'fedcba9876543210')]), projectionFingerprint(q, incidents: base));
+    });
+
+    test('incluir incidentes cambia la huella respecto de no incluirlos', () {
+      expect(projectionFingerprint(q, incidents: base), isNot(projectionFingerprint(q)));
+    });
+
+    test('cambia si cambia la recomendación: acción, recursos, requisitos pendientes o estado', () {
+      final h = projectionFingerprint(q, incidents: base);
+      expect(projectionFingerprint(q, incidents: [inc('a-1', actions: const ['bomberos']), base[1]]), isNot(h));
+      expect(projectionFingerprint(q, incidents: [inc('a-1', resources: const ['RES-02']), base[1]]), isNot(h));
+      expect(projectionFingerprint(q, incidents: [inc('a-1', pending: const ['confirmar_personas']), base[1]]), isNot(h));
+      expect(projectionFingerprint(q, incidents: [inc('a-1', recState: 'informacion_requerida'), base[1]]), isNot(h));
+      expect(projectionFingerprint(q, incidents: [inc('a-1', recId: 'ffffffffffffffff'), base[1]]), isNot(h));
+    });
+
+    test('cambia si cambia la aprobación o su discrepancia', () {
+      final h = projectionFingerprint(q, incidents: base);
+      expect(projectionFingerprint(q, incidents: [inc('a-1', approval: 'aprobada'), base[1]]), isNot(h));
+      expect(projectionFingerprint(q, incidents: [inc('a-1', approval: 'denegada', discrepancy: true), base[1]]), isNot(projectionFingerprint(q, incidents: [inc('a-1', approval: 'denegada'), base[1]])));
+    });
+
+    test('cambia si cambia quién forma el incidente o su urgencia', () {
+      final h = projectionFingerprint(q, incidents: base);
+      expect(projectionFingerprint(q, incidents: [inc('a-1', members: const ['a-1', 'c-1'], size: 2), base[1]]), isNot(h));
+      expect(projectionFingerprint(q, incidents: [inc('a-1', urgency: 'P1'), base[1]]), isNot(h));
+    });
+  });
 }

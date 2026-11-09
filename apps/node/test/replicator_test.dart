@@ -33,6 +33,27 @@ void main() {
   PollingReplicator replicator({http.Client? client}) =>
       PollingReplicator(log: a, peers: [peer], client: client ?? clientFor(handlerB));
 
+  test('onReplicated recibe SÓLO los eventos realmente añadidos (no los repetidos) y en orden', () async {
+    b.append('report.received', {'n': 1}, reportKey: 'k-1', rev: 0);
+    b.append('report.received', {'n': 2}, reportKey: 'k-2', rev: 0);
+    final seen = <String>[];
+    final r = PollingReplicator(log: a, peers: [peer], client: clientFor(handlerB), onReplicated: (events) => seen.addAll(events.map((e) => e.id)));
+    expect(await r.pullOnce(), 2);
+    expect(seen, ['B:000001', 'B:000002']);
+    expect(await r.pullOnce(), 0);
+    expect(seen, hasLength(2), reason: 'un segundo sondeo sin novedades no vuelve a avisar');
+    b.append('report.received', {'n': 3}, reportKey: 'k-3', rev: 0);
+    await r.pullOnce();
+    expect(seen, ['B:000001', 'B:000002', 'B:000003']);
+  });
+
+  test('un fallo dentro de onReplicated no rompe la replicación', () async {
+    b.append('report.received', {'n': 1}, reportKey: 'k-1', rev: 0);
+    final r = PollingReplicator(log: a, peers: [peer], client: clientFor(handlerB), onReplicated: (_) => throw StateError('boom'));
+    expect(await r.pullOnce(), 1);
+    expect(a.all(), hasLength(1));
+  });
+
   test('tras pullOnce el log de A contiene los eventos de B con su origen y seq originales', () async {
     b.append('report.received', {'n': 1}, reportKey: 'k-1', rev: 0);
     b.append('report.received', {'n': 2}, reportKey: 'k-2', rev: 0);

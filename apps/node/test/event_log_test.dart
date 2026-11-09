@@ -181,6 +181,21 @@ void main() {
     });
   });
 
+  group('eventsFor', () {
+    test('trae los eventos de UN reporte (opcionalmente de un tipo), en orden, sin recorrer el log', () {
+      final log = EventLog.open(':memory:', nodeId: 'A');
+      addTearDown(log.close);
+      log.append('report.received', {'n': 1}, reportKey: 'k-1', rev: 0);
+      log.append('report.received', {'n': 2}, reportKey: 'z-9', rev: 0);
+      log.append('report.received', {'n': 3}, reportKey: 'k-1', rev: 1);
+      log.append('triage.assessed', {'n': 4}, reportKey: 'k-1', rev: 1);
+      expect([for (final e in log.eventsFor('k-1')) e.body['n']], [1, 3, 4]);
+      expect([for (final e in log.eventsFor('k-1', type: 'report.received')) e.body['n']], [1, 3]);
+      expect(log.eventsFor('nadie-0'), isEmpty);
+      expect(log.eventsFor("k-1' OR '1'='1"), isEmpty, reason: 'la clave va como parámetro, no pegada a la consulta');
+    });
+  });
+
   group('eventById', () {
     test('devuelve el evento con ese identificador, y null si no existe o está mal formado', () {
       final log = EventLog.open(':memory:', nodeId: 'A');

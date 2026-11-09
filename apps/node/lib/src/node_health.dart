@@ -26,9 +26,10 @@ class NodeHealth {
 
   /// Un sondeo que funcionó: [missingBefore] eventos del par que este nodo no tenía al empezar y
   /// [missingAfter] los que siguen faltando al terminar (0 = al día).
-  void recordContact(Uri peer, {required int missingBefore, required int missingAfter}) {
+  void recordContact(Uri peer, {String? nodeId, required int missingBefore, required int missingAfter}) {
     final p = _peers[peer.toString()];
     if (p == null) return;
+    if (nodeId != null && nodeId.isNotEmpty) p.nodeId = nodeId;
     p
       ..lastSeen = _clock()
       ..missing = missingAfter
@@ -49,6 +50,18 @@ class NodeHealth {
     return p.missing > 0 ? 'atrasado' : 'sincronizado';
   }
 
+  /// Los nodos que se consideran **vivos** para repartir el trabajo (*rendezvous*): éste y los pares cuyo
+  /// identificador se conoce y a los que se vio hace menos de [kSilentPeriods] periodos (sincronizados o
+  /// atrasados). Un par que nunca respondió, o se calló, no cuenta: su trabajo lo hace otro.
+  Set<String> liveNodeIds() {
+    final now = _clock();
+    return {
+      nodeId,
+      for (final p in _peers.values)
+        if (p.nodeId != null && (_state(p, now) == 'sincronizado' || _state(p, now) == 'atrasado')) p.nodeId!,
+    };
+  }
+
   /// El estado servido en `/api/nodes`.
   Map<String, Object?> snapshot(EventLog log) {
     final now = _clock();
@@ -59,6 +72,7 @@ class NodeHealth {
       final state = _state(p, now);
       peers.add({
         'url': e.key,
+        'nodeId': p.nodeId,
         'state': state,
         'lastSeenAgoMs': p.lastSeen == null ? null : now.difference(p.lastSeen!).inMilliseconds,
         'lastSyncAgoMs': p.lastSync == null ? null : now.difference(p.lastSync!).inMilliseconds,
@@ -85,6 +99,7 @@ class NodeHealth {
 }
 
 class _Peer {
+  String? nodeId;
   DateTime? lastSeen;
   DateTime? lastSync;
   int missing = 0;

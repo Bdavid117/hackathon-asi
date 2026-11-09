@@ -7,6 +7,7 @@ export 'src/incidents.dart';
 export 'src/ingest.dart';
 export 'src/merged_reports.dart';
 export 'src/node_health.dart';
+export 'src/ownership.dart';
 export 'src/queue_service.dart';
 export 'src/queue_view.dart';
 export 'src/api.dart';
