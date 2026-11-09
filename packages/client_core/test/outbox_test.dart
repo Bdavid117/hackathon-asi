@@ -345,4 +345,42 @@ void main() {
     expect(r1.locQuality.hasCoordinates, isTrue);
     ob.close();
   });
+
+  group('atomicidad de una escritura (fallo inyectado a mitad; complementa a T01, que sólo la ve por casualidad)', () {
+    // Un disparador en `report` hace fallar la ÚLTIMA sentencia de `enqueueSos` después de que la fila de la
+    // trama y el contador de secuencia ya se escribieron: si la escritura no es atómica, queda un resto.
+    test('si falla a mitad de enqueueSos NO queda nada: ni la trama, ni el contador adelantado', () {
+      final path = '${dir.path}/atomica.db';
+      final outbox = Outbox.open(path, key: key);
+      addTearDown(outbox.close);
+      final ok = outbox.enqueueSos(sos(), now: t0);
+      expect(ok.frameSeq, 1);
+
+      final other = sqlite3.open(path);
+      addTearDown(other.close);
+      other.execute("CREATE TRIGGER falla BEFORE INSERT ON report BEGIN SELECT RAISE(ABORT, 'fallo inyectado'); END");
+
+      expect(() => outbox.enqueueSos(sos(), now: t0), throwsA(anything));
+      expect(outbox.all(), hasLength(1), reason: 'la trama del intento fallido no debe quedar guardada');
+
+      other.execute('DROP TRIGGER falla');
+      final next = outbox.enqueueSos(sos(), now: t0);
+      expect(next.frameSeq, 2, reason: 'el contador no avanzó con el intento fallido: no se salta ni se repite un número');
+      expect(outbox.all().map((e) => e.frameSeq), [1, 2]);
+    });
+
+    test('lo mismo para una revisión', () {
+      final path = '${dir.path}/atomica2.db';
+      final outbox = Outbox.open(path, key: key);
+      addTearDown(outbox.close);
+      final first = outbox.enqueueSos(sos(), now: t0);
+      final other = sqlite3.open(path);
+      addTearDown(other.close);
+      other.execute("CREATE TRIGGER falla BEFORE UPDATE ON report BEGIN SELECT RAISE(ABORT, 'fallo inyectado'); END");
+      expect(() => outbox.enqueueRevision(first.reportKey, sos(), now: t0), throwsA(anything));
+      expect(outbox.all(), hasLength(1));
+      other.execute('DROP TRIGGER falla');
+      expect(outbox.enqueueRevision(first.reportKey, sos(), now: t0).frameSeq, 2);
+    });
+  });
 }
