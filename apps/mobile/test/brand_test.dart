@@ -167,4 +167,56 @@ void main() {
       expect(File('ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png').lengthSync(), greaterThan(5000));
     });
   });
+
+  group('arranque en frío: ningún fogonazo blanco (la app es oscura y se abre de noche)', () {
+    const res = 'android/app/src/main/res';
+    String read(String f) => File('$res/$f').readAsStringSync();
+
+    test('la ventana de arranque (antes de Android 12) es el fondo de SARD, no blanco ni el del sistema', () {
+      for (final f in ['drawable/launch_background.xml', 'drawable-v21/launch_background.xml']) {
+        final x = read(f);
+        expect(x, contains('@color/ic_launcher_background'), reason: f);
+        expect(x, isNot(contains('@android:color/white')), reason: f);
+        expect(x, isNot(contains('?android:colorBackground')), reason: '$f: con el modo claro del sistema sería blanco');
+      }
+    });
+
+    test('Android 12+: la pantalla de arranque del sistema usa el fondo de SARD (si no, sale blanca con el ícono en medio)', () {
+      final x = read('values-v31/styles.xml');
+      expect(x, contains('android:windowSplashScreenBackground'));
+      expect(x, contains('@color/ic_launcher_background'));
+    });
+
+    test('los temas de arranque y el normal parten de una base oscura y con fondo de SARD, también en modo claro del sistema', () {
+      for (final f in ['values/styles.xml', 'values-night/styles.xml']) {
+        final x = read(f);
+        expect(x, isNot(contains('Theme.Light')), reason: '$f: base clara');
+        expect(RegExp(r'<style name="NormalTheme"[\s\S]*?android:windowBackground">@color/ic_launcher_background<').hasMatch(x), isTrue, reason: '$f: NormalTheme');
+        expect(RegExp(r'<style name="LaunchTheme"[\s\S]*?android:windowBackground">@drawable/launch_background<').hasMatch(x), isTrue, reason: '$f: LaunchTheme');
+      }
+    });
+  });
+
+  group('iOS: pantalla de lanzamiento de SARD, sin blanco', () {
+    final story = File('ios/Runner/Base.lproj/LaunchScreen.storyboard').readAsStringSync();
+
+    test('el fondo es el #12161C de la app (18, 22, 28), no blanco', () {
+      final m = RegExp(r'<color key="backgroundColor" red="([\d.]+)" green="([\d.]+)" blue="([\d.]+)"').firstMatch(story)!;
+      final c = [for (var i = 1; i <= 3; i++) double.parse(m.group(i)!)];
+      expect(c[0] * 255, closeTo(0x12, 1));
+      expect(c[1] * 255, closeTo(0x16, 1));
+      expect(c[2] * 255, closeTo(0x1C, 1));
+    });
+
+    test('la imagen de lanzamiento es la marca: cuadrada, 120 / 240 / 360 px, y el guion gráfico declara 120 × 120', () {
+      expect(story, contains('<image name="LaunchImage" width="120" height="120"/>'));
+      for (final (f, px) in [('LaunchImage.png', 120), ('LaunchImage@2x.png', 240), ('LaunchImage@3x.png', 360)]) {
+        final bytes = File('ios/Runner/Assets.xcassets/LaunchImage.imageset/$f').readAsBytesSync();
+        final bd = ByteData.sublistView(Uint8List.fromList(bytes));
+        expect(bd.getUint32(16), px, reason: '$f ancho');
+        expect(bd.getUint32(20), px, reason: '$f alto');
+        expect(bytes[25], 6, reason: '$f: RGBA, transparente alrededor de la marca');
+      }
+    });
+  });
 }

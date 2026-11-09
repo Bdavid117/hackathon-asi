@@ -9,7 +9,7 @@ rasteriza con Chrome sin cabeza. Sólo biblioteca estándar + Chrome (variable C
 
 Salidas:
   · Android: mipmap-*/ic_launcher.png (para < API 26), vectores del ícono adaptativo y del monocromo.
-  · iOS: todos los tamaños de AppIcon.appiconset, SIN canal alfa (App Store lo rechaza).
+  · iOS: todos los tamaños de AppIcon.appiconset, SIN canal alfa (App Store lo rechaza); imagen y fondo de lanzamiento.
   · Tablero web: favicon.png, Icon-192/512 y las versiones «maskable».
   · assets/brand/*.svg: las fuentes vectoriales (no se empaquetan: son el original).
 """
@@ -209,6 +209,21 @@ def ios_icons():
         raster(square_icon(scale=1.3, detailed=px > 80), px, d / img['filename'], opaque=True)
 
 
+def ios_launch():
+    """Imagen de lanzamiento de iOS: la marca sola, sobre fondo transparente (el fondo #12161C lo pone el
+    guion gráfico LaunchScreen.storyboard). 120 pt → 120 / 240 / 360 px."""
+    d = MOBILE / 'ios/Runner/Assets.xcassets/LaunchImage.imageset'
+    for name, px in [('LaunchImage.png', 120), ('LaunchImage@2x.png', 240), ('LaunchImage@3x.png', 360)]:
+        raster(svg(mark_group(True)), px, d / name, transparent=True)
+    sb = MOBILE / 'ios/Runner/Base.lproj/LaunchScreen.storyboard'
+    t = sb.read_text(encoding='utf-8')
+    import re
+    t = re.sub(r'<color key="backgroundColor" red="[\d.]+" green="[\d.]+" blue="[\d.]+" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>',
+               '<color key="backgroundColor" red="0.07058823529" green="0.08627450980" blue="0.10980392157" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>', t, count=1)
+    t = re.sub(r'<image name="LaunchImage" width="\d+" height="\d+"/>', '<image name="LaunchImage" width="120" height="120"/>', t, count=1)
+    sb.write_text(t, encoding='utf-8')
+
+
 def web_icons():
     w = DASH / 'web'
     raster(square_icon(scale=1.15, detailed=False), 48, w / 'favicon.png')
@@ -230,5 +245,6 @@ if __name__ == '__main__':
     sources()
     android_vectors()
     ios_icons()
+    ios_launch()
     web_icons()
     print('Íconos de SARD generados (Android, iOS, tablero web) y fuentes en apps/mobile/assets/brand/')

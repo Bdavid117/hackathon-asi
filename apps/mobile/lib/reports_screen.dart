@@ -62,12 +62,17 @@ class IncidentCard extends StatelessWidget {
         color: SardColors.muted,
       ),
       const SizedBox(width: 4),
+      // Una línea que se ajusta al ancho (como el titular) en vez de cortarse con «…»: a 320 dp sobran 1 o 2 px.
       Flexible(
-        child: Text(
-          incident.hasLocation ? 'Con ubicación' : 'Sin ubicación todavía',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 14, color: SardColors.muted),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            incident.hasLocation ? 'Con ubicación' : 'Sin ubicación',
+            maxLines: 1,
+            softWrap: false,
+            style: const TextStyle(fontSize: 14, color: SardColors.muted),
+          ),
         ),
       ),
     ],
@@ -216,18 +221,19 @@ class IncidentCard extends StatelessWidget {
                   constraints: const BoxConstraints(minHeight: 22),
                   child: Row(
                     children: [
-                      Flexible(
-                        child: Text(
-                          agoLabel(now, incident.at),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: SardColors.muted,
-                          ),
+                      // La hora ocupa su ancho natural (es corta: «ahora mismo», «hace 12 min») y la ubicación
+                      // el resto. Con dos Flexible de igual peso, cada una recibía la mitad y la ubicación se
+                      // cortaba con «…» aunque sobrara sitio.
+                      Text(
+                        agoLabel(now, incident.at),
+                        maxLines: 1,
+                        softWrap: false,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: SardColors.muted,
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(width: 8),
                       Flexible(child: _location()),
                     ],
                   ),
