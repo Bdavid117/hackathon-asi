@@ -79,7 +79,7 @@ List<QueueItem> buildQueue(EventLog log) {
       final r = b['received_at'] as int? ?? 0;
       if (r < receivedAt) receivedAt = r;
     }
-    final t = triage(flags);
+    final t = triage(flags, text: text, hasLocation: lat != null);
     items.add(QueueItem(
       reportKey: key,
       urgency: t.urgency,

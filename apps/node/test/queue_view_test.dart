@@ -82,13 +82,21 @@ void main() {
   test('nunca descarta un reporte: 100 reportes de todas las urgencias dan 100 elementos', () {
     const flagsByUrgency = [SituationFlags.dificultadRespiratoria, SituationFlags.atrapado, SituationFlags.viaBloqueada, 0];
     for (var i = 0; i < 100; i++) {
-      received(log, 'd$i-1', 0, flags: flagsByUrgency[i % 4], capturedAt: i);
+      // La cuarta clase es un texto que niega el peligro («sin heridos»): lo único que da P4.
+      received(log, 'd$i-1', 0, flags: flagsByUrgency[i % 4], capturedAt: i, text: i % 4 == 3 ? 'sin heridos' : null);
     }
     final q = buildQueue(log);
     expect(q.length, 100);
     expect(q.map((i) => i.reportKey).toSet().length, 100);
     expect(q.first.urgency, Urgency.p1);
     expect(q.last.urgency, Urgency.p4);
+  });
+
+  test('un SOS sin banderas ni texto va en P3, no al final de la cola (sin datos no baja la urgencia)', () {
+    received(log, 'aa-1', 0, flags: 0);
+    received(log, 'bb-1', 0, flags: SituationFlags.viaBloqueada);
+    final q = buildQueue(log);
+    expect(q.map((i) => i.urgency), [Urgency.p3, Urgency.p3]);
   });
 
   test('toJson expone lo necesario para el tablero', () {

@@ -170,12 +170,21 @@ void main() {
     final base = DateTime.fromMillisecondsSinceEpoch(1000000000); // lejos de 1970: permite restar minutos
     const flagsP1 = SituationFlags.atrapado | SituationFlags.herido; // prioHint 0
     const flagsP3 = SituationFlags.viaBloqueada; // prioHint 2
-    const flagsP4 = 0; // prioHint 3
+    // El teléfono ya no propone P4 desde las banderas (sin datos ⇒ P3). Para ejercitar el
+    // envejecimiento de una entrada de la prioridad más baja —que una versión anterior de la app
+    // pudo dejar en la bandeja— se fuerza prio_hint = 3 directamente en la base.
+    OutboxEntry enqueueP4(Outbox ob, {required DateTime now}) {
+      final e = ob.enqueueSos(sos(flags: 0), now: now);
+      final db = sqlite3.open(path);
+      db.execute('UPDATE outbox SET prio_hint = 3 WHERE frame_seq = ?', [e.frameSeq]);
+      db.close();
+      return e;
+    }
     const never = Duration(days: 1000);
 
     test('el envejecimiento sube la prioridad de lo que espera', () {
       final ob = Outbox.open(path, key: key);
-      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 35)));
+      final old = enqueueP4(ob, now: base.subtract(const Duration(minutes: 35)));
       ob.enqueueSos(sos(flags: flagsP3), now: base);
       expect(ob.due(base, limit: 1).single.frameSeq, old.frameSeq);
       ob.close();
@@ -183,7 +192,7 @@ void main() {
 
     test('el envejecimiento nunca iguala a un P1: un P4 de 3 horas sigue yendo detrás de un P1 nuevo', () {
       final ob = Outbox.open(path, key: key);
-      ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(hours: 3)));
+      enqueueP4(ob, now: base.subtract(const Duration(hours: 3)));
       final p1 = ob.enqueueSos(sos(flags: flagsP1), now: base);
       expect(ob.due(base, limit: 1).single.frameSeq, p1.frameSeq);
       ob.close();
@@ -191,7 +200,7 @@ void main() {
 
     test('el envejecimiento sí lleva un P4 muy antiguo por delante de un P2 nuevo', () {
       final ob = Outbox.open(path, key: key);
-      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(hours: 3)));
+      final old = enqueueP4(ob, now: base.subtract(const Duration(hours: 3)));
       ob.enqueueSos(sos(flags: SituationFlags.atrapado), now: base); // prioHint 1 (P2)
       // P4 envejecido queda en P2 y gana el desempate por antigüedad al P2 nuevo.
       expect(ob.due(base, limit: 1).single.frameSeq, old.frameSeq);
@@ -200,7 +209,7 @@ void main() {
 
     test('sin envejecer, un P4 reciente va detrás de un P3', () {
       final ob = Outbox.open(path, key: key);
-      ob.enqueueSos(sos(flags: flagsP4), now: base);
+      enqueueP4(ob, now: base);
       final p3 = ob.enqueueSos(sos(flags: flagsP3), now: base);
       expect(ob.due(base, limit: 1).single.frameSeq, p3.frameSeq);
       ob.close();
@@ -208,7 +217,7 @@ void main() {
 
     test('la cuota hace salir al más antiguo aunque haya una avalancha de P1', () {
       final ob = Outbox.open(path, key: key);
-      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 5)));
+      final old = enqueueP4(ob, now: base.subtract(const Duration(minutes: 5)));
       for (var i = 0; i < 30; i++) {
         ob.enqueueSos(sos(flags: flagsP1), now: base);
       }
@@ -221,7 +230,7 @@ void main() {
 
     test('sin la cuota (lote de 4) sólo salen P1', () {
       final ob = Outbox.open(path, key: key);
-      ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 5)));
+      enqueueP4(ob, now: base.subtract(const Duration(minutes: 5)));
       for (var i = 0; i < 30; i++) {
         ob.enqueueSos(sos(flags: flagsP1), now: base);
       }
@@ -231,8 +240,8 @@ void main() {
 
     test('un lote de 10 reserva dos posiciones: los dos más antiguos', () {
       final ob = Outbox.open(path, key: key);
-      final a = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 9)));
-      final b = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 8)));
+      final a = enqueueP4(ob, now: base.subtract(const Duration(minutes: 9)));
+      final b = enqueueP4(ob, now: base.subtract(const Duration(minutes: 8)));
       for (var i = 0; i < 30; i++) {
         ob.enqueueSos(sos(flags: flagsP1), now: base);
       }
@@ -246,7 +255,7 @@ void main() {
     test('no repite entradas ni excede el límite', () {
       final ob = Outbox.open(path, key: key);
       for (var i = 0; i < 25; i++) {
-        ob.enqueueSos(sos(flags: [flagsP1, flagsP3, flagsP4][i % 3]), now: base.subtract(Duration(minutes: i)));
+        ob.enqueueSos(sos(flags: [flagsP1, flagsP3, 0][i % 3]), now: base.subtract(Duration(minutes: i)));
       }
       final seqs = ob.due(base, limit: 8).map((e) => e.frameSeq).toList();
       expect(seqs.length, 8);
@@ -256,7 +265,7 @@ void main() {
 
     test('lo que aún no venció su espera no entra por la cuota', () {
       final ob = Outbox.open(path, key: key);
-      final old = ob.enqueueSos(sos(flags: flagsP4), now: base.subtract(const Duration(minutes: 5)));
+      final old = enqueueP4(ob, now: base.subtract(const Duration(minutes: 5)));
       ob.markSending(old.frameSeq);
       ob.markFailed(old.frameSeq, nextTryAt: base.add(const Duration(hours: 1)));
       for (var i = 0; i < 30; i++) {
@@ -268,7 +277,7 @@ void main() {
 
     test('con muchas esperas, al cabo de varias rondas todo el mundo sale (sin inanición)', () {
       final ob = Outbox.open(path, key: key);
-      final old = ob.enqueueSos(sos(flags: flagsP4), now: base);
+      final old = enqueueP4(ob, now: base);
       var now = base;
       var round = 0;
       var sent = false;

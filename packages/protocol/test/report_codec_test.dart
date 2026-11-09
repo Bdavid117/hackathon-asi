@@ -121,11 +121,17 @@ void main() {
         expect(prioHintFromFlags(f), 1, reason: 'flags=$f');
       }
     });
-    test('P3 (2) y P4 (3)', () {
+    test('P3 (2): vía bloqueada, menores, medicación y SIN BANDERAS (sin datos nunca baja la urgencia)', () {
       expect(prioHintFromFlags(via), 2);
       expect(prioHintFromFlags(menores), 2);
       expect(prioHintFromFlags(0x01), 2);
-      expect(prioHintFromFlags(0), 3);
+      expect(prioHintFromFlags(0), 2, reason: 'un SOS sin detalle no es «poco urgente»: ficha del agente 2');
+    });
+
+    test('con banderas, el teléfono nunca propone P4 (3): ese nivel sólo lo da el triaje al ver una negación explícita', () {
+      for (var f = 0; f < 256; f++) {
+        expect(prioHintFromFlags(f), lessThanOrEqualTo(2), reason: 'flags=$f');
+      }
     });
   });
 

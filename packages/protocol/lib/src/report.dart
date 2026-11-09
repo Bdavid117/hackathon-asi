@@ -38,6 +38,11 @@ abstract final class SituationFlags {
 ///
 /// Piso por reglas: «atrapado», «dificultad respiratoria» e «incendio» nunca producen
 /// menos que P2.
+///
+/// **Sin banderas devuelve P3 (2), no P4**: un SOS sin detalle no es «poco urgente», es «no se
+/// sabe», y la ficha del agente 2 dice que la falta de datos nunca baja la urgencia. Por eso desde
+/// las banderas nunca sale P4 (3); ese nivel sólo lo da el triaje cuando el texto dice
+/// explícitamente que no hay peligro («sin heridos») y nada más.
 int prioHintFromFlags(int flags) {
   bool has(int f) => flags & f != 0;
   if (has(SituationFlags.dificultadRespiratoria) ||
@@ -54,7 +59,7 @@ int prioHintFromFlags(int flags) {
   if (has(SituationFlags.viaBloqueada) || has(SituationFlags.menoresMayores) || has(SituationFlags.medicacion)) {
     return 2;
   }
-  return 3;
+  return 2; // sin banderas: sin datos no baja la urgencia
 }
 
 /// Recorta [s] a como mucho [maxBytes] bytes UTF-8 sin partir nunca un carácter.
