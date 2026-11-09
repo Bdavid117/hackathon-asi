@@ -70,6 +70,20 @@ Además de las pruebas automatizadas, usé la app a mano en el emulador de Andro
 5. La app lee la batería cada 60 s, así que un cambio de modo puede tardar hasta un minuto en reflejarse.
 6. **Un retraso aislado sin explicar:** una vez, con 3 % de batería, el SOS tardó más de 4 s en llegar al nodo; en 12 repeticiones posteriores (3 %, 100 %, tras inactividad) no volvió a pasar. No tengo causa demostrada.
 
+## Mejora de la interfaz (a petición: «más amigable con el usuario»)
+
+Partí de lo que molestó al usar la app a mano (observaciones 2 a 4 de la sección anterior) y rediseñé la pantalla pensando en una persona con miedo, prisa y poca batería. Detalle en el PDF §5.3.
+
+**Qué cambió:** un aviso = una tarjeta (se acabaron los «Detalle #N»); el estado justo debajo del botón con una frase de qué hacer («Sale solo… No hace falta volver a tocar»); franja de «sin señal»; indicadores con icono, casilla siempre visible y marcables **después** del SOS (hasta 10 min, salen como actualización del mismo aviso, lo enviado se ve en verde y no se quita); vibración al tocar SOS; etiquetas para lector de pantalla; paleta con contrastes medidos; permiso de ubicación pedido tras pintar la primera pantalla.
+
+**Un segundo fallo de «botones que se mueven», esta vez causado por mi propio rediseño, encontrado otra vez usando la app.** Toqué «Atrapado» y 0,6 s después «Herido», pero «Herido» ya no estaba allí: al llegar el GPS la tarjeta de estado crecía ~40 px y empujaba toda la cuadrícula. Además la cuadrícula saltaba ~177 dp al pasar del texto de ayuda a la tarjeta tras el primer SOS. Corrección: zona de estado de altura constante (el titular se ajusta al ancho, la explicación tiene hueco para 3 líneas, la hora y la ubicación van en una línea). La prueba de regresión mide la posición de un indicador a través de SOS, GPS, acuse del nodo y detalle añadido; falló primero (−177 dp, luego −69 dp con la tipografía ancha de pruebas, que resultó ser un buen estresor de «teléfono estrecho o letra grande») y ahora pasa.
+
+**Cómo se verificó:** 351 pruebas automáticas; las 3 de integración en Android y en iOS, la de sin red y la de batería, repetidas con la pantalla nueva; y a mano en el emulador con capturas: pantalla vacía, SOS sin red (franja ámbar + «Guardado en tu teléfono»), red de vuelta (salió 0,6 s después), SOS + dos indicadores en ráfaga (llegaron al nodo como un solo aviso P2 `herido, incendio`), modos de batería 15 % y 3 %, y el ancho del iPhone.
+
+**Una confesión de método:** escribí la interfaz antes que las pruebas de lo nuevo (detalles después del SOS, tarjeta, franja de sin señal), lo que va contra el ciclo prueba-primero. Lo remedié escribiendo después las pruebas y **estropeando a propósito** la función para comprobar que las pruebas la detectan: desactivar «detalles después del SOS», dejar que un reloj que retrocede cuente como «vivo» y permitir re-enviar un indicador ya enviado hicieron fallar 4, 1 y 1 pruebas respectivamente. Las pruebas de agrupación por incidente y de la bandeja (`reportOf`) sí se escribieron antes.
+
+**Sigue pendiente** (de la sección anterior): el SOS sin indicadores queda en P4 (decisión tuya) y la batería se lee cada 60 s. **Nuevo, sin resolver:** las franjas de aviso (sin señal, batería) empujan el contenido hacia abajo al aparecer, y con letra del sistema muy grande la zona de estado crece; los wireframes del PDF son el boceto de partida y no se redibujaron.
+
 ## Limitaciones declaradas
 
 - **Son emuladores:** la ubicación y la batería están simuladas desde la consola del emulador; no se probó hardware real, ni radio real (BLE, SMS, LoRa), ni consumo de energía real.

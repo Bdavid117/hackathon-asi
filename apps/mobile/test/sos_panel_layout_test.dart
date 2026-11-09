@@ -89,11 +89,11 @@ void main() {
     'un indicador marcado se distingue sin depender sólo del color (icono)',
     (tester) async {
       await montar(tester, anchoDp: 411);
-      expect(find.byIcon(Icons.check_box), findsNothing);
+      expect(find.byIcon(Icons.check_circle), findsNothing);
       await tester.tap(find.byKey(const Key('flag_herido')));
       await tester
           .pumpAndSettle(); // la palomita del chip se anima: hay que medir ya asentado
-      expect(find.byIcon(Icons.check_box), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
     },
   );
 }

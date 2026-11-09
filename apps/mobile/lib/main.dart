@@ -47,19 +47,18 @@ Future<void> main() async {
     const Duration(seconds: 3),
     (_) => unawaited(trigger.onEvent()),
   );
-  bool online(List<ConnectivityResult> r) =>
+  bool hasNetwork(List<ConnectivityResult> r) =>
       r.any((x) => x != ConnectivityResult.none);
+  // La pantalla avisa cuando no hay red: «tu SOS se guarda y saldrá solo».
+  final online = ValueNotifier<bool>(true);
+  void onNetwork(List<ConnectivityResult> r) {
+    online.value = hasNetwork(r);
+    unawaited(trigger.onConnectivity(online.value));
+  }
+
   final connectivity = Connectivity();
-  Connectivity().onConnectivityChanged.listen(
-    (r) => unawaited(trigger.onConnectivity(online(r))),
-  );
-  unawaited(
-    connectivity.checkConnectivity().then(
-      (r) => trigger.onConnectivity(online(r)),
-    ),
-  );
-  // El permiso se pide DESPUÉS de pintar la app: el botón SOS nunca espera a un diálogo.
-  unawaited(GeolocatorLocationProvider.requestPermissionOnce());
+  connectivity.onConnectivityChanged.listen(onNetwork);
+  unawaited(connectivity.checkConnectivity().then(onNetwork));
   runApp(
     SardApp(
       outbox: outbox,
@@ -67,6 +66,12 @@ Future<void> main() async {
       battery: () => Battery().batteryLevel,
       location: GeolocatorLocationProvider(),
       onNewReport: trigger.onNewReport,
+      online: online,
     ),
+  );
+  // El permiso se pide DESPUÉS de pintar la primera pantalla: el botón SOS nunca espera a un
+  // diálogo, y el cuadro del sistema no aparece sobre una pantalla en blanco.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(GeolocatorLocationProvider.requestPermissionOnce()),
   );
 }

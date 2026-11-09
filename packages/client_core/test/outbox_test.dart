@@ -317,4 +317,23 @@ void main() {
     expect(decodeReportFrame(late.frame, key).capturedAt, 4294967295);
     ob.close();
   });
+
+  test('reportOf devuelve lo que lleva una trama (indicadores, ubicación, revisión) para mostrarlo a la persona', () {
+    final ob = Outbox.open(path, key: key);
+    final e0 = ob.enqueueSos(sos(flags: SituationFlags.atrapado, withLocation: false), now: t0);
+    final e1 = ob.enqueueRevision(
+      e0.reportKey,
+      sos(flags: SituationFlags.atrapado | SituationFlags.herido),
+      now: t0.add(const Duration(seconds: 5)),
+    );
+    final r0 = ob.reportOf(e0);
+    final r1 = ob.reportOf(e1);
+    expect(r0.rev, 0);
+    expect(r0.flags, SituationFlags.atrapado);
+    expect(r0.locQuality.hasCoordinates, isFalse);
+    expect(r1.rev, 1);
+    expect(r1.flags, SituationFlags.atrapado | SituationFlags.herido);
+    expect(r1.locQuality.hasCoordinates, isTrue);
+    ob.close();
+  });
 }

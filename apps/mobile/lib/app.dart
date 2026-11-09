@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sard_client_core/sard_client_core.dart';
 import 'package:sard_protocol/sard_protocol.dart';
 
+import 'incidents.dart';
 import 'reports_screen.dart';
 import 'sos_screen.dart';
-import 'state_labels.dart';
+import 'theme.dart';
 
 /// La app ciudadana: SOS en un toque y estado de entrega.
 class SardApp extends StatefulWidget {
@@ -19,6 +22,7 @@ class SardApp extends StatefulWidget {
     this.battery,
     this.location,
     this.onNewReport,
+    this.online,
   });
 
   final Outbox outbox;
@@ -42,6 +46,10 @@ class SardApp extends StatefulWidget {
   /// el `scheduler` directamente.
   final Future<void> Function()? onNewReport;
 
+  /// ¿Hay red? Si es `false` se avisa con claridad que el SOS se guarda y saldrá solo.
+  /// Sin este dato (`null`) no se muestra ningún aviso de señal.
+  final ValueListenable<bool>? online;
+
   @override
   State<SardApp> createState() => _SardAppState();
 }
@@ -59,6 +67,11 @@ class _SardAppState extends State<SardApp> {
 
   /// Pánico: toques repetidos en menos de este plazo son el mismo SOS, no uno por toque.
   static const Duration sosDebounce = Duration(seconds: 2);
+
+  /// Mientras el aviso está vivo (10 min desde el SOS o su última actualización) los indicadores
+  /// que se marcan salen enseguida como una actualización de ese mismo aviso: primero se toca SOS
+  /// —lo urgente, de un toque— y después se cuenta qué pasa, sin prisa.
+  static const Duration detailWindow = Duration(minutes: 10);
   Timer? _timer;
   Timer? _batteryTimer;
 
@@ -121,7 +134,42 @@ class _SardAppState extends State<SardApp> {
     if (_mode != before) _applyTimers();
   }
 
-  void _toggle(int bit) => setState(() => _selected ^= bit);
+  /// ¿Hay un aviso vivo al que añadir detalles? Un reloj que retrocede no cuenta como «vivo».
+  bool _isDetailLive(DateTime now) {
+    final at = _liveAt;
+    if (_liveKey == null || at == null) return false;
+    final elapsed = now.difference(at);
+    return !elapsed.isNegative && elapsed < detailWindow;
+  }
+
+  void _haptic(Future<void> Function() f) =>
+      unawaited(f().catchError((Object _) {}));
+
+  void _toggle(int bit) {
+    final now = (widget.clock ?? DateTime.now)();
+    if (_isDetailLive(now)) {
+      if (_liveFlags & bit != 0) return; // ya salió con el aviso: no se quita
+      final union = _liveFlags | bit;
+      try {
+        widget.outbox.enqueueRevision(
+          _liveKey!,
+          _report(flags: union, fix: _usableFix(now)),
+          now: now,
+        );
+      } on Object {
+        _saveFailed();
+        return;
+      }
+      _haptic(HapticFeedback.selectionClick);
+      _liveFlags = union;
+      _liveAt = now;
+      setState(() => _saveError = false);
+      _requestSend();
+      return;
+    }
+    _haptic(HapticFeedback.selectionClick);
+    setState(() => _selected ^= bit);
+  }
 
   NewReport _report({required int flags, LocationFix? fix}) {
     final q = fix == null
@@ -174,6 +222,7 @@ class _SardAppState extends State<SardApp> {
   /// envían como revisión del mismo reporte con la **unión** de banderas; si no, no hacen nada.
   /// Si guardar falla, se avisa y el reintento inmediato no se descarta.
   void _sos() {
+    _haptic(HapticFeedback.heavyImpact);
     final now = (widget.clock ?? DateTime.now)();
     final flags = _selected;
 
@@ -255,81 +304,158 @@ class _SardAppState extends State<SardApp> {
     if (send != null) unawaited(send());
   }
 
+  /// ¿El último aviso merece ir grande debajo del botón? Sí si aún no salió, si es reciente,
+  /// o siempre en «sólo SOS» (no hay lista).
+  bool _isHero(Incident inc, DateTime now) {
+    if (_mode == PowerMode.sosOnly) return true;
+    final unsent =
+        inc.sos.state != OutboxState.sent &&
+        inc.sos.state != OutboxState.confirmed;
+    if (unsent) return true;
+    final d = now.difference(inc.at);
+    return d.isNegative || d < detailWindow;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final now = (widget.clock ?? DateTime.now)();
+    final incidents = groupIncidents(
+      widget.outbox.all(),
+      widget.outbox.reportOf,
+    );
+    final hero = incidents.isNotEmpty && _isHero(incidents.first, now)
+        ? incidents.first
+        : null;
+    final history = [
+      for (final inc in incidents)
+        if (inc != hero) inc,
+    ];
+    final showHistory = _mode != PowerMode.sosOnly && history.isNotEmpty;
     return MaterialApp(
       title: 'SARD',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(brightness: Brightness.dark, useMaterial3: true),
+      theme: sardTheme(),
       home: Scaffold(
         appBar: AppBar(title: const Text('SARD')),
         body: SafeArea(
           child: Column(
             children: [
               if (_saveError)
-                Container(
-                  key: const Key('save_error'),
-                  width: double.infinity,
-                  color: const Color(0xFFC0392B),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 8,
-                    horizontal: 12,
-                  ),
-                  child: const Text(
-                    'No se pudo guardar el reporte. Vuelve a tocar SOS.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                const _Banner(
+                  key: Key('save_error'),
+                  color: Color(0xFFB03024),
+                  icon: Icons.error_outline,
+                  text: 'No se pudo guardar el reporte. Vuelve a tocar SOS.',
+                ),
+              if (widget.online != null)
+                ValueListenableBuilder<bool>(
+                  valueListenable: widget.online!,
+                  builder: (context, isOnline, _) => isOnline
+                      ? const SizedBox.shrink()
+                      : const _Banner(
+                          key: Key('offline_banner'),
+                          color: Color(0xFF6B4E00),
+                          icon:
+                              Icons.signal_cellular_connected_no_internet_0_bar,
+                          text:
+                              'Sin señal. Tu SOS se guarda y saldrá solo cuando vuelva.',
+                        ),
                 ),
               if (_mode != PowerMode.normal)
-                Container(
+                _Banner(
                   key: const Key('power_banner'),
-                  width: double.infinity,
-                  color: const Color(0xFF8A6508),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 6,
-                    horizontal: 12,
-                  ),
-                  child: Text(
-                    _mode == PowerMode.saver
-                        ? 'Modo ahorro de batería'
-                        : 'Sólo SOS: batería muy baja',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
+                  color: const Color(0xFF6B4E00),
+                  icon: Icons.battery_alert,
+                  text: _mode == PowerMode.saver
+                      ? 'Modo ahorro de batería'
+                      : 'Sólo SOS: batería muy baja',
+                ),
+              Expanded(
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: SosPanel(
+                        selected: _selected,
+                        sent: _isDetailLive(now) ? _liveFlags : 0,
+                        onToggle: _toggle,
+                        onSos: _sos,
+                        showFlags: _mode != PowerMode.sosOnly,
+                        status: hero == null
+                            ? null
+                            : IncidentCard(
+                                incident: hero,
+                                now: now,
+                                hero: true,
+                                statusKey: const Key('last_status'),
+                              ),
+                      ),
                     ),
-                  ),
+                    if (showHistory) ...[
+                      const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(16, 18, 16, 8),
+                          child: Text(
+                            'Tus avisos',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SliverList.builder(
+                        itemCount: history.length,
+                        itemBuilder: (context, i) =>
+                            IncidentCard(incident: history[i], now: now),
+                      ),
+                    ],
+                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  ],
                 ),
-              SosPanel(
-                selected: _selected,
-                onToggle: _toggle,
-                onSos: _sos,
-                showFlags: _mode != PowerMode.sosOnly,
               ),
-              if (_mode != PowerMode.sosOnly) ...[
-                const Divider(),
-                Expanded(
-                  child: ReportsList(
-                    entries: widget.outbox.all().reversed.toList(),
-                  ),
-                ),
-              ] else if (widget.outbox.all().isNotEmpty)
-                // Sin lista (batería muy baja) la pantalla igualmente confirma el estado del último reporte.
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    stateLabel(widget.outbox.all().last),
-                    key: const Key('last_status'),
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Franja de aviso a todo el ancho: icono + frase. Nunca depende sólo del color.
+class _Banner extends StatelessWidget {
+  const _Banner({
+    super.key,
+    required this.color,
+    required this.icon,
+    required this.text,
+  });
+
+  final Color color;
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: color,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

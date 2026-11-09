@@ -52,6 +52,15 @@
     <li><strong>Accesibilidad.</strong> Botones de gran tamaño, contraste alto, lectura por lector de pantalla y mensajes cortos en lenguaje llano.</li>
   </ul>
 </div>
+<p><strong>Interfaz implementada (B2).</strong> Los wireframes de arriba son el boceto de partida; lo que se construyó y se probó a mano en el emulador cambió en estos puntos, todos pensados para una persona con miedo, prisa y poca batería:</p>
+<ul>
+  <li><strong>Un aviso, una tarjeta.</strong> La bandeja guarda una fila por trama, pero la persona ve <em>un</em> aviso: el SOS y todo lo que se le añade (la ubicación que llega después, los indicadores) se pliegan en una sola tarjeta. Desaparecen las filas «Detalle #N» que nadie creó.</li>
+  <li><strong>El estado, justo debajo del botón.</strong> Tras tocar SOS, una tarjeta de color (ámbar «guardado», verde «enviado»; siempre con icono y texto) dice qué pasa y qué hacer —casi siempre <em>nada</em>—: «Sale solo en cuanto haya señal. No hace falta volver a tocar.» Los textos de estado son los de la tabla de abajo, sin cambios.</li>
+  <li><strong>Primero lo urgente, después el detalle.</strong> Los indicadores pueden marcarse antes del SOS o hasta 10 minutos después; los que se marcan después salen enseguida como una actualización del mismo aviso. Lo ya enviado se ve marcado en verde y no se puede quitar.</li>
+  <li><strong>Franja de «sin señal»</strong> que dice con claridad que el SOS se guarda y saldrá solo.</li>
+  <li><strong>Nada se mueve bajo el dedo.</strong> Cuadrícula de dos columnas con indicadores de tamaño fijo y una zona de estado de altura constante: ni el GPS que llega, ni el acuse del nodo, ni un detalle añadido desplazan los botones (la primera versión sí lo hacía y se descubrió usándola; ahora lo protegen pruebas).</li>
+  <li><strong>Un icono por situación</strong>, texto de al menos 14–15 sp, objetivos táctiles de 64 dp, vibración al tocar SOS y etiquetas para el lector de pantalla («Atrapado, ya enviado»). El permiso de ubicación se pide <em>después</em> de pintar la primera pantalla.</li>
+</ul>
 
 <h2 id="s5-4">Datos locales y estados de entrega</h2>
 <p>La bandeja de salida es una tabla SQLite. La regla de oro: <strong>la pantalla sólo muestra «Guardado» después de que la transacción confirme</strong> con <code>synchronous=FULL</code>, de modo que un cierre brusco de la app no puede perder lo que el usuario ya vio como guardado. (Las pruebas del proyecto verifican la muerte del proceso; <code>synchronous=FULL</code> es la garantía de SQLite frente a un corte de energía, que no se somete a prueba aquí.)</p>

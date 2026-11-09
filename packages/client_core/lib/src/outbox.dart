@@ -103,6 +103,10 @@ class Outbox {
   final Database _db;
   final Uint8List _key;
 
+  /// Lo que lleva una trama de esta bandeja (indicadores, ubicación, revisión), para mostrárselo
+  /// a la persona. Verifica la etiqueta con la clave de la bandeja.
+  ReportFrame reportOf(OutboxEntry e) => decodeReportFrame(e.frame, _key);
+
   /// Identificador aleatorio de 8 bytes de esta instalación.
   final Uint8List deviceId;
 
