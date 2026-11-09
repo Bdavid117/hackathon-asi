@@ -10,8 +10,10 @@
 //           --out (docs/resultados/t07-modelo.md; el CSV de datos crudos queda al lado) · --price-in / --price-out (USD por
 //           millón de tokens, sólo para un modelo sin precio conocido) · --base-url (sólo pruebas: un servidor falso).
 //
-// Reglas: semillas NUEVAS, código y criterio de adopción congelados ANTES de correr, comparación pareada, fallos contados
-// por causa, la clave NUNCA se imprime ni se escribe, y si el informe contuviera la clave no se escribe.
+// Reglas: semillas NUEVAS, código y criterio de adopción congelados ANTES de correr (el informe anota el commit y si el árbol
+// estaba limpio), comparación pareada, fallos contados por causa, la clave NUNCA se imprime ni se escribe, y si el informe
+// contuviera la clave no se escribe. El tope de gasto se comprueba antes de cada llamada, pero no es estrictamente duro.
+// Se debe lanzar desde la raíz del repositorio.
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -62,6 +64,20 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
 
+  // La versión del código que se mide: el commit y si había cambios sin confirmar en el código.
+  String codeVersion() {
+    try {
+      final head = Process.runSync('git', ['rev-parse', '--short', 'HEAD']);
+      final dirty = Process.runSync('git', ['status', '--porcelain', '--', 'packages', 'apps', 'config']);
+      if (head.exitCode != 0 || dirty.exitCode != 0) return 'desconocido (git no respondió)';
+      return '${(head.stdout as String).trim()} (${(dirty.stdout as String).trim().isEmpty ? 'árbol limpio' : 'CON cambios sin confirmar'})';
+    } on Object {
+      return 'desconocido (sin git)';
+    }
+  }
+
+  final version = codeVersion();
+  stderr.writeln('código: $version');
   final client = http.Client();
   final port = ClaudeHttpPort(
     client: client,
@@ -75,7 +91,7 @@ Future<void> main(List<String> args) async {
   client.close();
 
   final out = _opt(args, 'out', 'docs/resultados/t07-modelo.md');
-  final md = renderT07Model(cfg, res, datasets);
+  final md = renderT07Model(cfg, res, datasets, codeVersion: version);
   final csv = renderT07ModelCsv(datasets, res.records);
   if (key.isNotEmpty && (md.contains(key) || csv.contains(key))) {
     stderr.writeln('El informe contiene la clave: NO se escribe.');

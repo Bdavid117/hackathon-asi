@@ -136,6 +136,20 @@ void main() {
       }
     });
 
+    test('los escenarios de T08 van PRIMERO en la cola (un tope de gasto no puede dejarlos sin medir)', () {
+      final data = [
+        T07Dataset('s1', 'synth', fixture()),
+        T07Dataset('corro', 'corroboracion', generateCorroboration(sources: 5, seed: 1)),
+        T07Dataset('rum', 'rumor', generateRumor(copies: 4, sources: 2, seed: 1)),
+      ];
+      final kinds = [for (final j in planJudgeJobs(data, k: 6)) j.dataset == 's1' ? 'synth' : 'esc'];
+      final firstSynth = kinds.indexOf('synth');
+      expect(firstSynth, greaterThan(0));
+      expect(kinds.sublist(0, firstSynth).every((k) => k == 'esc'), isTrue);
+      expect(kinds.sublist(firstSynth).every((k) => k == 'synth'), isTrue);
+      expect(kinds.where((k) => k == 'esc').length, 4 + 3, reason: '4 de la corroboración (5 reportes) y 3 del rumor (4 copias)');
+    });
+
     test('varios conjuntos NO se mezclan', () {
       final x = fixture();
       final jobs = planJudgeJobs([T07Dataset('s1', 'synth', x), T07Dataset('s2', 'synth', x)], k: 6);
@@ -206,6 +220,23 @@ void main() {
       expect(ev.withModelNoVeto.groups, 1);
       expect(ev.vetoes.total, 1);
       expect(ev.vetoes.harmful, 1, reason: 'eran del mismo suceso: un veto malo');
+    });
+
+    test('mide la evidencia disponible: de los pares verdaderos con texto en los dos, cuántos comparten la calle escrita y cuántos alguna palabra', () async {
+      final rs = [
+        rep('e1-1', inc: 0, text: 'carrera 16 con calle 39, hay heridos'),
+        rep('e2-1', inc: 0, text: 'nadie herido, carrera 16 con calle 39', minutes: 1),
+        rep('e3-1', inc: 0, text: 'mucha sangre', minutes: 2),
+        rep('e5-1', inc: 0, text: 'carrera 16 con calle 40', minutes: 3), // misma carrera, OTRA calle
+        rep('e6-1', inc: 0, text: 'sangre por todos lados', minutes: 3),
+        rep('e7-1', inc: 0, text: null, minutes: 4), // sin texto: sus pares no se cuentan
+        rep('e4-1', inc: 1, text: 'carrera 16 con calle 39, humo', minutes: 2, lat: 5.10, lon: -75.60), // otro suceso con la MISMA calle: no es par verdadero
+      ];
+      final d = [T07Dataset('s1', 'synth', rs)];
+      final ev = evalT07(d, const [], minConfidence: 0.8);
+      expect(ev.textPairs, 10, reason: '5 reportes con texto del suceso 0 → 10 pares; e7 no tiene texto');
+      expect(ev.textPairsSharingStreet, 1, reason: 'sólo e1–e2 escriben la misma calle (e5 es la calle 40)');
+      expect(ev.textPairsSharingWord, 4, reason: 'e1–e2, e1–e5, e2–e5 (carrera/calle) y e3–e6 (sangre)');
     });
 
     test('una unión que las reglas YA hacían no se cuenta como del modelo', () async {
@@ -397,6 +428,252 @@ void main() {
     });
   });
 
+  group('decideT07: el criterio se aplica mecánicamente', () {
+    final fx = fixture();
+    final corro = generateCorroboration(sources: 5, seed: 1);
+    final rumor = generateRumor(copies: 6, sources: 2, seed: 1);
+    final data = [T07Dataset('s1', 'synth', fx), T07Dataset('corroboracion-1', 'corroboracion', corro), T07Dataset('rumor-1', 'rumor', rumor)];
+    final truth = {...textToIncident(fx), ...textToIncident(corro), ...textToIncident(rumor)};
+
+    Future<(T07ModelResult, T07Eval)> run(LlmPort port) async {
+      final res = await runT07Model(cfg(), port, datasets: data);
+      return (res, evalT07(data, res.records, minConfidence: 0.8));
+    }
+
+    bool met(T07Verdict v, String id) => v.lines.singleWhere((l) => l.id == id).met;
+
+    JudgeRecord rec({String? reason, int latencyMs = 100}) => JudgeRecord(
+      dataset: 's1', targetKey: 't', candidateKeys: const [], judgments: const [], reason: reason, latencyMs: latencyMs, inputTokens: 1, outputTokens: 1, costUsd: 0, requestId: null,
+    );
+
+    test('un oráculo perfecto cumple los dos niveles; sin vetos no hay evidencia para que el nodo vete', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      final v = decideT07(ev, res.records, cfg());
+      for (final l in v.lines) {
+        expect(l.met, isTrue, reason: '${l.id}: ${l.description} → ${l.value}');
+      }
+      expect(v.offerAsOption, isTrue);
+      expect(v.recommend, isTrue);
+      expect(v.allowVeto, isFalse, reason: 'sin vetos medidos no se sabe si vetar es seguro');
+      expect(v.conclusion, contains('se recomienda'));
+    });
+
+    test('un juez que dice «same» a todo NO cumple la seguridad: ni se ofrece', () async {
+      final (res, ev) = await run(_Oracle(const {}, mode: 'same'));
+      final v = decideT07(ev, res.records, cfg());
+      expect(v.offerAsOption, isFalse);
+      expect(v.recommend, isFalse);
+      expect(met(v, '1') && met(v, '2'), isFalse);
+      expect(v.conclusion, contains('NO se ofrece'));
+    });
+
+    test('un modelo que siempre falla no cumple la fiabilidad (4)', () async {
+      final (res, ev) = await run(_Fail(const LlmResult(timedOut: true)));
+      final v = decideT07(ev, res.records, cfg());
+      expect(met(v, '4'), isFalse);
+      expect(v.offerAsOption, isFalse);
+    });
+
+    test('seguro pero SIN ganancia: opción disponible, apagada, «sin ganancia demostrada»', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.withModel = ev.rules; // el modelo no mejoró nada
+      final v = decideT07(ev, res.records, cfg());
+      expect(v.offerAsOption, isTrue);
+      expect(v.recommend, isFalse);
+      expect(met(v, '3'), isFalse);
+      expect(v.conclusion, contains('sin ganancia demostrada'));
+      expect(v.conclusion, contains('no (3)'), reason: 'dice exactamente qué criterio falta');
+    });
+
+    test('(1) falsa fusión: ≤ 1 % y ≤ la de las reglas + 0,5 puntos', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.rules = PairMetrics(1000, 0, 0, 1, 0);
+      ev.withModel = PairMetrics(99, 1, 0, 1, 0);
+      expect(met(decideT07(ev, res.records, cfg()), '1'), isFalse, reason: '1 % cuando las reglas tienen 0 %: pasa +0,5 puntos');
+      ev.rules = PairMetrics(100, 1, 0, 1, 0); // ≈ 0,99 %
+      ev.withModel = PairMetrics(99, 1, 0, 1, 0); // 1 %
+      expect(met(decideT07(ev, res.records, cfg()), '1'), isTrue);
+      ev.withModel = PairMetrics(98, 2, 0, 1, 0); // 2 %
+      expect(met(decideT07(ev, res.records, cfg()), '1'), isFalse);
+      ev.rules = PairMetrics(1000, 0, 0, 1, 0);
+      ev.withModel = PairMetrics(992, 8, 0, 1, 0); // 0,8 %: bajo 1 % pero > 0 + 0,5
+      expect(met(decideT07(ev, res.records, cfg()), '1'), isFalse);
+      ev.withModel = PairMetrics(996, 4, 0, 1, 0); // 0,4 %
+      expect(met(decideT07(ev, res.records, cfg()), '1'), isTrue);
+      ev.withModel = PairMetrics(9945, 55, 0, 1, 0); // 0,55 %: pasa 0 + 0,5 puntos
+      expect(met(decideT07(ev, res.records, cfg()), '1'), isFalse);
+      ev.withModel = PairMetrics(9955, 45, 0, 1, 0); // 0,45 %
+      expect(met(decideT07(ev, res.records, cfg()), '1'), isTrue);
+    });
+
+    test('(2) precisión de las uniones ≥ 95 %; sin uniones no hay nada demostrado', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.unions
+        ..total = 20
+        ..correct = 19;
+      expect(met(decideT07(ev, res.records, cfg()), '2'), isTrue);
+      ev.unions.correct = 18;
+      expect(met(decideT07(ev, res.records, cfg()), '2'), isFalse);
+      ev.unions
+        ..total = 0
+        ..correct = 0;
+      expect(met(decideT07(ev, res.records, cfg()), '2'), isFalse);
+    });
+
+    test('(4) fiabilidad: fallos ≤ 5 % de las llamadas y llamadas de más de 8 s ≤ 5 % de las útiles', () async {
+      final (_, ev) = await run(_Oracle(truth));
+      List<JudgeRecord> recs({int fail = 0, int slow = 0, int total = 20}) => [
+        for (var i = 0; i < total; i++) rec(reason: i < fail ? 'plazo_agotado' : null, latencyMs: i >= total - slow ? 8001 : 8000),
+      ];
+      expect(met(decideT07(ev, recs(fail: 1), cfg()), '4'), isTrue);
+      expect(met(decideT07(ev, recs(fail: 2), cfg()), '4'), isFalse);
+      expect(met(decideT07(ev, recs(slow: 1), cfg()), '4'), isTrue, reason: '8 000 ms no pasa de 8 s; 8 001 sí');
+      expect(met(decideT07(ev, recs(slow: 2), cfg()), '4'), isFalse);
+      expect(met(decideT07(ev, recs(fail: 1, slow: 1), cfg()), '4'), isFalse, reason: '1 lenta de 19 útiles es 5,3 %: se mide sobre las útiles, no sobre todas');
+      expect(met(decideT07(ev, const [], cfg()), '4'), isFalse, reason: 'sin llamadas no hay fiabilidad demostrada');
+    });
+
+    test('(3) ganancia de recall: al menos 5 puntos Y al menos el doble', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.rules = PairMetrics(2, 0, 98, 1, 0); // 2 %
+      ev.withModel = PairMetrics(7, 0, 93, 1, 0); // 7 %
+      expect(met(decideT07(ev, res.records, cfg()), '3'), isTrue);
+      ev.withModel = PairMetrics(6, 0, 94, 1, 0); // 6 %: sólo +4 puntos
+      expect(met(decideT07(ev, res.records, cfg()), '3'), isFalse);
+      ev.rules = PairMetrics(4, 0, 196, 1, 0); // 2 %
+      ev.withModel = PairMetrics(13, 0, 187, 1, 0); // 6,5 %: +4,5 puntos
+      expect(met(decideT07(ev, res.records, cfg()), '3'), isFalse);
+      ev.rules = PairMetrics(1, 0, 99, 1, 0); // 1 %
+      ev.withModel = PairMetrics(6, 0, 94, 1, 0); // 6 %: +5 puntos justos (con el redondeo de coma flotante)
+      expect(met(decideT07(ev, res.records, cfg()), '3'), isTrue);
+      ev.rules = PairMetrics(2, 0, 98, 1, 0);
+      ev.rules = PairMetrics(10, 0, 90, 1, 0); // 10 %
+      ev.withModel = PairMetrics(15, 0, 85, 1, 0); // 15 %: +5 puntos pero sólo ×1,5
+      expect(met(decideT07(ev, res.records, cfg()), '3'), isFalse);
+    });
+
+    test('veto: sólo si hay vetos y ≤ 10 % son dañinos', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.vetoes
+        ..total = 10
+        ..correct = 9;
+      expect(decideT07(ev, res.records, cfg()).allowVeto, isTrue);
+      ev.vetoes.correct = 8;
+      expect(decideT07(ev, res.records, cfg()).allowVeto, isFalse);
+      ev.vetoes
+        ..total = 0
+        ..correct = 0;
+      expect(decideT07(ev, res.records, cfg()).allowVeto, isFalse);
+    });
+
+    T08Row corro5({bool ok = true}) => T08Row(
+      label: 'c', kind: 'corroboracion', reports: 5, rulesGroups: 5, modelGroups: ok ? 1 : 3, rulesIndependentSources: 1, modelIndependentSources: ok ? 5 : 2, rulesConfidence: 0.6, modelConfidence: ok ? 0.95 : 0.6,
+    );
+    T08Row rumorRow({int sources = 1, double conf = 0.2}) => T08Row(
+      label: 'r', kind: 'rumor', reports: 12, rulesGroups: 1, modelGroups: 1, rulesIndependentSources: 1, modelIndependentSources: sources, rulesConfidence: 0.2, modelConfidence: conf,
+    );
+
+    test('(5) corroboración: un grupo con las 5 fuentes y más confianza en al menos el 80 % de los escenarios', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.scenarios
+        ..clear()
+        ..addAll([corro5(), corro5(), corro5(), corro5(), corro5(ok: false)]);
+      expect(met(decideT07(ev, res.records, cfg()), '5'), isTrue, reason: '4 de 5');
+      ev.scenarios
+        ..clear()
+        ..addAll([corro5(), corro5(), corro5(ok: false), corro5(ok: false), corro5(ok: false)]);
+      expect(met(decideT07(ev, res.records, cfg()), '5'), isFalse, reason: '2 de 5');
+      ev.scenarios.clear();
+      expect(met(decideT07(ev, res.records, cfg()), '5'), isFalse, reason: 'sin escenarios no hay nada demostrado');
+    });
+
+    test('romper UNA sola de las condiciones de seguridad (1, 2 o 4) basta para no ofrecerla', () async {
+      final (res, ev0) = await run(_Oracle(truth));
+      T07Eval fresh() => evalT07(data, res.records, minConfidence: 0.8);
+      final malos = [for (var i = 0; i < 20; i++) rec(reason: i < 2 ? 'plazo_agotado' : null)];
+      final ev1 = fresh()..withModel = PairMetrics(90, 10, 0, 1, 0);
+      final v1 = decideT07(ev1, res.records, cfg());
+      expect([v1.offerAsOption, v1.conclusion.contains('sin cumplir: 1)')], [false, true]);
+      final ev2 = fresh();
+      ev2.unions
+        ..total = 0
+        ..correct = 0;
+      final v2 = decideT07(ev2, res.records, cfg());
+      expect([v2.offerAsOption, v2.conclusion.contains('sin cumplir: 2)')], [false, true]);
+      final v4 = decideT07(ev0, malos, cfg());
+      expect([v4.offerAsOption, v4.conclusion.contains('sin cumplir: 4)')], [false, true]);
+      expect(decideT07(ev0, res.records, cfg()).offerAsOption, isTrue, reason: 'precondición: sin romper nada sí se ofrece');
+    });
+
+    test('un rumor que se pasa impide recomendarla aunque lo demás cumpla (y la conclusión dice «no (6)»)', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.scenarios.removeWhere((s) => s.kind == 'rumor');
+      final v = decideT07(ev, res.records, cfg());
+      expect(v.offerAsOption, isTrue);
+      expect(v.recommend, isFalse);
+      expect(v.conclusion, contains('no (6)'));
+    });
+
+    test('(5) cada condición cuenta por separado: grupos, fuentes y confianza', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      T08Row row({int groups = 1, int sources = 5, double conf = 0.95}) => T08Row(
+        label: 'c', kind: 'corroboracion', reports: 5, rulesGroups: 5, modelGroups: groups, rulesIndependentSources: 1, modelIndependentSources: sources, rulesConfidence: 0.6, modelConfidence: conf,
+      );
+      for (final r in [row(groups: 2), row(sources: 4), row(conf: 0.6), row(conf: 0.5)]) {
+        ev.scenarios
+          ..clear()
+          ..addAll([r, r, r, r, r]);
+        expect(met(decideT07(ev, res.records, cfg()), '5'), isFalse);
+      }
+      ev.scenarios
+        ..clear()
+        ..addAll([row(), row(), row(), row(), row()]);
+      expect(met(decideT07(ev, res.records, cfg()), '5'), isTrue);
+    });
+
+    test('sin escenarios de T08 se ofrece como opción pero NO se recomienda, y la conclusión dice qué falta', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.scenarios.removeWhere((s) => s.kind == 'corroboracion');
+      var v = decideT07(ev, res.records, cfg());
+      expect(v.offerAsOption, isTrue);
+      expect(v.recommend, isFalse);
+      expect(v.conclusion, contains('no (5)'));
+      ev.scenarios.removeWhere((s) => s.kind == 'rumor');
+      v = decideT07(ev, res.records, cfg());
+      expect(v.conclusion, contains('no (5, 6)'));
+    });
+
+    test('(6) un rumor con 3 fuentes (el máximo permitido) pasa; si hay dos rumores y uno se pasa, no', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.scenarios
+        ..clear()
+        ..add(rumorRow(sources: 3, conf: 0.79));
+      expect(met(decideT07(ev, res.records, cfg()), '6'), isTrue);
+      ev.scenarios
+        ..clear()
+        ..addAll([rumorRow(), rumorRow(sources: 4)]);
+      expect(met(decideT07(ev, res.records, cfg()), '6'), isFalse);
+    });
+
+    test('(6) rumor: no gana fuentes independientes por encima de las que tiene ni sube de 0,8 de confianza', () async {
+      final (res, ev) = await run(_Oracle(truth));
+      ev.scenarios
+        ..clear()
+        ..add(rumorRow());
+      expect(met(decideT07(ev, res.records, cfg()), '6'), isTrue);
+      ev.scenarios
+        ..clear()
+        ..add(rumorRow(sources: 4));
+      expect(met(decideT07(ev, res.records, cfg()), '6'), isFalse);
+      ev.scenarios
+        ..clear()
+        ..add(rumorRow(conf: 0.8));
+      expect(met(decideT07(ev, res.records, cfg()), '6'), isFalse);
+      ev.scenarios.clear();
+      expect(met(decideT07(ev, res.records, cfg()), '6'), isFalse);
+    });
+  });
+
   group('informes', () {
     final data = [T07Dataset('s1', 'synth', fixture()), T07Dataset('corroboracion-1', 'corroboracion', generateCorroboration(sources: 5, seed: 1))];
     late T07ModelResult res;
@@ -416,6 +693,44 @@ void main() {
           if ((r.text ?? '').length > 12) expect(md, isNot(contains(r.text!)), reason: 'el informe no incluye el texto de los reportes');
         }
       }
+    });
+
+    test('el informe trae el veredicto del criterio, la evidencia disponible, la versión del código y NO llama «duro» al tope', () {
+      final md = renderT07Model(cfg(), res, data, codeVersion: 'abc1234 (árbol limpio)');
+      for (final s in ['Veredicto del criterio', 'comparten la calle escrita', 'abc1234 (árbol limpio)', 'no es estrictamente duro']) {
+        expect(md, contains(s), reason: s);
+      }
+      expect(md, isNot(contains('tope duro')));
+    });
+
+    test('el informe pone cada porcentaje de evidencia en su sitio (calle 1 de 10, palabra 4 de 10)', () async {
+      final rs = [
+        rep('e1-1', inc: 0, text: 'carrera 16 con calle 39, hay heridos'),
+        rep('e2-1', inc: 0, text: 'nadie herido, carrera 16 con calle 39', minutes: 1),
+        rep('e3-1', inc: 0, text: 'mucha sangre', minutes: 2),
+        rep('e5-1', inc: 0, text: 'carrera 16 con calle 40', minutes: 3),
+        rep('e6-1', inc: 0, text: 'sangre por todos lados', minutes: 3),
+      ];
+      final d = [T07Dataset('s1', 'synth', rs)];
+      final rsx = await runT07Model(cfg(), _Oracle(textToIncident(rs)), datasets: d);
+      final md = renderT07Model(cfg(), rsx, d);
+      expect(md, contains('**10.0 %** comparten la calle escrita y **40.0 %** alguna palabra de contenido'));
+    });
+
+    test('el informe incluye la conclusión del veredicto tal cual la calcula decideT07', () {
+      final ev = evalT07(data, res.records, minConfidence: 0.8);
+      final v = decideT07(ev, res.records, cfg());
+      expect(renderT07Model(cfg(), res, data), contains('**${v.conclusion}**'));
+    });
+
+    test('la precisión de los «possible» se informa con SU número (aunque no cambien nada)', () async {
+      final rsx = await runT07Model(cfg(), _Oracle(textToIncident(fixture()), mode: 'possible'), datasets: [data.first]);
+      final md = renderT07Model(cfg(), rsx, [data.first]);
+      final j = evalT07([data.first], rsx.records, minConfidence: 0.8).judgments;
+      expect(j.possibleWhenSame, isNot(j.possibleWhenDifferent), reason: 'precondición: el número distingue «mismo» de «distinto»');
+      final esperado = (100 * j.possibleWhenSame / (j.possibleWhenSame + j.possibleWhenDifferent)).toStringAsFixed(1);
+      expect(md, contains('Precisión de los `possible`: $esperado %'));
+      expect(md, contains('no cambian nada'));
     });
 
     test('el CSV es coherente con un oráculo perfecto: «same» ⇔ misma verdad', () {

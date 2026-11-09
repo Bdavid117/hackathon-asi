@@ -16,22 +16,30 @@ import 't06_model.dart';
 /// función pura que usaría el nodo.
 
 /// El criterio de adopción, **fijado antes de ver los datos de la corrida** (queda en el historial de git antes de la
-/// corrida con la API). El informe lo repite junto a los resultados para que se vea si se cumplió o no, sin reinterpretarlo.
+/// corrida con la API). El informe lo repite y lo APLICA mecánicamente ([decideT07]) junto a los resultados.
 ///
-/// Revisión (9 nov 2026): la primera versión (commit `6ed2fe5`) pedía en (3) sólo «el doble de recall». El piloto de la
-/// semilla 700 —que NO entra en el resultado— mostró que el recall de las reglas es ≈ 0,3 %, así que «el doble» se cumple
-/// con una mejora sin valor práctico. Se separó en dos niveles y (3) pasó a exigir una ganancia absoluta; se hizo ANTES de
-/// correr las semillas 701–705. El mensaje al modelo no se tocó tras el piloto.
+/// Revisiones, todas antes de correr las semillas 701–705 (el piloto de la semilla 700 NO entra en el resultado):
+///  · 1.ª (`6ed2fe5`): (3) pedía sólo «el doble de recall».
+///  · 2.ª (`445318d`): el piloto mostró que el recall de las reglas es ≈ 0,3 %, así que «el doble» no tiene valor práctico;
+///    se separó en dos niveles y (3) pasó a exigir una ganancia absoluta.
+///  · 3.ª (esta): el piloto no había llegado a juzgar ningún escenario de T08 (la cola iba en orden y el tope cortó antes), y T08 es
+///    lo que promete el Reto 4: se añadieron (5) y (6). El nivel de seguridad no exige ningún beneficio —lo cumpliría un modelo
+///    inofensivo e inútil—, por eso sin (3), (5) y (6) el informe dice «sin ganancia demostrada». El mensaje al modelo no se tocó.
 const String kT07DecisionRule =
-    'Revisado tras el piloto (semilla 700, que no entra en el resultado) y antes de correr las semillas 701–705. '
+    'Tercera revisión, antes de correr las semillas 701–705 (el piloto de la semilla 700 no entra en el resultado). '
     '**Para ofrecer la unión por modelo en el nodo como opción apagada por omisión** hace falta, con semillas nuevas y a la vez: '
     '(1) la falsa fusión de pares con el modelo es ≤ 1 % y no supera en más de 0,5 puntos a la de sólo reglas; '
-    '(2) la precisión de las uniones que hace el modelo es ≥ 95 %; '
-    '(4) los fallos del modelo (plazo, HTTP, salida inválida) son ≤ 5 % de las llamadas y las llamadas de más de 8 s ≤ 5 %. '
-    '**Para recomendar activarla** además (3): el recall de pares con el modelo sube al menos 5 puntos porcentuales y al menos '
-    'el doble que el de sólo reglas. '
-    'El veto (que el modelo corte una unión de las reglas) se adopta sólo si ≤ 10 % de los vetos son dañinos (cortan pares '
-    'del mismo suceso); si no, el nodo sólo une, no veta.';
+    '(2) la precisión de las uniones que hace el modelo es ≥ 95 % (sin uniones no hay nada demostrado); '
+    '(4) los fallos del modelo (plazo, HTTP, salida inválida) son ≤ 5 % de las llamadas y las llamadas de más de 8 s ≤ 5 % de las útiles. '
+    '**Para recomendar activarla** además: '
+    '(3) el recall de pares con el modelo sube al menos 5 puntos porcentuales y al menos el doble que el de sólo reglas; '
+    '(5) en al menos el 80 % de las corroboraciones (5 fuentes con palabras propias) el modelo forma UN grupo con las 5 fuentes y '
+    'más confianza que las reglas; '
+    '(6) el rumor repetido no gana fuentes independientes por encima de las que tiene ni pasa de 0,8 de confianza. '
+    'Sin (3), (5) y (6) el resultado es «opción disponible, sin ganancia demostrada». '
+    'El veto (que el modelo corte una unión de las reglas) se adopta sólo si hay vetos y ≤ 10 % de ellos son dañinos (cortan pares '
+    'del mismo suceso); si no, el nodo sólo une, no veta. Los veredictos `possible` no cambian nada (su confianza queda bajo el '
+    'umbral): se informa su precisión y nada más.';
 
 /// Un conjunto de reportes con su verdad. [kind]: `synth` (cuenta para las métricas de pares), `corroboracion` o `rumor`
 /// (escenarios de T08, se informan aparte).
@@ -122,17 +130,20 @@ List<Observation> _chronological(T07Dataset d) {
 }
 
 /// Las consultas que haría el nodo: un trabajo por reporte con texto que tenga candidatos, en orden de llegada y contra
-/// los reportes que ya conocía. Determinista y **no depende del orden de entrada**.
+/// los reportes que ya conocía; primero los de los escenarios de T08 y luego los de los conjuntos sintéticos. Determinista y
+/// **no depende del orden de entrada**.
 List<JudgeJob> planJudgeJobs(List<T07Dataset> datasets, {int k = kJudgeCandidates}) {
-  final jobs = <JudgeJob>[];
+  final scenarios = <JudgeJob>[], synth = <JudgeJob>[];
   for (final d in datasets) {
     final obs = _chronological(d);
+    final out = d.kind == 'synth' ? synth : scenarios;
     for (var i = 1; i < obs.length; i++) {
       final cands = pickJudgeCandidates(obs[i], obs.sublist(0, i), k: k);
-      if (cands.isNotEmpty) jobs.add(JudgeJob(d.label, obs[i], cands));
+      if (cands.isNotEmpty) out.add(JudgeJob(d.label, obs[i], cands));
     }
   }
-  return jobs;
+  // Los escenarios de T08 primero: si un tope de gasto corta la cola, no puede ser a costa de lo que promete el Reto 4.
+  return [...scenarios, ...synth];
 }
 
 class JudgeRecord {
@@ -327,6 +338,11 @@ class T07Eval {
   LinkCoverage coverageRulesText = LinkCoverage(0, 0, 0, 0, 0);
   LinkCoverage coverageModelText = LinkCoverage(0, 0, 0, 0, 0);
 
+  /// La evidencia que hay para juzgar: de los pares verdaderos con texto en los dos reportes, cuántos escriben la misma calle y
+  /// cuántos comparten alguna palabra de contenido. No es un techo (una paráfrasis no comparte palabras), es contexto para leer
+  /// «sube X puntos» contra lo que el texto permite.
+  int textPairs = 0, textPairsSharingStreet = 0, textPairsSharingWord = 0;
+
   final JudgmentMatrix judgments = JudgmentMatrix();
   final JudgmentMatrix judgmentsConfident = JudgmentMatrix();
 
@@ -343,6 +359,14 @@ class T07Eval {
   /// Los grupos de un conjunto con unos vínculos dados (los mismos que formaría el nodo).
   List<Set<String>> groupsOf(String dataset, List<Link> links, Set<(String, String)> unlinked) =>
       groupsFromLinks(_obs[dataset]!, links, unlinked: unlinked);
+}
+
+final RegExp _streetRe = RegExp(r'carrera\s+(\d+)\s+con\s+calle\s+(\d+)', caseSensitive: false);
+
+/// La calle escrita en el texto («carrera 16 con calle 39» → «16-39»), si la hay.
+String? _street(String? text) {
+  final m = _streetRe.firstMatch(text ?? '');
+  return m == null ? null : '${m[1]}-${m[2]}';
 }
 
 /// Los grupos más grandes primero; el desempate es la clave más pequeña (determinista).
@@ -408,6 +432,21 @@ T07Eval evalT07(List<T07Dataset> datasets, List<JudgeRecord> records, {double mi
     ev.coverageRulesText = _sumCov(ev.coverageRulesText, linkCoverage(base.links, truth, where: both));
     ev.coverageModelText = _sumCov(ev.coverageModelText, linkCoverage(withVeto.links, truth, where: both));
 
+    final byIncident = <int, List<SynthReport>>{};
+    for (final r in d.reports) {
+      if (r.trueIncident >= 0 && hasText[r.reportKey]!) (byIncident[r.trueIncident] ??= []).add(r);
+    }
+    for (final rs in byIncident.values) {
+      for (var x = 0; x < rs.length; x++) {
+        for (var y = x + 1; y < rs.length; y++) {
+          ev.textPairs++;
+          final sx = _street(rs[x].text);
+          if (sx != null && sx == _street(rs[y].text)) ev.textPairsSharingStreet++;
+          if (contentTokens(rs[x].text).intersection(contentTokens(rs[y].text)).isNotEmpty) ev.textPairsSharingWord++;
+        }
+      }
+    }
+
     for (final j in js) {
       final t = same(j.a, j.b);
       ev.judgments.add(j.verdict, t);
@@ -433,6 +472,89 @@ T07Eval evalT07(List<T07Dataset> datasets, List<JudgeRecord> records, {double mi
 }
 
 // ---------------------------------------------------------------------------------------------
+// El criterio, aplicado mecánicamente
+// ---------------------------------------------------------------------------------------------
+
+class CriterionLine {
+  const CriterionLine(this.id, this.description, this.value, this.met);
+  final String id;
+  final String description;
+  final String value;
+  final bool met;
+}
+
+class T07Verdict {
+  const T07Verdict(this.lines, this.offerAsOption, this.recommend, this.allowVeto, this.conclusion);
+  final List<CriterionLine> lines;
+
+  /// Cumple la seguridad (1, 2, 4): se puede ofrecer como opción apagada por omisión.
+  final bool offerAsOption;
+
+  /// Además demuestra ganancia (3, 5, 6): se recomienda activarla.
+  final bool recommend;
+
+  /// El nodo puede dejar que el modelo vete una unión de las reglas.
+  final bool allowVeto;
+  final String conclusion;
+}
+
+const double _eps = 1e-12;
+
+/// Aplica [kT07DecisionRule] a los resultados, sin margen para interpretarlos: cada criterio es un umbral y cada umbral tiene
+/// su prueba en la frontera.
+T07Verdict decideT07(T07Eval ev, List<JudgeRecord> records, T07ModelConfig cfg) {
+  String pct(double x, [int d = 2]) => _pct(x, d: d);
+  final fmM = ev.withModel.falseMergeRate, fmR = ev.rules.falseMergeRate;
+  final u = ev.unions;
+  final calls = records.length;
+  final failures = records.where((r) => r.reason != null).length;
+  final okCalls = calls - failures;
+  final over8 = records.where((r) => r.reason == null && r.latencyMs > 8000).length;
+  final gain = ev.withModel.recall - ev.rules.recall;
+  final corro = ev.scenarios.where((s) => s.kind == 'corroboracion').toList();
+  final corroOk = corro
+      .where((s) => s.modelGroups == 1 && s.modelIndependentSources == cfg.corroborationSources && s.modelConfidence > s.rulesConfidence)
+      .length;
+  final rumor = ev.scenarios.where((s) => s.kind == 'rumor').toList();
+
+  final l1 = CriterionLine('1', 'falsa fusión ≤ 1 % y ≤ la de las reglas + 0,5 puntos', '${pct(fmM)} con el modelo, ${pct(fmR)} con las reglas',
+      fmM <= 0.01 + _eps && fmM <= fmR + 0.005 + _eps);
+  final l2 = CriterionLine('2', 'precisión de las uniones del modelo ≥ 95 %', u.total == 0 ? 'sin uniones' : '${pct(u.correct / u.total, 1)} (${u.correct} de ${u.total})',
+      u.total > 0 && u.correct / u.total >= 0.95 - _eps);
+  final l4 = CriterionLine('4', 'fallos ≤ 5 % de las llamadas y llamadas de más de 8 s ≤ 5 % de las útiles',
+      calls == 0 ? 'sin llamadas' : '$failures fallos de $calls; $over8 de $okCalls útiles pasan de 8 s',
+      calls > 0 && failures / calls <= 0.05 + _eps && okCalls > 0 && over8 / okCalls <= 0.05 + _eps);
+  final l3 = CriterionLine('3', 'recall de pares: +5 puntos y al menos el doble', '${pct(ev.rules.recall)} → ${pct(ev.withModel.recall)} (+${(100 * gain).toStringAsFixed(2)} puntos)',
+      gain >= 0.05 - _eps && ev.withModel.recall >= 2 * ev.rules.recall - _eps);
+  final l5 = CriterionLine('5', 'corroboración: un grupo con las ${cfg.corroborationSources} fuentes y más confianza en ≥ 80 % de los escenarios',
+      corro.isEmpty ? 'sin escenarios' : '$corroOk de ${corro.length}', corro.isNotEmpty && corroOk / corro.length >= 0.8 - _eps);
+  final rumorBad = rumor.where((s) => !(s.modelIndependentSources <= cfg.rumorSources && s.modelConfidence < 0.8)).length;
+  final l6 = CriterionLine('6', 'rumor: no gana fuentes independientes ni pasa de 0,8 de confianza',
+      rumor.isEmpty ? 'sin escenarios' : '${rumor.length - rumorBad} de ${rumor.length} sin ganancia indebida', rumor.isNotEmpty && rumorBad == 0);
+
+  final v = ev.vetoes;
+  final allowVeto = v.total > 0 && v.harmful / v.total <= 0.10 + _eps;
+  final safe = l1.met && l2.met && l4.met;
+  final recommend = safe && l3.met && l5.met && l6.met;
+  final lines = [l1, l2, l4, l3, l5, l6];
+  String ids(Iterable<CriterionLine> ls) => ls.map((l) => l.id).join(', ');
+  final String conclusion;
+  if (!safe) {
+    conclusion = 'NO se ofrece la unión por modelo: no cumple el nivel de seguridad (criterios sin cumplir: ${ids([l1, l2, l4].where((l) => !l.met))}).';
+  } else if (!recommend) {
+    conclusion = 'Opción disponible, apagada por omisión, **sin ganancia demostrada**: cumple la seguridad pero no (${ids([l3, l5, l6].where((l) => !l.met))}).';
+  } else {
+    conclusion = 'Se ofrece como opción y se recomienda activarla: cumple todos los criterios.';
+  }
+  final vetoText = allowVeto
+      ? 'El nodo puede dejar que el modelo vete (${v.harmful} de ${v.total} vetos dañinos).'
+      : v.total == 0
+      ? 'El nodo NO veta: sólo une (no hubo vetos que midan si es seguro).'
+      : 'El nodo NO veta: sólo une (${v.harmful} de ${v.total} vetos fueron dañinos).';
+  return T07Verdict(lines, safe, recommend, allowVeto, '$conclusion $vetoText');
+}
+
+// ---------------------------------------------------------------------------------------------
 // Informes
 // ---------------------------------------------------------------------------------------------
 
@@ -441,7 +563,7 @@ String _pct(double x, {int d = 1}) => '${(100 * x).toStringAsFixed(d)} %';
 int _percentile(List<int> sorted, double p) => sorted.isEmpty ? 0 : sorted[((sorted.length - 1) * p).round()];
 
 /// El informe en Markdown. **Nunca** incluye la clave ni el texto de los reportes.
-String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> datasets) {
+String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> datasets, {String? codeVersion}) {
   final ev = evalT07(datasets, res.records, minConfidence: cfg.minConfidence);
   final b = StringBuffer();
   final synth = datasets.where((d) => d.kind == 'synth').toList();
@@ -464,6 +586,8 @@ String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> d
   b.writeln('- Modelo **${cfg.model}**, effort **${cfg.effort ?? '(el de la API)'}**, confianza mínima ${cfg.minConfidence}, hasta ${cfg.k} candidatos por reporte (los anteriores que pasan las reglas duras).');
   b.writeln('- Semillas **${cfg.seeds.join(', ')}** (nuevas): ${synth.length} conjuntos sintéticos de ${cfg.incidents} sucesos y ~${cfg.reports} reportes ($nReports en total, $nText con texto), más una corroboración de ${cfg.corroborationSources} fuentes y un rumor de ${cfg.rumorCopies} copias por semilla.');
   b.writeln('- **$calls llamadas**${res.skipped > 0 ? ' (**${res.skipped} del plan NO se hicieron**: tope de gasto)' : ''}, gasto **\$${res.spentUsd.toStringAsFixed(2)}** (tope \$${cfg.budgetUsd.toStringAsFixed(2)}), ${res.elapsed.inSeconds} s.');
+  b.writeln('- El tope de gasto se comprueba antes de cada llamada contando lo que cuestan las que están en vuelo; **no es estrictamente duro** (un piloto lo pasó por 0,0001 USD).');
+  if (codeVersion != null) b.writeln('- Código: `$codeVersion`.');
   b.writeln();
   b.writeln('### Criterio de adopción (fijado antes de ver los datos)');
   b.writeln();
@@ -482,6 +606,10 @@ String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> d
   b.writeln(row('Grupos (para ${synth.fold<int>(0, (a, d) => a + d.reports.map((r) => r.trueIncident).where((i) => i >= 0).toSet().length)} sucesos reales)', (m) => '${m.groups}'));
   b.writeln();
   b.writeln('Pares verdaderos: ${ev.coverageRules.truePairs}; de ellos con texto en los dos reportes: ${ev.coverageRulesText.truePairs}.');
+  if (ev.textPairs > 0) {
+    b.writeln('De esos ${ev.textPairs} pares con texto: **${_pct(ev.textPairsSharingStreet / ev.textPairs)}** comparten la calle escrita y **${_pct(ev.textPairsSharingWord / ev.textPairs)}** alguna palabra de contenido. '
+        'No es un techo (una paráfrasis no comparte palabras), pero dice cuánta evidencia hay en el texto: en este generador los gemelos adversariales usan la MISMA calle que su suceso base.');
+  }
   b.writeln();
   b.writeln('| Cobertura de pares verdaderos | Sólo reglas | + modelo (con veto) |');
   b.writeln('|---|---|---|');
@@ -504,6 +632,10 @@ String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> d
   b.writeln();
   final sameJudged = a.sameWhenSame + a.sameWhenDifferent;
   if (sameJudged > 0) b.writeln('Precisión de los `same`: ${_pct(a.sameWhenSame / sameJudged)} (${a.sameWhenSame} de $sameJudged).');
+  final possJudged = a.possibleWhenSame + a.possibleWhenDifferent;
+  b.writeln(possJudged == 0
+      ? 'Precisión de los `possible`: — (no hubo). Los `possible` no cambian nada hoy.'
+      : 'Precisión de los `possible`: ${_pct(a.possibleWhenSame / possJudged)} (${a.possibleWhenSame} de $possJudged); la de las sugerencias por reglas fue 92 % (`b3.md`). Los `possible` no cambian nada hoy: su confianza queda bajo el umbral y sólo son información.');
   final diffJudged = a.differentWhenSame + a.differentWhenDifferent;
   if (diffJudged > 0) b.writeln('Precisión de los `different`: ${_pct(a.differentWhenDifferent / diffJudged)} (${a.differentWhenDifferent} de $diffJudged).');
   b.writeln();
@@ -521,6 +653,18 @@ String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> d
   for (final s in ev.scenarios) {
     b.writeln('| ${s.label} | ${s.reports} | ${s.rulesGroups} → ${s.modelGroups} | ${s.rulesIndependentSources} → ${s.modelIndependentSources} | ${s.rulesConfidence.toStringAsFixed(2)} → ${s.modelConfidence.toStringAsFixed(2)} |');
   }
+  b.writeln();
+
+  final verdict = decideT07(ev, res.records, cfg);
+  b.writeln('## Veredicto del criterio (aplicado mecánicamente)');
+  b.writeln();
+  b.writeln('| Criterio | Valor | ¿Cumple? |');
+  b.writeln('|---|---|---|');
+  for (final l in verdict.lines) {
+    b.writeln('| ${l.id}. ${l.description} | ${l.value} | ${l.met ? 'sí' : '**no**'} |');
+  }
+  b.writeln();
+  b.writeln('**${verdict.conclusion}**');
   b.writeln();
 
   b.writeln('## Latencia, coste y fallos');
