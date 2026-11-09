@@ -72,7 +72,7 @@ void main() {
     });
   });
 
-  group('decisión tri-estado con los pesos del PDF (0,40 · 0,15 · 0,15 · 0,30; θhi 0,80; θlo 0,55)', () {
+  group('decisión tri-estado (pesos del PDF 0,40 · 0,15 · 0,15 · 0,30; θlo 0,55; θhi 0,85 calibrado con T07, el inicial del PDF era 0,80)', () {
     test('mismo punto, misma hora, mismo tipo y mismo texto ⇒ same (puntaje 1,0)', () {
       final p = scorePair(obs('a', text: 'puente colapsado calle veinte carros abajo'), obs('b', text: 'puente colapsado calle veinte carros abajo'));
       expect(p.score, closeTo(1.0, 1e-9));
@@ -110,8 +110,28 @@ void main() {
     });
   });
 
+  group('el umbral calibrado es el que se usa, y un puntaje JUSTO en el umbral no depende del redondeo', () {
+    test('los valores por omisión son los calibrados con T07: θhi 0,85 y sin ubicación 0,90', () {
+      expect(const Weights().thetaHi, 0.85);
+      expect(const Weights().thetaHiNoLoc, 0.90);
+    });
+
+    test('meetsThreshold: tolera 1e-9 de error de coma flotante, y nada más', () {
+      expect(meetsThreshold(0.85, 0.85), isTrue);
+      expect(meetsThreshold(0.85 - 1e-12, 0.85), isTrue);
+      expect(meetsThreshold(0.85 - 1e-6, 0.85), isFalse);
+      expect(meetsThreshold(0.8499999999999999, 0.85), isTrue);
+    });
+
+    test('un par perfecto salvo el tipo (SOS genérico frente a específico) puntúa 0,85 y es same, de forma determinista', () {
+      final p = scorePair(obs('a', text: 'puente colapsado calle veinte carros abajo', type: 1), obs('b', text: 'puente colapsado calle veinte carros abajo', type: 2));
+      expect(p.score, closeTo(0.85, 1e-9));
+      expect(p.state, LinkState.same);
+    });
+  });
+
   group('sin ubicación: umbral más estricto y marca ubicacion_ausente', () {
-    test('texto idéntico, misma hora y tipo ⇒ same (puntaje renormalizado 1,0 ≥ 0,92)', () {
+    test('texto idéntico, misma hora y tipo ⇒ same (puntaje renormalizado 1,0 ≥ 0,90)', () {
       final p = scorePair(obs('a', eastM: null, text: 'puente colapsado calle veinte carros abajo'), obs('b', eastM: null, text: 'puente colapsado calle veinte carros abajo'));
       expect(p.state, LinkState.same);
       expect(p.uncertainty, contains('ubicacion_ausente'));

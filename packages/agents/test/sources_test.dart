@@ -152,4 +152,26 @@ void main() {
       expect(b.confidence, closeTo(a.confidence, 1e-12));
     });
   });
+
+  group('rendimiento: casi todos los grupos son de un solo reporte', () {
+    test('evaluar 6 000 grupos de un reporte cuesta menos de 400 ms', () {
+      final single = [for (var i = 0; i < 6000; i++) o('k$i', 'd$i', text: 'texto numero $i con varias palabras distintas aqui', eastM: i % 7 == 0 ? null : i * 3.0)];
+      final sw = Stopwatch()..start();
+      for (final m in single) {
+        assessGroup([m]);
+      }
+      sw.stop();
+      expect(sw.elapsedMilliseconds, lessThan(400), reason: 'tardó ${sw.elapsedMilliseconds} ms');
+    });
+
+    test('un grupo de un solo reporte: una fuente, la credibilidad de su clase, fuente_unica', () {
+      final a = assessGroup([o('a', 'd1', text: 'algo', cls: 'radio')]);
+      expect(a.independentSources, 1);
+      expect(a.devices, 1);
+      expect(a.confidence, closeTo(0.2, 1e-9));
+      expect(a.uncertainty, contains('fuente_unica'));
+      final b = assessGroup([o('b', 'd1', text: 'algo', eastM: null)]);
+      expect(b.uncertainty, containsAll(['fuente_unica', 'ubicacion_ausente']));
+    });
+  });
 }

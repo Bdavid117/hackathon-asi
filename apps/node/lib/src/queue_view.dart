@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sard_agents/sard_agents.dart';
 
 import 'event_log.dart';
@@ -92,16 +94,23 @@ class QueueItem {
 /// calcula aquí, al leer, como función pura de los reportes fusionados: no depende del orden de
 /// llegada ni de qué nodo vio qué, así que dos nodos que trabajaron aislados y luego replicaron
 /// muestran los mismos grupos. Los eventos `incident.linked` del log son auditoría y no cuentan.
-List<QueueItem> buildQueue(EventLog log) {
-  final merged = mergeReports(log.allOfType('report.received'));
+List<QueueItem> buildQueue(EventLog log) =>
+    buildQueueFromEvents(log.allOfType('report.received'), log.allOfType('triage.assessed'));
+
+/// La cola a partir de listas de eventos (lo único que puede viajar a otro isolate). [triage] son los
+/// `triage.assessed` del log; sólo cuentan los del modelo (`mode: rules+llm`).
+List<QueueItem> buildQueueFromEvents(List<Event> received, List<Event> triageEvents) {
+  final merged = mergeReports(received);
   final obs = {for (final m in merged) m.reportKey: m.toObservation()};
   final ordered = obs.values.toList();
-  final groups = groupObservations(ordered);
+  // Una sola pasada: los grupos y las sugerencias salen de los mismos vínculos puntuados.
+  final grouping = analyzeGrouping(ordered);
+  final groups = grouping.groups;
   final ids = groupIds(groups);
 
   // Juicios del modelo de lenguaje (si los hubo), por reporte. Sólo valen para el texto que analizaron.
   final modelEvents = <String, List<Event>>{};
-  for (final e in log.allOfType('triage.assessed')) {
+  for (final e in triageEvents) {
     if (e.body['mode'] != 'rules+llm' || e.reportKey == null) continue;
     (modelEvents[e.reportKey!] ??= []).add(e);
   }
@@ -121,10 +130,11 @@ List<QueueItem> buildQueue(EventLog log) {
   }
   final groupSize = {for (final g in groups) ids[g.first]!: g.length};
 
-  // Sugerencias: vínculos `possible` entre reportes que NO quedaron en el mismo grupo.
+  // Sugerencias: vínculos `possible` —y los `same` que la regla anti-puente frenó— entre reportes que
+  // NO quedaron en el mismo grupo.
   final similar = <String, List<(double, String)>>{};
-  for (final l in computeLinks(ordered).links) {
-    if (l.pair.state != LinkState.possible || ids[l.a] == ids[l.b]) continue;
+  for (final l in grouping.links) {
+    if (ids[l.a] == ids[l.b]) continue;
     (similar[l.a] ??= []).add((l.pair.score, l.b));
     (similar[l.b] ??= []).add((l.pair.score, l.a));
   }
@@ -215,3 +225,8 @@ TriageResult _effective(TriageResult rules, List<Event> model) {
     escalateToHuman: modelAsksReview || (rules.escalateToHuman && !interpreted),
   );
 }
+
+/// La cola ya codificada como JSON, calculada sólo a partir de listas de eventos: es lo que se
+/// ejecuta en otro isolate para no bloquear el hilo que atiende los ACK.
+String queueJsonFromEvents(List<Event> received, List<Event> triageEvents) =>
+    jsonEncode([for (final i in buildQueueFromEvents(received, triageEvents)) i.toJson()]);

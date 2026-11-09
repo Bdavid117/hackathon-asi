@@ -57,7 +57,7 @@ Future<void> main(List<String> args) async {
       llm = ClaudeHttpPort(client: http.Client(), apiKey: apiKey);
     }
   }
-  final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, pipeline: PipelineRunner(log, llm: llm));
+  final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, pipeline: PipelineRunner(log, llm: llm, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r')));
   final web = o['web-root'];
   final Handler handler = web == null
       ? api

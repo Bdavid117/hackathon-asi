@@ -146,6 +146,40 @@ void main() {
     });
   });
 
+  group('el nodo cuenta cuándo el modelo se usó y cuándo se cayó al respaldo, y por qué', () {
+    test('un juicio válido cuenta como consulta usada', () async {
+      final runner = PipelineRunner(log, llm: FakePort((_) async => p1Atrapado));
+      await runner.enrich(rec(log, 'aa-1', 0));
+      expect(runner.llmStats!.toJson(), {'consultas': 1, 'usadas': 1, 'fallos': <String, int>{}});
+    });
+
+    test('cada fallo suma a su causa: un 400 NO se confunde con «el modelo coincidió con las reglas»', () async {
+      final results = [const LlmResult(error: 'HTTP 400'), const LlmResult(error: 'HTTP 400'), const LlmResult(stopReason: 'refusal'), const LlmResult(timedOut: true)];
+      var k = 0;
+      final runner = PipelineRunner(log, llm: FakePort((_) async => results[k++]));
+      for (var i = 0; i < 4; i++) {
+        await runner.enrich(rec(log, 'k$i-1', 0));
+      }
+      final st = runner.llmStats!.toJson();
+      expect(st['consultas'], 4);
+      expect(st['usadas'], 0);
+      expect(st['fallos'], {'http_400': 2, 'negativa': 1, 'plazo_agotado': 1});
+    });
+
+    test('sin modelo configurado no hay estadísticas', () {
+      expect(PipelineRunner(log).llmStats, isNull);
+    });
+
+    test('un texto ya analizado o sin texto no cuenta como consulta', () async {
+      final runner = PipelineRunner(log, llm: FakePort((_) async => p1Atrapado));
+      final r = rec(log, 'aa-1', 0);
+      await runner.enrich(r);
+      await runner.enrich(r);
+      await runner.enrich(rec(log, 'bb-1', 0, text: null));
+      expect(runner.llmStats!.toJson()['consultas'], 1);
+    });
+  });
+
   group('la cola toma lo más grave entre las reglas y el modelo', () {
     test('una paráfrasis que las reglas no entienden (P3) sube a P1 con el juicio del modelo', () async {
       rec(log, 'aa-1', 0);

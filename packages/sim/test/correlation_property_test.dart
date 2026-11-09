@@ -4,16 +4,15 @@ import 'package:sard_agents/sard_agents.dart';
 import 'package:sard_sim/sard_sim.dart';
 import 'package:test/test.dart';
 
-/// Referencia: comparar TODOS con TODOS (sólo con la ventana de tiempo y el tipo compatible, que son
-/// política y no optimización). El bloqueo espacial y el orden de candidatos son optimizaciones:
-/// no pueden cambiar qué pares son `same`.
+/// Referencia: comparar TODOS con TODOS los pares que la POLÍTICA de bloqueo permite (ventana de
+/// tiempo, tipo compatible y, sin ubicación, texto idéntico: `blockingPolicyAllows`). Las rejillas, los
+/// índices y el orden de candidatos son optimizaciones: no pueden cambiar qué pares son `same`.
 Set<(String, String)> bruteForceSame(List<Observation> all, Weights w, Duration window) {
   final out = <(String, String)>{};
   for (var i = 0; i < all.length; i++) {
     for (var j = i + 1; j < all.length; j++) {
       final a = all[i], b = all[j];
-      if ((a.capturedAtMs - b.capturedAtMs).abs() > window.inMilliseconds) continue;
-      if (!typesCompatible(a.incidentType, b.incidentType)) continue;
+      if (!blockingPolicyAllows(a, b, window: window)) continue;
       if (scorePair(a, b, w).state == LinkState.same) out.add(pairKey(a.reportKey, b.reportKey));
     }
   }

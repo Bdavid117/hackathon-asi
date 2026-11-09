@@ -158,35 +158,10 @@ LinkMetrics linkMetrics(List<Link> links, Map<String, int> truth) {
 }
 
 /// Grupos que resultan de usar [hi] (y [noLoc] cuando falta la ubicación) como umbral de `same`
-/// sobre vínculos ya puntuados. Permite barrer umbrales sin volver a puntuar.
-List<Set<String>> groupsAt(List<String> keys, List<Link> links, double hi, double noLoc) {
-  final parent = {for (final k in keys) k: k};
-  String find(String x) {
-    var r = x;
-    while (parent[r] != r) {
-      r = parent[r]!;
-    }
-    return r;
-  }
-
-  for (final l in links) {
-    final threshold = l.pair.uncertainty.contains('ubicacion_ausente') ? noLoc : hi;
-    if (l.pair.score < threshold) continue;
-    final ra = find(l.a), rb = find(l.b);
-    if (ra == rb) continue;
-    if (ra.compareTo(rb) < 0) {
-      parent[rb] = ra;
-    } else {
-      parent[ra] = rb;
-    }
-  }
-  final groups = <String, Set<String>>{};
-  for (final k in keys) {
-    groups.putIfAbsent(find(k), () => <String>{}).add(k);
-  }
-  final order = groups.keys.toList()..sort();
-  return [for (final k in order) groups[k]!];
-}
+/// sobre vínculos ya puntuados. Permite barrer umbrales sin volver a puntuar, y forma los grupos
+/// con la MISMA función que el nodo (incluida la regla anti-puente).
+List<Set<String>> groupsAt(List<Observation> obs, List<Link> links, double hi, double noLoc) =>
+    groupsFromLinks(obs, rethreshold(links, hi, noLoc));
 
 /// Cobertura de los vínculos: cuántos pares verdaderos AGRUPA (`same`), cuántos al menos
 /// SUGIERE (`possible`) y qué tan fiables son las sugerencias.
@@ -203,14 +178,26 @@ class LinkCoverage {
   double get precisionPossible => possible == 0 ? 0.0 : possibleCorrect / possible;
 }
 
-LinkCoverage linkCoverage(List<Link> links, Map<String, int> truth) {
-  final sizes = <int, int>{};
-  truth.forEach((_, l) {
-    if (l >= 0) sizes[l] = (sizes[l] ?? 0) + 1;
+LinkCoverage linkCoverage(List<Link> links, Map<String, int> truth, {bool Function(String a, String b)? where}) {
+  final byLabel = <int, List<String>>{};
+  truth.forEach((k, l) {
+    if (l >= 0) (byLabel[l] ??= []).add(k);
   });
-  final truePairs = sizes.values.fold<int>(0, (a, n) => a + n * (n - 1) ~/ 2);
+  var truePairs = 0;
+  for (final members in byLabel.values) {
+    if (where == null) {
+      truePairs += members.length * (members.length - 1) ~/ 2;
+    } else {
+      for (var i = 0; i < members.length; i++) {
+        for (var j = i + 1; j < members.length; j++) {
+          if (where(members[i], members[j])) truePairs++;
+        }
+      }
+    }
+  }
   var same = 0, sameOk = 0, poss = 0, possOk = 0;
   for (final l in links) {
+    if (where != null && !where(l.a, l.b)) continue;
     final ok = truth[l.a] == truth[l.b] && truth[l.a]! >= 0;
     if (l.pair.state == LinkState.same) {
       same++;
@@ -248,7 +235,7 @@ List<Link> rethreshold(List<Link> links, double hi, double noLoc) => [
       l.b,
       PairScore(
         l.pair.score,
-        l.pair.score >= (l.pair.uncertainty.contains('ubicacion_ausente') ? noLoc : hi) ? LinkState.same : LinkState.possible,
+        meetsThreshold(l.pair.score, l.pair.uncertainty.contains('ubicacion_ausente') ? noLoc : hi) ? LinkState.same : LinkState.possible,
         l.pair.uncertainty,
         l.pair.terms,
       ),

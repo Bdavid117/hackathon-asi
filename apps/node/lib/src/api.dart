@@ -7,7 +7,7 @@ import 'package:shelf_router/shelf_router.dart';
 import 'event_log.dart';
 import 'ingest.dart';
 import 'pipeline.dart';
-import 'queue_view.dart';
+import 'queue_service.dart';
 
 const Map<String, String> _cors = {'access-control-allow-origin': '*'};
 
@@ -31,7 +31,8 @@ Response _json(Object? body, {int status = 200}) => Response(
 /// - `GET /api/health`: identidad del nodo y vector de versiones.
 ///
 /// Si se da [pipeline], cada trama recién guardada pasa por los agentes de reglas.
-Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRunner? pipeline}) {
+Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRunner? pipeline, QueueService? queue}) {
+  final queueService = queue ?? QueueService(log);
   final router = Router()
     ..post('/frame', (Request req) async {
       final chunks = BytesBuilder(copy: false);
@@ -47,7 +48,20 @@ Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRun
       }
       return Response.ok(result.ack, headers: {'content-type': 'application/octet-stream'});
     })
-    ..get('/api/queue', (Request req) => _json([for (final i in buildQueue(log)) i.toJson()]))
+    ..get('/api/queue', (Request req) async {
+      final r = await queueService.read();
+      return Response.ok(
+        r.json,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          ..._cors,
+          // frescura honesta: si es una versión anterior del log, se dice y se dice cuánto
+          'x-queue-stale': '${r.stale}',
+          'x-queue-age-ms': '${r.ageMs}',
+          'access-control-expose-headers': 'x-queue-stale, x-queue-age-ms',
+        },
+      );
+    })
     ..get('/api/events', (Request req) {
       final q = req.url.queryParameters;
       final origin = q['origin'];
@@ -62,6 +76,7 @@ Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRun
           'node': log.nodeId,
           'events': log.count(),
           'versionVector': log.versionVector(),
+          if (pipeline?.llmStats != null) 'llm': pipeline!.llmStats!.toJson(),
         }));
   return router.call;
 }

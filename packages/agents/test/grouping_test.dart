@@ -131,7 +131,7 @@ void main() {
   });
 
   group('el bloqueo por celdas no pierde pares cerca de una frontera de celda', () {
-    // Dos reportes con ±200 m cada uno a 150 m de distancia, mismo texto y hora: puntaje 0,85 (same).
+    // Dos reportes con ±200 m cada uno a 120 m de distancia, mismo texto y hora: puntaje 0,88 (same).
     // Se barren posiciones para que en algún caso queden a ambos lados de una frontera de celda.
     test('barrido en longitud', () {
       for (var k = 0; k < 60; k++) {
@@ -143,7 +143,7 @@ void main() {
         );
         final b = Observation(
           reportKey: 'b', deviceId: 'db', incidentType: 1, flags: 0,
-          lat: _lat, lon: _lon + shift + 150 / (111320.0 * cos(_lat * pi / 180)), locQuality: LocQuality.within200m,
+          lat: _lat, lon: _lon + shift + 120 / (111320.0 * cos(_lat * pi / 180)), locQuality: LocQuality.within200m,
           capturedAtMs: _t0, text: _t, sourceClass: 'app',
         );
         expect(groupObservations([a, b]), hasLength(1), reason: 'desplazamiento $k');
@@ -160,11 +160,129 @@ void main() {
         );
         final b = Observation(
           reportKey: 'b', deviceId: 'db', incidentType: 1, flags: 0,
-          lat: _lat + shift + 150 / 111320.0, lon: _lon, locQuality: LocQuality.within200m,
+          lat: _lat + shift + 120 / 111320.0, lon: _lon, locQuality: LocQuality.within200m,
           capturedAtMs: _t0, text: _t, sourceClass: 'app',
         );
         expect(groupObservations([a, b]), hasLength(1), reason: 'desplazamiento $k');
       }
+    });
+  });
+
+  group('un reporte de poca evidencia espacial NO puede unir dos grupos lejanos (hallazgo del banco de pruebas: 1 705 reportes en 27 km)', () {
+    test('sin ubicación: se une a UNO de los dos grupos, pero A y B (a 20 km) siguen separados', () {
+      final groups = groupObservations([
+        obs('a', eastM: 0, q: LocQuality.within10m),
+        obs('b', eastM: 20000, q: LocQuality.within10m),
+        obs('u', eastM: null),
+      ]);
+      expect(groups, hasLength(2));
+      expect(g(groups, 'a').contains('b'), isFalse);
+      expect(g(groups, 'u').length, 2, reason: 'u se sumó a uno de los dos');
+    });
+
+    test('impreciso (σ 3 km) entre dos precisos a 2 km: tampoco los une', () {
+      final groups = groupObservations([
+        obs('a', eastM: -1000, q: LocQuality.within10m),
+        obs('b', eastM: 1000, q: LocQuality.within10m),
+        obs('i', eastM: 0, q: LocQuality.over1km),
+      ]);
+      expect(groups, hasLength(2));
+      expect(g(groups, 'a').contains('b'), isFalse);
+    });
+
+    test('dos sin ubicación enlazados, cada uno ya pegado a un grupo distinto, tampoco los unen', () {
+      final groups = groupObservations([
+        obs('a', eastM: 0, q: LocQuality.within10m),
+        obs('b', eastM: 20000, q: LocQuality.within10m),
+        obs('u1', eastM: null),
+        obs('u2', eastM: null),
+      ]);
+      expect(g(groups, 'a').contains('b'), isFalse);
+    });
+
+    test('un rumor copiado (sin ubicación, sin anclas) SÍ forma un solo grupo aunque cada copia sólo mire a 3 vecinas', () {
+      final copies = [for (var i = 0; i < 60; i++) obs('c${i.toString().padLeft(2, '0')}', eastM: null, dtMs: i * 7000)];
+      expect(groupObservations(copies, maxCandidates: 3), hasLength(1));
+    });
+
+    test('dos precisos que SÍ son el mismo suceso se unen siempre (la regla no frena ancla con ancla)', () {
+      expect(groupObservations([obs('a', q: LocQuality.within10m), obs('b', eastM: 5, q: LocQuality.within10m)]), hasLength(1));
+    });
+
+    test('con la regla, el resultado sigue sin depender del orden de llegada (25 barajas)', () {
+      final all = [
+        obs('a', eastM: 0, q: LocQuality.within10m),
+        obs('b', eastM: 20000, q: LocQuality.within10m),
+        obs('c', eastM: 20005, q: LocQuality.within10m),
+        obs('u1', eastM: null),
+        obs('u2', eastM: null, dtMs: 30000),
+        obs('i', eastM: 10, q: LocQuality.over1km),
+      ];
+      String sig(List<Set<String>> gs) => (gs.map((x) => (x.toList()..sort()).join(',')).toList()..sort()).join('|');
+      final ref = sig(groupObservations(all));
+      final r = Random(11);
+      for (var k = 0; k < 25; k++) {
+        expect(sig(groupObservations([...all]..shuffle(r))), ref);
+      }
+    });
+  });
+
+  group('política de bloqueo sin ubicación: sólo con el MISMO contenido de texto', () {
+    test('sin ubicación, textos iguales salvo una falta de ortografía NO se agrupan (conservador a propósito)', () {
+      final groups = groupObservations([
+        obs('a', eastM: null, text: 'puente colapsado calle veinte carros abajo'),
+        obs('b', eastM: null, text: 'puente colapsado calle veinte carros abjo'),
+      ]);
+      expect(groups, hasLength(2));
+    });
+
+    test('el orden de las palabras, las mayúsculas, las tildes y las muletillas no cambian «el mismo contenido»', () {
+      final groups = groupObservations([
+        obs('a', eastM: null, text: 'puente colapsado calle veinte carros abajo'),
+        obs('b', eastM: null, text: 'CARROS ABAJO, puente colapsado, calle veinte, por favor ayuda'),
+      ]);
+      expect(groups, hasLength(1));
+    });
+
+    test('blockingPolicyAllows: ventana, tipo y, sin ubicación, texto idéntico de al menos 5 palabras', () {
+      final a = obs('a', eastM: null, text: 'puente colapsado calle veinte carros abajo');
+      expect(blockingPolicyAllows(a, obs('b', eastM: null, text: 'abajo carros veinte calle colapsado puente')), isTrue);
+      expect(blockingPolicyAllows(a, obs('b', eastM: null, text: 'otra cosa totalmente distinta aquí ahora mismo')), isFalse);
+      expect(blockingPolicyAllows(a, obs('b', eastM: 0, text: 'puente colapsado calle veinte carros abajo')), isTrue, reason: 'un reporte sin ubicación también compara con uno que sí la tiene');
+      expect(blockingPolicyAllows(obs('c', eastM: null, text: 'hay un incendio'), obs('d', eastM: null, text: 'hay un incendio')), isFalse, reason: 'una frase corta no basta');
+      expect(blockingPolicyAllows(a, obs('b', eastM: null, text: 'puente colapsado calle veinte carros abajo', dtMs: 4 * 3600000)), isFalse);
+      expect(blockingPolicyAllows(obs('e', type: 2), obs('f', type: 3)), isFalse);
+      expect(blockingPolicyAllows(obs('g'), obs('h', eastM: 5000)), isTrue, reason: 'con ubicación en ambos no hay política de texto: lo decide el puntaje');
+    });
+  });
+
+  group('rendimiento: la lectura no puede ser cuadrática', () {
+    test('3 000 reportes (10 % sin ubicación, 5 % imprecisos, muchos con el mismo texto) se agrupan en menos de 4 s', () {
+      final r = Random(9);
+      final all = <Observation>[
+        for (var i = 0; i < 3000; i++)
+          obs(
+            'r${i.toString().padLeft(5, '0')}',
+            eastM: i % 10 == 0 ? null : r.nextDouble() * 20000,
+            northM: r.nextDouble() * 20000,
+            q: i % 20 == 3 ? LocQuality.over1km : LocQuality.within50m,
+            dtMs: r.nextInt(2 * 3600000),
+            text: i % 3 == 0 ? _t : (i % 3 == 1 ? 'otro texto distinto numero ${i % 7} para este reporte' : null),
+          ),
+      ];
+      final sw = Stopwatch()..start();
+      final g = groupObservations(all);
+      sw.stop();
+      expect(g.expand((s) => s).length, 3000);
+      expect(sw.elapsedMilliseconds, lessThan(4000), reason: 'tardó ${sw.elapsedMilliseconds} ms');
+    });
+
+    test('analyzeGrouping da los mismos grupos que groupObservations y expone los vínculos puntuados una sola vez', () {
+      final all = [obs('a'), obs('b', eastM: 10), obs('c', eastM: 5000)];
+      final r = analyzeGrouping(all);
+      expect(r.groups, groupObservations(all));
+      expect(r.links.where((l) => l.pair.state == LinkState.same), hasLength(1));
+      expect(r.comparisons, greaterThan(0));
     });
   });
 

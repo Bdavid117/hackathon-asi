@@ -1,4 +1,5 @@
 import 'package:sard_agents/sard_agents.dart';
+import 'package:sard_protocol/sard_protocol.dart';
 import 'package:sard_sim/sard_sim.dart';
 import 'package:test/test.dart';
 
@@ -165,6 +166,32 @@ void main() {
     });
   });
 
+  group('T07 · cobertura restringida (p. ej. sólo pares donde NINGUNO de los dos reportes tiene texto)', () {
+    final truth = {'1': 0, '2': 0, '3': 0, '4': 1, '5': 1};
+    final hasText = {'1': true, '2': false, '3': false, '4': false, '5': false};
+    bool noText(String a, String b) => !hasText[a]! && !hasText[b]!;
+    final links = [
+      Link('2', '3', const PairScore(0.70, LinkState.possible, [], {})), // verdadero, sin texto en ninguno
+      Link('1', '2', const PairScore(0.70, LinkState.possible, [], {})), // verdadero, pero «1» tiene texto: fuera del filtro
+      Link('2', '4', const PairScore(0.60, LinkState.possible, [], {})), // falso, sin texto
+      Link('4', '5', const PairScore(0.90, LinkState.same, [], {})), // verdadero, sin texto, agrupado
+    ];
+
+    test('los pares verdaderos y las sugerencias se cuentan sólo dentro del filtro', () {
+      final c = linkCoverage(links, truth, where: noText);
+      expect(c.truePairs, 2, reason: '(2,3) y (4,5); (1,2) y (1,3) llevan el texto de «1»');
+      expect(c.sameCorrect, 1);
+      expect(c.possible, 2);
+      expect(c.possibleCorrect, 1);
+      expect(c.precisionPossible, 0.5);
+      expect(c.recallSuggested, 1.0);
+    });
+
+    test('sin filtro es lo de siempre', () {
+      expect(linkCoverage(links, truth).truePairs, 4);
+    });
+  });
+
   group('T06 · recall de P1 tal como lo ve la cola (urgencia del grupo = la más alta)', () {
     test('un P1 clasificado P3 queda visible si en su grupo hay un reporte clasificado P1', () {
       final truth = {'a': Urgency.p1, 'b': Urgency.p3, 'c': Urgency.p1};
@@ -219,20 +246,33 @@ void main() {
       final ds = generateDataset(const SynthConfig(seed: 11, incidents: 12, reports: 150, adversarialPairs: 3));
       final obs = [for (final r in ds.reports) r.toObservation()];
       final res = computeLinks(obs);
-      final a = groupsAt(obs.map((o) => o.reportKey).toList(), res.links, 0.80, 0.92);
+      final a = groupsAt(obs, res.links, const Weights().thetaHi, const Weights().thetaHiNoLoc);
       final b = groupObservations(obs);
       String sig(List<Set<String>> g) => (g.map((x) => (x.toList()..sort()).join(',')).toList()..sort()).join('|');
       expect(sig(a), sig(b));
+    });
+
+    test('aplica la MISMA regla anti-puente que el nodo (un reporte sin ubicación no une dos grupos lejanos)', () {
+      const text = 'puente colapsado calle veinte carros abajo';
+      Observation o(String k, double? lat, double? lon) => Observation(
+        reportKey: k, deviceId: 'd$k', incidentType: 1, flags: 0, lat: lat, lon: lon,
+        locQuality: lat == null ? LocQuality.none : LocQuality.within10m, capturedAtMs: 1000000, text: text, sourceClass: 'app',
+      );
+      final obs = [o('a', 5.07, -75.5), o('b', 5.27, -75.5), o('u', null, null)];
+      final res = computeLinks(obs);
+      final a = groupsAt(obs, res.links, const Weights().thetaHi, const Weights().thetaHiNoLoc);
+      expect(a.length, 2, reason: 'a y b están a 22 km: u no puede unirlos');
+      String sig(List<Set<String>> g) => (g.map((x) => (x.toList()..sort()).join(',')).toList()..sort()).join('|');
+      expect(sig(a), sig(groupObservations(obs)));
     });
 
     test('un umbral más alto nunca agrupa MÁS', () {
       final ds = generateDataset(const SynthConfig(seed: 12, incidents: 12, reports: 150, adversarialPairs: 3));
       final obs = [for (final r in ds.reports) r.toObservation()];
       final res = computeLinks(obs);
-      final keys = obs.map((o) => o.reportKey).toList();
       var prev = 1 << 30;
       for (final th in [0.6, 0.7, 0.8, 0.9, 0.97]) {
-        final g = groupsAt(keys, res.links, th, th).length;
+        final g = groupsAt(obs, res.links, th, th).length;
         expect(g, greaterThanOrEqualTo(prev == 1 << 30 ? 0 : prev), reason: 'θ=$th');
         prev = g;
       }

@@ -58,7 +58,7 @@ void main() {
       await call(port((_) async => http.Response(jsonEncode({'content': [{'type': 'text', 'text': '{}'}], 'stop_reason': 'end_turn'}), 200)));
       final b = jsonDecode(seen.body) as Map<String, Object?>;
       expect(b['model'], 'claude-sonnet-5-5');
-      expect(b['max_tokens'], isA<int>());
+      expect(b['max_tokens'], greaterThanOrEqualTo(4096), reason: 'Sonnet 5.5 piensa por defecto y esos tokens cuentan contra max_tokens');
       expect(b['system'], 'eres un asistente');
       expect((b['messages']! as List).single, {'role': 'user', 'content': 'texto'});
       final fmt = ((b['output_config']! as Map)['format']!) as Map;
@@ -221,6 +221,45 @@ void main() {
       final port = _SlowPort();
       final r = await triageWithModel(port, 0, paraphrase, timeout: const Duration(milliseconds: 80));
       expectRules(r);
+    });
+  });
+
+  group('se registra POR QUÉ se cayó al respaldo (un fallo del modelo no puede ser invisible)', () {
+    Future<List<String>> reasons(LlmResult r) async {
+      final out = <String>[];
+      await triageWithModel(FakePort((_) async => r), 0, paraphrase, onFallback: out.add);
+      return out;
+    }
+
+    test('plazo agotado', () async => expect(await reasons(const LlmResult(timedOut: true)), ['plazo_agotado']));
+    test('negativa (refusal)', () async => expect(await reasons(const LlmResult(stopReason: 'refusal')), ['negativa']));
+    test('error HTTP con su código', () async => expect(await reasons(const LlmResult(error: 'HTTP 400')), ['http_400']));
+    test('error de red', () async => expect(await reasons(const LlmResult(error: 'fallo de red: SocketException')), ['error_de_red']));
+    test('respuesta cortada por max_tokens', () async {
+      expect(await reasons(const LlmResult(text: '{"a"', stopReason: 'max_tokens')), ['detenido_max_tokens']);
+    });
+    test('JSON o esquema inválidos', () async {
+      expect(await reasons(const LlmResult(text: '{no es json', stopReason: 'end_turn')), ['salida_invalida']);
+      expect(await reasons(ok({'urgency': 'P1'})), ['salida_invalida']);
+    });
+    test('cita inventada', () async {
+      expect(await reasons(ok(verdict('P1', signals: [{'code': 'atrapado', 'quote': 'no está en el texto'}]))), ['salida_invalida']);
+    });
+    test('excepción del puerto', () async {
+      final out = <String>[];
+      await triageWithModel(FakePort((_) async => throw StateError('x')), 0, paraphrase, onFallback: out.add);
+      expect(out, ['excepcion']);
+    });
+    test('el puerto nunca responde: plazo agotado', () async {
+      final out = <String>[];
+      await triageWithModel(_SlowPort(), 0, paraphrase, timeout: const Duration(milliseconds: 50), onFallback: out.add);
+      expect(out, ['plazo_agotado']);
+    });
+    test('sin fallo no se avisa de nada; sin texto tampoco (no se consultó)', () async {
+      final out = <String>[];
+      await triageWithModel(FakePort((_) async => ok(verdict('P2'))), SituationFlags.atrapado, 'estoy atrapado', onFallback: out.add);
+      await triageWithModel(FakePort((_) async => ok(verdict('P2'))), 0, null, onFallback: out.add);
+      expect(out, isEmpty);
     });
   });
 }

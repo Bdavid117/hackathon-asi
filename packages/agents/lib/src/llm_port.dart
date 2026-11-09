@@ -57,7 +57,7 @@ class ClaudeHttpPort implements LlmPort {
     this.model = 'claude-sonnet-5-5',
     Uri? baseUrl,
     this.apiVersion = '2026-10-21',
-    this.maxTokens = 1024,
+    this.maxTokens = 8192,
   }) : _client = client,
        _apiKey = apiKey,
        baseUrl = baseUrl ?? Uri.parse('https://api.anthropic.com');
@@ -67,6 +67,10 @@ class ClaudeHttpPort implements LlmPort {
   final String model;
   final Uri baseUrl;
   final String apiVersion;
+
+  /// 8 192: estos modelos piensan por defecto y los tokens de razonamiento cuentan contra
+  /// `max_tokens`; con un tope bajo la respuesta se cortaría siempre (`stop_reason: max_tokens`) y el
+  /// triaje caería al respaldo de reglas sin que nada fallara a la vista.
   final int maxTokens;
 
   @override
@@ -231,6 +235,22 @@ const List<(int, String)> _flagCodes = [
   (SituationFlags.medicacion, 'medicacion'),
 ];
 
+/// Por qué una respuesta del modelo no es utilizable, en un código estable que se puede contar.
+/// Un fallo del modelo NUNCA debe ser invisible: sin esto, un 400 por una petición mal formada se
+/// vería igual que «el modelo coincidió con las reglas».
+String _reasonOf(LlmResult r) {
+  if (r.timedOut) return 'plazo_agotado';
+  final e = r.error;
+  if (e != null) {
+    final m = RegExp(r'^HTTP (\d+)$').firstMatch(e);
+    if (m != null) return 'http_${m.group(1)}';
+    return e.startsWith('fallo de red') ? 'error_de_red' : 'respuesta_ilegible';
+  }
+  if (r.stopReason == 'refusal') return 'negativa';
+  if (r.stopReason != null && r.stopReason != 'end_turn') return 'detenido_${r.stopReason}';
+  return 'sin_texto';
+}
+
 /// Triaje con modelo de lenguaje **y respaldo por reglas**. Siempre devuelve un resultado y nunca
 /// lanza: ante cualquier fallo del modelo (plazo, negativa, error, JSON o cita inválidos, código
 /// inventado) se devuelve el resultado de las reglas con `mode: 'rules'`.
@@ -241,25 +261,37 @@ const List<(int, String)> _flagCodes = [
 ///    `baja_confianza_modelo` y se pide revisión humana;
 ///  · una urgencia **más baja** nunca baja nada (piso por reglas);
 ///  · si difiere de la de las reglas se anota `juicios_discrepantes` (se muestra el valor más alto);
-///  · el texto del reporte viaja como dato delimitado, nunca dentro de las instrucciones.
+///  · el texto del reporte viaja como dato delimitado, nunca dentro de las instrucciones;
+///  · [onFallback] recibe el motivo cuando se cae al respaldo (plazo, negativa, HTTP, salida inválida…).
 Future<TriageResult> triageWithModel(
   LlmPort port,
   int flags,
   String? text, {
   bool hasLocation = true,
   Duration timeout = const Duration(seconds: 8),
+  void Function(String reason)? onFallback,
 }) async {
   final rules = triage(flags, text: text, hasLocation: hasLocation);
   if (text == null || text.trim().isEmpty) return rules;
   final LlmResult res;
   try {
     res = await port.completeJson(LlmRequest(system: _system, user: _userMessage(flags, text), schema: _schema, timeout: timeout)).timeout(timeout);
+  } on TimeoutException {
+    onFallback?.call('plazo_agotado');
+    return rules;
   } on Object {
+    onFallback?.call('excepcion');
     return rules;
   }
-  if (!res.ok) return rules;
+  if (!res.ok) {
+    onFallback?.call(_reasonOf(res));
+    return rules;
+  }
   final v = _validate(res.text!, text);
-  if (v == null) return rules;
+  if (v == null) {
+    onFallback?.call('salida_invalida');
+    return rules;
+  }
 
   final haveCodes = rules.signals.toSet();
   final newSignals = [for (final s in v.signals) if (!haveCodes.contains(s.code)) s];

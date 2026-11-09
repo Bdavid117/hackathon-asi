@@ -44,7 +44,7 @@ typedef Sum = ({int tp, int fp, int fn, int groups, int mixed});
 Sum sumPairs(List<SeedRun> runs, double hi, double noLoc) {
   var tp = 0, fp = 0, fn = 0, g = 0, mx = 0;
   for (final r in runs) {
-    final m = pairMetrics(groupsAt(r.keys, r.links, hi, noLoc), r.truth);
+    final m = pairMetrics(groupsAt(r.obs, r.links, hi, noLoc), r.truth);
     tp += m.tp;
     fp += m.fp;
     fn += m.fn;
@@ -113,14 +113,17 @@ void main(List<String> args) {
       if (ok && (best == null || recallOf(s) > best.recall)) best = (hi: hi, noLoc: nl, recall: recallOf(s), fm: fmOf(s));
     }
   }
-  const defaults = (hi: 0.80, noLoc: 0.92);
+  const defaults = (hi: 0.80, noLoc: 0.92); // el valor INICIAL del PDF (no el que usa el nodo)
   final calibFound = best != null;
   final chosen = best != null ? (hi: best.hi, noLoc: best.noLoc) : defaults;
+  // El titular del informe debe ser la configuración que EJECUTA el nodo: si no coinciden, se avisa.
+  final shipped = const Weights();
+  final shippedMatches = chosen.hi == shipped.thetaHi && chosen.noLoc == shipped.thetaHiNoLoc;
 
   // ------------------------------------------------------------------ T07: reporte (semillas nuevas)
   final atDefault = sumPairs(held, defaults.hi, defaults.noLoc);
   final atChosen = sumPairs(held, chosen.hi, chosen.noLoc);
-  final perSeedFm = [for (final r in held) pairMetrics(groupsAt(r.keys, r.links, chosen.hi, chosen.noLoc), r.truth).falseMergeRate];
+  final perSeedFm = [for (final r in held) pairMetrics(groupsAt(r.obs, r.links, chosen.hi, chosen.noLoc), r.truth).falseMergeRate];
   final fmMax = perSeedFm.reduce((a, b) => a > b ? a : b), fmMin = perSeedFm.reduce((a, b) => a < b ? a : b);
   final curveRows = <List<String>>[];
   for (final hi in hiGrid) {
@@ -130,7 +133,7 @@ void main(List<String> args) {
   final t07Pass = fmOf(atChosen) <= 0.01;
   // Estabilidad con los umbrales del PDF: una sola unión de dos gemelos cambia mucho la cifra.
   final calibDefault = sumPairs(calib, defaults.hi, defaults.noLoc);
-  final perSeedFmDefault = [for (final r in held) pairMetrics(groupsAt(r.keys, r.links, defaults.hi, defaults.noLoc), r.truth).falseMergeRate];
+  final perSeedFmDefault = [for (final r in held) pairMetrics(groupsAt(r.obs, r.links, defaults.hi, defaults.noLoc), r.truth).falseMergeRate];
   final fmDefMax = perSeedFmDefault.reduce((a, b) => a > b ? a : b), fmDefMin = perSeedFmDefault.reduce((a, b) => a < b ? a : b);
   final trueIncidents = held.first.ds.incidents.length;
 
@@ -153,7 +156,7 @@ void main(List<String> args) {
   var mixedTwin = 0, mixedOther = 0;
   for (final r in held) {
     final twinOf = {for (final i in r.ds.incidents.values) if (i.twinOf != null) i.id: i.twinOf!};
-    for (final g in groupsAt(r.keys, r.links, chosen.hi, chosen.noLoc)) {
+    for (final g in groupsAt(r.obs, r.links, chosen.hi, chosen.noLoc)) {
       final labels = {for (final k in g) r.truth[k]!}..remove(-1);
       if (labels.length <= 1) continue;
       final isTwin = labels.any((l) => twinOf.containsKey(l) && labels.contains(twinOf[l]));
@@ -165,11 +168,42 @@ void main(List<String> args) {
     }
   }
 
+  // Coste de la «revisión humana»: cuántos reportes se escalan y cuántos de ellos lo merecían.
+  var nAll = 0, nEsc = 0, escP1 = 0, escHigh = 0, escNoText = 0;
+  for (final r in held) {
+    for (final x in r.ds.reports) {
+      nAll++;
+      if (!preds[r.seed]![x.reportKey]!.escalateToHuman) continue;
+      nEsc++;
+      if (x.trueUrgency == Urgency.p1) escP1++;
+      if (x.trueUrgency.index <= Urgency.p2.index) escHigh++;
+      if (x.text == null) escNoText++;
+    }
+  }
+
+  // Cobertura de las sugerencias cuando NINGUNO de los dos reportes lleva texto: lo que produce la app
+  // real (hoy no tiene campo de texto).
+  LinkCoverage noTextCoverage(double hi, double noLoc) {
+    var tpairs = 0, same = 0, sameOk = 0, poss = 0, possOk = 0;
+    for (final r in held) {
+      final text = {for (final x in r.ds.reports) x.reportKey: x.text};
+      final c = linkCoverage(rethreshold(r.links, hi, noLoc), r.truth, where: (a, b) => text[a] == null && text[b] == null);
+      tpairs += c.truePairs;
+      same += c.same;
+      sameOk += c.sameCorrect;
+      poss += c.possible;
+      possOk += c.possibleCorrect;
+    }
+    return LinkCoverage(tpairs, same, sameOk, poss, possOk);
+  }
+
+  final covNoText = noTextCoverage(chosen.hi, chosen.noLoc);
+
   // P1 tal como lo ve la cola (urgencia del grupo = la más alta)
   double visible(double hi, double noLoc) {
     var p1 = 0, vis = 0;
     for (final r in held) {
-      final groups = groupsAt(r.keys, r.links, hi, noLoc);
+      final groups = groupsAt(r.obs, r.links, hi, noLoc);
       final pr = {for (final e in preds[r.seed]!.entries) e.key: e.value.urgency};
       final tr = {for (final x in r.ds.reports) x.reportKey: x.trueUrgency};
       final n = tr.values.where((u) => u == Urgency.p1).length;
@@ -210,8 +244,8 @@ void main(List<String> args) {
   b.writeln();
   b.writeln('| Prueba | Criterio del PDF | Resultado (diseño revisado, semillas nuevas) | ¿Cumple? |');
   b.writeln('|---|---|---|---|');
-  b.writeln('| **T06** triaje | recall de P1 ≥ 95 % | recall **${pct(t06.global.recall)}** por reporte (${pct(minSeed)}–${pct(maxSeed)} por semilla); **${pct(visChosen)}** visto en la cola tras agrupar; ${pct(t06.global.recallWithEscalation)} si se cuenta «revisión humana» como acierto | **${t06Pass ? 'sí' : 'NO'}** |');
-  b.writeln('| **T07** deduplicación | falsa fusión ≤ 1 % | **${pct(fmOf(atChosen), d: 2)}** con θ calibrado (${pct(fmMin, d: 2)}–${pct(fmMax, d: 2)} por semilla), **a costa de agrupar sólo el ${pct(recallOf(atChosen), d: 2)} de los pares verdaderos**; con los umbrales del PDF: ${pct(fmOf(atDefault), d: 2)} de falsa fusión y ${pct(recallOf(atDefault), d: 2)} de recall, **pero inestable**: ${pct(fmDefMin, d: 2)}–${pct(fmDefMax, d: 2)} según la semilla y ${pct(fmOf(calibDefault), d: 2)} en las semillas de calibración | **${t07Pass ? 'sí (trivialmente: casi no agrupa)' : 'NO'}** |');
+  b.writeln('| **T06** triaje | recall de P1 ≥ 95 % | recall **${pct(t06.global.recall)}** por reporte (${pct(minSeed)}–${pct(maxSeed)} por semilla); ${pct(t06.global.recallWithEscalation)} si se cuenta «revisión humana» como acierto, **a costa de escalar el ${pct(nEsc / nAll)} de todos los reportes** (y el tablero aún no muestra ese aviso) | **${t06Pass ? 'sí' : 'NO'}** |');
+  b.writeln('| **T07** deduplicación | falsa fusión ≤ 1 % | **${pct(fmOf(atChosen), d: 2)}** con θ calibrado, que es el que usa el nodo (${pct(fmMin, d: 2)}–${pct(fmMax, d: 2)} por semilla), **a costa de agrupar sólo el ${pct(recallOf(atChosen), d: 2)} de los pares verdaderos**; con los umbrales del PDF: ${pct(fmOf(atDefault), d: 2)} de falsa fusión y ${pct(recallOf(atDefault), d: 2)} de recall, **pero inestable**: ${pct(fmDefMin, d: 2)}–${pct(fmDefMax, d: 2)} según la semilla y ${pct(fmOf(calibDefault), d: 2)} en las semillas de calibración | **${t07Pass ? 'sí (trivialmente: casi no agrupa)' : 'NO'}** |');
   b.writeln('| **T08** rumor frente a corroboración | confianza(rumor) < confianza(corroborado) | ${f2(rumor1000.confidence)} frente a ${f2(corro5.confidence)} sobre grupos dados; **de punta a punta las 5 fuentes independientes forman $corro5Groups grupos, no uno** | **${t08Pass ? 'sí (sobre grupos dados)' : 'NO'}** |');
   b.writeln();
   b.writeln('Semillas de calibración ${calibrationSeeds.join(', ')}; cifras del diseño revisado con las semillas **nunca vistas** ${reportSeeds.join(', ')} ($nReports reportes). Léase primero la sección siguiente.');
@@ -254,7 +288,8 @@ void main(List<String> args) {
       ['Precisión de P1', pct(t06.global.precision)],
       ['Exactitud global (4 niveles; se reporta aparte)', pct(t06.accuracy)],
       ['Recall de P1 **contando «revisión humana» como acierto** (afirmación distinta)', pct(t06.global.recallWithEscalation)],
-      ['Recall de P1 **tal como lo ve la cola** (un reporte cuenta si su grupo se muestra P1), umbral calibrado', pct(visChosen)],
+      ['**Coste de ese acierto:** reportes que el triaje escala a revisión humana', '$nEsc de $nAll (${pct(nEsc / nAll)}); de ellos ${pct(escHigh / nEsc)} eran de verdad P1 o P2 y ${pct(escP1 / nEsc)} P1; ${pct(escNoText / nEsc)} no llevaban texto'],
+      ['Recall de P1 «tal como lo ve la cola» (un reporte cuenta si su grupo se muestra P1), umbral calibrado', '${pct(visChosen)} — **no es un beneficio del agrupamiento**: sale casi igual que el recall por reporte porque casi nada se agrupa'],
       ['Ídem con los umbrales del PDF', pct(visDefault)],
       ['Recall **a nivel de suceso** (sucesos P1 con algún reporte clasificado P1; usa la verdad de agrupamiento)', pct(t06.incidentRecallP1)],
       ['**Techo por construcción:** P1 de los subgrupos «sin pistas» y «banderas equivocadas» (no traen nada que lo delate)', '${pct(noInfo / p1Total)} de los reportes P1 → el recall por reglas no puede pasar de ${pct(1 - noInfo / p1Total)}'],
@@ -313,6 +348,10 @@ void main(List<String> args) {
   b.writeln();
   b.writeln('Sucesos reales por conjunto: $trueIncidents (suma de ${held.length} conjuntos: ${trueIncidents * held.length}); reportes: $nReports. Con el umbral calibrado hay **${atChosen.groups} grupos** para ${trueIncidents * held.length} sucesos reales: **el agente casi no agrupa**. Grupos mezclados (más de un suceso real): **${atChosen.mixed}**, de ellos **$mixedTwin** unen un suceso con su gemelo adversarial y **$mixedOther** son otros.');
   b.writeln();
+  b.writeln(shippedMatches
+      ? 'El umbral calibrado (θhi ${f2(chosen.hi)}, sin ubicación ${f2(chosen.noLoc)}) **es el valor por omisión del nodo** (`Weights`): las cifras de «Calibrado» son las de lo que se ejecuta. El valor inicial del PDF (0.80) se mide aparte, como referencia.'
+      : '⚠️ **El umbral calibrado (${f2(chosen.hi)} / ${f2(chosen.noLoc)}) NO coincide con el valor por omisión del nodo (${f2(shipped.thetaHi)} / ${f2(shipped.thetaHiNoLoc)}):** las cifras de «Calibrado» no describen lo que se ejecuta.');
+  b.writeln();
   b.writeln('**Lo que sí hace: sugerir.** Los vínculos `possible` no agrupan, pero se muestran al coordinador como «reportes que podrían ser el mismo suceso» (y son lo que un modelo o una persona resolvería):');
   b.writeln();
   b.writeln(table(
@@ -322,6 +361,8 @@ void main(List<String> args) {
       ['Calibrado ${f2(chosen.hi)} / ${f2(chosen.noLoc)}', '${covChosen.truePairs}', pct(covChosen.recallGrouped, d: 2), pct(covChosen.recallSuggested), '${covChosen.possible}', pct(covChosen.precisionPossible)],
     ],
   ));
+  b.writeln();
+  b.writeln('**Sólo con pares sin texto en ninguno de los dos reportes** (lo que produce la app real, que hoy no tiene campo de texto): de los ${covNoText.truePairs} pares verdaderos así, el agente agrupa ${pct(covNoText.recallGrouped, d: 2)} y sugiere (`same` + `possible`) ${pct(covNoText.recallSuggested)}, con **${pct(covNoText.precisionPossible)} de precisión en lo sugerido** (${covNoText.possible} sugerencias). La cifra general de sugerencias (arriba) mezcla reportes con y sin texto; para la app tal como está, ésta es la que cuenta.');
   b.writeln();
   b.writeln('**Curva** falsa fusión frente a recall (semillas nunca vistas, θ sin ubicación = ${f2(chosen.noLoc)}):');
   b.writeln();

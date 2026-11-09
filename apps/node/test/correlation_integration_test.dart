@@ -184,6 +184,20 @@ void main() {
     });
   });
 
+  group('un reporte de poca evidencia no une dos sucesos lejanos, pero los sugiere', () {
+    test('un reporte sin ubicación con el texto de dos sucesos lejanos: ellos no se fusionan y él los sugiere', () {
+      rec(log, 'aa-1', 0, lat: 5.07, locQuality: 1);
+      rec(log, 'bb-1', 0, lat: 5.27, locQuality: 1); // ~22 km al norte
+      rec(log, 'uu-1', 0, lat: null);
+      final q = buildQueue(log);
+      expect(item(q, 'aa-1').group, isNot(item(q, 'bb-1').group), reason: 'sin puentes');
+      final u = item(q, 'uu-1');
+      expect(u.group, anyOf(item(q, 'aa-1').group, item(q, 'bb-1').group), reason: 'se sumó a uno');
+      final other = u.group == item(q, 'aa-1').group ? 'bb-1' : 'aa-1';
+      expect(u.similar, contains(other), reason: 'el vínculo frenado se muestra como sugerencia');
+    });
+  });
+
   test('toJson expone grupo, fuentes, confianza, incertidumbre, escalado y sugerencias', () {
     rec(log, 'aa-1', 0, flags: SituationFlags.atrapado);
     final j = buildQueue(log).single.toJson();

@@ -18,8 +18,27 @@ const String kAgentVersion = 'rules-2';
 /// cola NO lo usa para agrupar (el grupo se calcula al leer sobre los reportes fusionados), de
 /// modo que un vínculo que este nodo no pudo ver —porque el otro reporte llegó a otro nodo— no se
 /// pierde ni deja un grupo viejo.
+/// Cuántas veces se consultó al modelo, cuántas sirvió y por qué se cayó al respaldo en las demás.
+class LlmStats {
+  int consultas = 0;
+  int usadas = 0;
+  final Map<String, int> fallos = {};
+
+  Map<String, Object?> toJson() => {
+    'consultas': consultas,
+    'usadas': usadas,
+    'fallos': {for (final k in fallos.keys.toList()..sort()) k: fallos[k]!},
+  };
+}
+
 class PipelineRunner {
-  PipelineRunner(this._log, {LlmPort? llm}) : _llm = llm;
+  PipelineRunner(this._log, {LlmPort? llm, this.onLlmFallback}) : _llm = llm, llmStats = llm == null ? null : LlmStats();
+
+  /// Estadísticas del modelo; `null` si no hay modelo configurado.
+  final LlmStats? llmStats;
+
+  /// Se llama con el motivo cada vez que el modelo falla y se usa el respaldo por reglas.
+  final void Function(String reason)? onLlmFallback;
 
   final EventLog _log;
   final LlmPort? _llm;
@@ -122,9 +141,20 @@ class PipelineRunner {
     final m = me();
     final text = m?.text;
     if (m == null || text == null || text.trim().isEmpty || analyzed(text)) return null;
-    final t = await triageWithModel(llm, m.flags, text, hasLocation: m.hasLocation);
+    llmStats!.consultas++;
+    final t = await triageWithModel(
+      llm,
+      m.flags,
+      text,
+      hasLocation: m.hasLocation,
+      onFallback: (reason) {
+        llmStats!.fallos[reason] = (llmStats!.fallos[reason] ?? 0) + 1;
+        onLlmFallback?.call(reason);
+      },
+    );
     if (t.mode != 'rules+llm') return null;
     if (analyzed(text)) return null; // otra consulta terminó mientras esperábamos
+    llmStats!.usadas++;
     return _log.append(
       'triage.assessed',
       {

@@ -19,6 +19,11 @@
 </table>
 
 <div class="callout risk">
+  <p class="t">ESTADO REAL EN B3: PRIVACIDAD DEL MODELO DE LENGUAJE</p>
+  <p>Con <code>--llm on</code> el nodo envía a un servicio externo (la API de Anthropic) el <strong>texto libre del ciudadano</strong>, tal cual, junto con las banderas marcadas. <strong>No se redacta ningún dato personal</strong> (nombres, teléfonos, direcciones escritas a mano) <em>antes</em> de enviarlo, a diferencia de lo que dice la tabla de arriba: eso queda <strong>pendiente</strong>. No se envían la ubicación ni los identificadores del dispositivo. Está <strong>apagado por defecto</strong>; sin clave o sin red el nodo sigue con las reglas. La ruta del modelo sólo se verificó contra un contrato simulado, nunca contra la API real, y cada vez que se cae al respaldo queda contado por causa en <code>/api/health</code>.</p>
+</div>
+
+<div class="callout risk">
   <p class="t">UN PRINCIPIO QUE CONVIENE DEFENDER ANTE EL JURADO</p>
   <p>Ante la incertidumbre, el sistema <strong>sube el caso a revisión humana; nunca lo baja de prioridad</strong>. Un falso positivo cuesta atención del coordinador; un falso negativo puede costar una vida. Por eso las métricas de triaje separan el <em>recall</em> de los casos críticos de la exactitud global (ver {{ref:s9-3}}).</p>
 </div>

@@ -38,6 +38,11 @@ class Observation {
   double? get sigma => hasLocation ? sigmaMeters(locQuality) : null;
 }
 
+/// ¿Alcanza [score] el umbral [threshold]? Con una tolerancia de 1e-9 para que un puntaje que cae
+/// EXACTAMENTE en el umbral (p. ej. 0,85 = 0,40 + 0,15 + 0 + 0,30) no dependa del orden de las
+/// sumas ni del redondeo de coma flotante.
+bool meetsThreshold(double score, double threshold) => score + 1e-9 >= threshold;
+
 /// Pesos y umbrales del PDF §6.6. Los umbrales se calibran con T07 priorizando no fusionar
 /// casos distintos.
 class Weights {
@@ -47,18 +52,23 @@ class Weights {
     this.wk = 0.15,
     this.ws = 0.30,
     this.tau = const Duration(minutes: 30),
-    this.thetaHi = 0.80,
+    this.thetaHi = 0.85,
     this.thetaLo = 0.55,
-    this.thetaHiNoLoc = 0.92,
+    this.thetaHiNoLoc = 0.90,
     this.textEvidenceTokens = 5,
   });
 
   final double wd, wt, wk, ws;
   final Duration tau;
+
+  /// θhi **0,85**: el valor inicial del PDF era 0,80; se calibró con T07 (semillas 1–5, priorizando
+  /// no fusionar casos distintos) porque a 0,80 la falsa fusión es inestable (0–1,6 % según la
+  /// semilla y 3,8 % en calibración) y a 0,85 es 0 en las semillas nuevas. Es el que usa el nodo.
   final double thetaHi, thetaLo;
 
   /// Umbral de `same` cuando falta la ubicación en alguno: más estricto, porque sin ella el
   /// puntaje se apoya sólo en la hora, el tipo y el texto.
+  /// Calibrado con T07 (valor inicial del PDF: 0,92); es el que usa el nodo.
   final double thetaHiNoLoc;
 
   /// Palabras compartidas necesarias para dar crédito completo a la similitud del texto.
@@ -116,9 +126,9 @@ PairScore scorePair(Observation a, Observation b, [Weights w = const Weights()])
     thetaHi = w.thetaHiNoLoc;
     uncertainty.add('ubicacion_ausente');
   }
-  final state = score >= thetaHi
+final state = meetsThreshold(score, thetaHi)
       ? LinkState.same
-      : score >= w.thetaLo
+      : meetsThreshold(score, w.thetaLo)
       ? LinkState.possible
       : LinkState.different;
   return PairScore(score.clamp(0.0, 1.0), state, uncertainty, terms);

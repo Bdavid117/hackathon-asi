@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:sard_agents/sard_agents.dart';
 import 'package:sard_node/sard_node.dart';
 import 'package:sard_protocol/sard_protocol.dart';
 import 'package:shelf/shelf.dart';
@@ -37,6 +38,25 @@ void main() {
     for (final k in ['group', 'groupSize', 'groupUrgency', 'sources', 'confidence', 'uncertainty', 'escalate', 'similar']) {
       expect(item.containsKey(k), isTrue, reason: k);
     }
+  });
+
+  test('GET /api/health incluye las estadísticas del modelo sólo si hay modelo configurado', () async {
+    expect(((await json(await get('/api/health')))! as Map).containsKey('llm'), isFalse);
+    final h2 = buildHandler(
+      ingest: Ingest(log: log, key: testKey),
+      log: log,
+      pipeline: PipelineRunner(log, llm: _NullPort()),
+    );
+    final r = await Future.sync(() => h2(Request('GET', Uri.parse('http://localhost/api/health'))));
+    final body = jsonDecode(await r.readAsString()) as Map<String, Object?>;
+    expect(body['llm'], {'consultas': 0, 'usadas': 0, 'fallos': <String, int>{}});
+  });
+
+  test('GET /api/queue dice la frescura: x-queue-stale y x-queue-age-ms', () async {
+    await post(vectorBytes('sos_min'));
+    final r = await get('/api/queue');
+    expect(r.headers['x-queue-stale'], 'false');
+    expect(int.tryParse(r.headers['x-queue-age-ms'] ?? ''), isNotNull);
   });
 
   test('POST /frame con basura responde 400 y no escribe nada', () async {
@@ -100,4 +120,9 @@ void main() {
     final list = (await json(await get('/api/events?origin=A&after=0&limit=999999')) as List);
     expect(list.length, 1000);
   });
+}
+
+class _NullPort implements LlmPort {
+  @override
+  Future<LlmResult> completeJson(LlmRequest request) async => const LlmResult(error: 'no usado');
 }
