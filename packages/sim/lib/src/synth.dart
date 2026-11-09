@@ -1,6 +1,6 @@
 import 'dart:math';
 
-import 'package:sard_agents/sard_agents.dart' show Urgency;
+import 'package:sard_agents/sard_agents.dart' show Observation, Urgency;
 import 'package:sard_protocol/sard_protocol.dart';
 
 /// Generador de datos sintéticos **con verdad de referencia** (T06, T07, T08).
@@ -89,6 +89,22 @@ class SynthReport {
   /// Cadena estable para comparar conjuntos entre ejecuciones.
   String get signature =>
       '$reportKey|$deviceId|$incidentType|$flags|$lat|$lon|${locQuality.index}|$capturedAtMs|$text|$sourceClass|$trueIncident|${trueUrgency.name}|$subgroup|${(tags.toList()..sort()).join(',')}';
+}
+
+/// Lo que el agente 3 ve de un reporte sintético (sin la verdad de referencia).
+extension SynthToObservation on SynthReport {
+  Observation toObservation() => Observation(
+    reportKey: reportKey,
+    deviceId: deviceId,
+    incidentType: incidentType,
+    flags: flags,
+    lat: lat,
+    lon: lon,
+    locQuality: locQuality,
+    capturedAtMs: capturedAtMs,
+    text: text,
+    sourceClass: sourceClass,
+  );
 }
 
 class SynthDataset {
