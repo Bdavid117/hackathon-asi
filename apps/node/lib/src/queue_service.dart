@@ -28,14 +28,16 @@ class _Snap {
 ///  · el cálculo de colas grandes (≥ [isolateAbove] reportes) corre en **otro isolate**;
 ///  · el resultado se guarda y sólo se recalcula si cambió el número de eventos del log;
 ///  · si el último cálculo fue lento (≥ [slowMs]) y el log cambió, se devuelve la versión anterior
-///    marcada como `stale` (con su antigüedad) mientras se recalcula en segundo plano: el tablero
-///    muestra la frescura (el PDF lo exige) y el nodo no se queda esperando;
+///    marcada como `stale` (con su antigüedad) mientras se recalcula en segundo plano, **pero sólo
+///    si no pasa de [maxStaleMs]**: pasado ese tope se espera al dato fresco. El tablero muestra la
+///    frescura (el PDF la exige);
 ///  · las lecturas simultáneas comparten un único cálculo.
 class QueueService {
   QueueService(
     this._log, {
     this.isolateAbove = 300,
     this.slowMs = 200,
+    this.maxStaleMs = 5000,
     DateTime Function()? clock,
     Future<String> Function(List<Event> received, List<Event> triage)? compute,
   }) : _clock = clock ?? DateTime.now,
@@ -44,6 +46,10 @@ class QueueService {
   final EventLog _log;
   final int isolateAbove;
   final int slowMs;
+
+  /// Antigüedad máxima que se tolera servir: pasado este tope la lectura espera al dato fresco aunque
+  /// el cálculo sea lento (una cola vieja puede esconder un P1 recién llegado).
+  final int maxStaleMs;
   final DateTime Function() _clock;
   final Future<String> Function(List<Event>, List<Event>) _compute;
 
@@ -91,7 +97,8 @@ class QueueService {
     final count = _log.count();
     final snap = _snap;
     if (snap != null && snap.count == count) return _read(snap, stale: false);
-    final slow = snap != null && snap.computeMs >= slowMs;
+    final tooOld = snap != null && _clock().difference(snap.computedAt).inMilliseconds > maxStaleMs;
+    final slow = snap != null && snap.computeMs >= slowMs && !tooOld;
     final job = _job ?? _start(count);
     if (slow) return _read(snap, stale: true); // no esperar: el cálculo sigue en segundo plano
     final s = await job;

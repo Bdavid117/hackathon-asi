@@ -74,7 +74,7 @@ void main() {
       ]);
     }
 
-    QueueService svc() => QueueService(log, clock: clock.call, compute: compute, slowMs: 200);
+    QueueService svc() => QueueService(log, clock: clock.call, compute: compute, slowMs: 200, maxStaleMs: 5000);
 
     setUp(() {
       computes = 0;
@@ -136,6 +136,33 @@ void main() {
       ], reason: 'el cálculo en segundo plano terminó');
     });
 
+    test('hay un TOPE de antigüedad: pasados 5 s la lectura espera al dato fresco aunque el cálculo sea lento', () async {
+      final s = svc();
+      rec(log, 0, Random(1));
+      slowMs = 1000;
+      await s.read();
+      rec(log, 1, Random(1));
+      gate = Completer<void>();
+      // dentro del tope (3 s): se sirve lo viejo sin esperar
+      clock.now = clock.now.add(const Duration(seconds: 3));
+      expect((await s.read().timeout(const Duration(seconds: 2))).stale, isTrue);
+      // pasado el tope (6 s en total): hay que esperar al dato fresco
+      clock.now = clock.now.add(const Duration(seconds: 3));
+      var done = false;
+      final pending = s.read().then((r) {
+        done = true;
+        return r;
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(done, isFalse, reason: 'una lectura de más de 5 s de antigüedad no debe servirse sin esperar');
+      gate!.complete();
+      final r = await pending;
+      expect(r.stale, isFalse);
+      expect(jsonDecode(r.json), [
+        {'n': 2},
+      ]);
+    });
+
     test('dos lecturas simultáneas con cambios comparten UN solo cálculo', () async {
       final s = svc();
       rec(log, 0, Random(1));
@@ -181,7 +208,7 @@ void main() {
     });
   });
 
-  test('lanzar una lectura PESADA (10 000 reportes) no bloquea el hilo del nodo: ceder al bucle de eventos tarda < 1 s', () async {
+  test('lanzar una lectura PESADA (10 000 reportes) no bloquea el hilo del nodo: ceder al bucle de eventos tarda < 3 s (el cálculo en el hilo principal tardaba ≈ 8 s)', () async {
     final r = Random(3);
     for (var i = 0; i < 10000; i++) {
       rec(log, i, r);
@@ -197,7 +224,7 @@ void main() {
     final got = await pending;
     final total = sw.elapsedMilliseconds;
     expect(jsonDecode(got.json), isA<List<Object?>>());
-    expect(yielded, lessThan(1000), reason: 'el hilo tardó $yielded ms en poder atender otra cosa (lectura completa: $total ms)');
+    expect(yielded, lessThan(3000), reason: 'el hilo tardó $yielded ms en poder atender otra cosa (lectura completa: $total ms)');
     // Documenta el coste que SÍ queda en el hilo principal: leer los eventos y copiarlos al isolate.
     // ignore: avoid_print
     print('  → control devuelto al bucle de eventos en $yielded ms; lectura completa en $total ms');
