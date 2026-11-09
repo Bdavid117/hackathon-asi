@@ -15,14 +15,21 @@ import 't06_model.dart';
 /// sólo reglas, reglas + modelo con veto y reglas + modelo sin veto. Los juicios se aplican con [applyJudgments], la misma
 /// función pura que usaría el nodo.
 
-/// El criterio de adopción, **fijado antes de ver los datos** (queda en el historial de git antes de la corrida con la
-/// API). El informe lo repite junto a los resultados para que se vea si se cumplió o no, sin reinterpretarlo después.
+/// El criterio de adopción, **fijado antes de ver los datos de la corrida** (queda en el historial de git antes de la
+/// corrida con la API). El informe lo repite junto a los resultados para que se vea si se cumplió o no, sin reinterpretarlo.
+///
+/// Revisión (9 nov 2026): la primera versión (commit `6ed2fe5`) pedía en (3) sólo «el doble de recall». El piloto de la
+/// semilla 700 —que NO entra en el resultado— mostró que el recall de las reglas es ≈ 0,3 %, así que «el doble» se cumple
+/// con una mejora sin valor práctico. Se separó en dos niveles y (3) pasó a exigir una ganancia absoluta; se hizo ANTES de
+/// correr las semillas 701–705. El mensaje al modelo no se tocó tras el piloto.
 const String kT07DecisionRule =
-    'Se adopta la unión por modelo en el nodo sólo si, con semillas nuevas y a la vez: '
+    'Revisado tras el piloto (semilla 700, que no entra en el resultado) y antes de correr las semillas 701–705. '
+    '**Para ofrecer la unión por modelo en el nodo como opción apagada por omisión** hace falta, con semillas nuevas y a la vez: '
     '(1) la falsa fusión de pares con el modelo es ≤ 1 % y no supera en más de 0,5 puntos a la de sólo reglas; '
     '(2) la precisión de las uniones que hace el modelo es ≥ 95 %; '
-    '(3) el recall de pares con el modelo es al menos el doble que el de sólo reglas; '
     '(4) los fallos del modelo (plazo, HTTP, salida inválida) son ≤ 5 % de las llamadas y las llamadas de más de 8 s ≤ 5 %. '
+    '**Para recomendar activarla** además (3): el recall de pares con el modelo sube al menos 5 puntos porcentuales y al menos '
+    'el doble que el de sólo reglas. '
     'El veto (que el modelo corte una unión de las reglas) se adopta sólo si ≤ 10 % de los vetos son dañinos (cortan pares '
     'del mismo suceso); si no, el nodo sólo une, no veta.';
 
@@ -529,7 +536,7 @@ String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> d
   b.writeln('- Conjuntos pequeños (${cfg.incidents} sucesos): la falsa fusión tiene un intervalo de confianza ancho; un par mal unido pesa mucho.');
   b.writeln('- La corroboración (${cfg.corroborationSources} fuentes) y el rumor usan **textos fijos** del generador: es un caso, no una distribución.');
   b.writeln('- El modelo sólo ve los ${cfg.k} candidatos que elige el código: lo que quede fuera no se puede unir; el recall está acotado por esa elección.');
-  b.writeln('- Sólo se juzgan reportes con texto; la app real hoy no tiene campo de texto libre en el SOS, así que su efecto en la operación depende de que los reportes lleguen con texto.');
+  b.writeln('- Sólo se juzgan reportes con texto; en la app el texto es **opcional** (hasta 140 bytes), así que el efecto en la operación depende de cuántos reportes reales lo traigan: aquí ${(nReports == 0 ? 0 : 100 * nText / nReports).toStringAsFixed(0)} % lo traen, un dato del generador y no de la vida real.');
   b.writeln('- El texto libre del ciudadano **sale hacia un tercero sin redactar** (ver PDF §8).');
   b.writeln('- Las variantes con y sin veto se miden las dos sobre los mismos datos; si se elige una después de verlas, esa elección es exploratoria (el criterio de arriba se fijó antes).');
   return b.toString();
