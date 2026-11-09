@@ -43,3 +43,77 @@ int _fold(int u) {
   final isDigit = c >= 0x30 && c <= 0x39;
   return (isLetter || isDigit) ? c : 0x20;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Similitud de textos (agente 3). Léxica y sin modelo: tokens de contenido con tolerancia a una
+// falta de ortografía en las palabras largas.
+// ---------------------------------------------------------------------------------------------
+
+const Set<String> _stopwords = {
+  'del', 'las', 'los', 'una', 'uno', 'unos', 'unas', 'que', 'por', 'con', 'para', 'sin', 'sus',
+  'mis', 'nos', 'les', 'esta', 'este', 'estan', 'estoy', 'estamos', 'hay', 'pero', 'como', 'muy',
+  'mas', 'todo', 'toda', 'todos', 'aqui', 'alli', 'ahi', 'ser', 'fue', 'son', 'han', 'ahora',
+  // muletillas que se repiten en cualquier reporte y no distinguen un suceso de otro
+  'favor', 'ayuda', 'urgente', 'ayudenme', 'necesitamos', 'vengan', 'porfavor',
+};
+
+/// Las palabras de contenido de [text]: normalizadas, sin palabras vacías ni muletillas, y sin
+/// tokens de menos de 3 letras (salvo los números, que sirven para direcciones).
+Set<String> contentTokens(String? text) {
+  if (text == null) return const {};
+  final out = <String>{};
+  for (final t in normalizeText(text).split(' ')) {
+    if (t.isEmpty || _stopwords.contains(t)) continue;
+    final digits = t.codeUnits.every((c) => c >= 0x30 && c <= 0x39);
+    if (t.length >= 3 || digits) out.add(t);
+  }
+  return out;
+}
+
+bool _tokensMatch(String a, String b) {
+  if (a == b) return true;
+  if (a.length < 5 || b.length < 5 || (a.length - b.length).abs() > 1) return false;
+  return _editDistanceAtMostOne(a, b);
+}
+
+bool _editDistanceAtMostOne(String a, String b) {
+  if (a.length == b.length) {
+    var diff = -1;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] == b[i]) continue;
+      if (diff == -1) {
+        diff = i;
+        continue;
+      }
+      // dos diferencias: sólo vale si son una transposición de letras vecinas
+      return i == diff + 1 && a[diff] == b[i] && a[i] == b[diff] && a.substring(i + 1) == b.substring(i + 1);
+    }
+    return true;
+  }
+  final (s, l) = a.length < b.length ? (a, b) : (b, a);
+  var i = 0;
+  while (i < s.length && s[i] == l[i]) {
+    i++;
+  }
+  return s.substring(i) == l.substring(i + 1);
+}
+
+/// Parecido entre dos textos, de 0 a 1: palabras de contenido compartidas sobre palabras de
+/// contenido totales (Jaccard), con tolerancia a una falta de ortografía. Si a uno le falta el
+/// texto, **0**: no hay nada que comparar, y no se parecen por no tener nada que decir.
+double textSimilarity(String? a, String? b) {
+  final ta = contentTokens(a).toList(), tb = contentTokens(b).toList();
+  if (ta.isEmpty || tb.isEmpty) return 0.0;
+  final used = List<bool>.filled(tb.length, false);
+  var matched = 0;
+  for (final x in ta) {
+    for (var j = 0; j < tb.length; j++) {
+      if (!used[j] && _tokensMatch(x, tb[j])) {
+        used[j] = true;
+        matched++;
+        break;
+      }
+    }
+  }
+  return matched / (ta.length + tb.length - matched);
+}

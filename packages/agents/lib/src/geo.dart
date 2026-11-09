@@ -1,0 +1,26 @@
+import 'dart:math';
+
+import 'package:sard_protocol/sard_protocol.dart';
+
+/// Distancia (haversine) en metros entre dos puntos de la Tierra.
+double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+  const r = 6371000.0;
+  double rad(double x) => x * pi / 180;
+  final dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
+  final a = pow(sin(dLat / 2), 2) + cos(rad(lat1)) * cos(rad(lat2)) * pow(sin(dLon / 2), 2);
+  return 2 * r * asin(min(1.0, sqrt(a)));
+}
+
+/// Incertidumbre (σ, en metros) que declara una calidad de ubicación; `null` si no hay ubicación.
+///
+/// Los valores son los de la calidad de la trama: ±10, ±50, ±200 m, ±1 km y «más de 1 km». Una
+/// ubicación manual (texto) no tiene coordenadas fiables y cuenta como la peor.
+double? sigmaMeters(LocQuality q) => switch (q) {
+  LocQuality.none => null,
+  LocQuality.within10m => 10,
+  LocQuality.within50m => 50,
+  LocQuality.within200m => 200,
+  LocQuality.within1km => 1000,
+  LocQuality.over1km => 3000,
+  LocQuality.manual => 3000,
+};
