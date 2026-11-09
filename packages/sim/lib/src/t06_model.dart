@@ -137,9 +137,9 @@ class T06ModelResult {
   final Duration elapsed;
 }
 
-/// Un puerto que anota lo que contestó la llamada, sin cambiar nada.
-class _Metered implements LlmPort {
-  _Metered(this._inner, this.onResult);
+/// Un puerto que anota lo que contestó cada llamada (tokens, id), sin cambiar nada. Lo comparten las mediciones con modelo.
+class MeteredPort implements LlmPort {
+  MeteredPort(this._inner, this.onResult);
   final LlmPort _inner;
   final void Function(LlmResult) onResult;
 
@@ -202,7 +202,7 @@ Future<ModelRecord> _one(Sampled s, T06ModelConfig cfg, LlmPort port, ModelPrice
   String? reason;
   final sw = Stopwatch()..start();
   final res = await triageWithModel(
-    _Metered(port, (x) => last = x),
+    MeteredPort(port, (x) => last = x),
     r.flags,
     r.text,
     hasLocation: hasLoc,

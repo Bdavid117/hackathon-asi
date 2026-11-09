@@ -5,6 +5,7 @@ export 'src/correlation.dart';
 export 'src/geo.dart';
 export 'src/llm_port.dart';
 export 'src/grouping.dart';
+export 'src/link_judge.dart';
 export 'src/normalize.dart';
 export 'src/recommendation.dart';
 export 'src/rendezvous.dart';

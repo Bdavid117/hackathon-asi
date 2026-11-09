@@ -264,7 +264,7 @@ const List<(int, String)> _flagCodes = [
 /// Por qué una respuesta del modelo no es utilizable, en un código estable que se puede contar.
 /// Un fallo del modelo NUNCA debe ser invisible: sin esto, un 400 por una petición mal formada se
 /// vería igual que «el modelo coincidió con las reglas».
-String _reasonOf(LlmResult r) {
+String llmFailureReason(LlmResult r) {
   if (r.timedOut) return 'plazo_agotado';
   final e = r.error;
   if (e != null) {
@@ -316,7 +316,7 @@ Future<TriageResult> triageWithModel(
     return rules;
   }
   if (!res.ok) {
-    onFallback?.call(_reasonOf(res));
+    onFallback?.call(llmFailureReason(res));
     return rules;
   }
   final v = _validate(res.text!, text);

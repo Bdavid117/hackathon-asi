@@ -1,0 +1,443 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:sard_agents/sard_agents.dart';
+import 'package:sard_protocol/sard_protocol.dart';
+import 'package:sard_sim/sard_sim.dart';
+import 'package:test/test.dart';
+
+/// T07/T08 con el juez semántico REAL (`bin/t07_modelo.dart`). Aquí se prueba la maquinaria SIN clave: un «oráculo» falso
+/// contesta según la verdad (o contesta mal a propósito) y se comprueba que la medición lo cuenta bien, que respeta el
+/// tope de gasto y que el informe no filtra los textos.
+const int _t0 = 1786370851000;
+
+SynthReport rep(
+  String key, {
+  required int inc,
+  required String? text,
+  double? lat = 5.0689,
+  double? lon = -75.5174,
+  int minutes = 0,
+  int type = 2,
+  String sourceClass = 'app',
+}) => SynthReport(
+  reportKey: key,
+  deviceId: key.split('-').first,
+  incidentType: type,
+  flags: 0,
+  lat: lat,
+  lon: lon,
+  locQuality: lat == null ? LocQuality.none : LocQuality.within50m,
+  capturedAtMs: _t0 + minutes * 60000,
+  text: text,
+  sourceClass: sourceClass,
+  trueIncident: inc,
+  trueUrgency: Urgency.p2,
+  subgroup: 'no_p1',
+  tags: {if ((text ?? '').isNotEmpty) 'con_texto' else 'sin_texto'},
+);
+
+/// Tres sucesos: A (puente, 3 reportes con palabras distintas), B (incendio lejos, 2) y C (un gemelo adversarial de A:
+/// cerca y casi a la vez, pero OTRO suceso).
+List<SynthReport> fixture() => [
+  rep('a1-1', inc: 0, text: 'el puente de la calle veinte se partió', minutes: 0),
+  rep('a2-1', inc: 0, text: 'vi caer la mitad del puente cerca', minutes: 2, lat: 5.0690),
+  rep('a3-1', inc: 0, text: 'hay carros debajo del puente colapsado', minutes: 4, lat: 5.0689, lon: -75.5175),
+  rep('b1-1', inc: 1, text: 'incendio en la fábrica de zapatos', minutes: 1, lat: 5.10, lon: -75.60, type: 3),
+  rep('b2-1', inc: 1, text: 'sale humo negro por la fábrica', minutes: 3, lat: 5.1001, lon: -75.6001, type: 3),
+  rep('c1-1', inc: 2, text: 'se derrumbó un muro en la panadería', minutes: 3, lat: 5.0691),
+  rep('n1-1', inc: 0, text: null, minutes: 5), // sin texto: nunca se juzga
+];
+
+T07ModelConfig cfg({double budget = 100, int concurrency = 3, double minConfidence = 0.8}) => T07ModelConfig(
+  seeds: const [1],
+  model: 'claude-sonnet-5-5',
+  effort: 'low',
+  concurrency: concurrency,
+  budgetUsd: budget,
+  minConfidence: minConfidence,
+);
+
+/// Contesta por la verdad (`truth`), o a todo «same» / «different»; cuenta las llamadas y mide tokens (1 000 + 500).
+class _Oracle implements LlmPort {
+  _Oracle(this.incOf, {this.mode = 'truth', this.conf = 0.95, this.inTok = 1000, this.outTok = 500});
+  final Map<String, int> incOf;
+  final String mode;
+  final double conf;
+  final int inTok, outTok;
+  int calls = 0;
+  final List<LlmRequest> requests = [];
+
+  @override
+  Future<LlmResult> completeJson(LlmRequest r) async {
+    calls++;
+    requests.add(r);
+    final t = RegExp(r'<reporte_nuevo>\n(.*?)\n</reporte_nuevo>', dotAll: true).firstMatch(r.user)![1]!;
+    final cs = [for (final m in RegExp(r'<candidato>\n(.*?)\n</candidato>', dotAll: true).allMatches(r.user)) m[1]!];
+    final items = <Map<String, Object?>>[];
+    for (var i = 0; i < cs.length; i++) {
+      final same = mode == 'same' || (mode == 'truth' && incOf[cs[i]] == incOf[t]);
+      final verdict = mode == 'possible' ? 'possible' : (same ? 'same' : 'different');
+      final cites = verdict != 'different';
+      items.add({
+        'candidate': i + 1,
+        'verdict': verdict,
+        'confidence': conf,
+        'quote_new': cites ? t.substring(0, 5) : '',
+        'quote_candidate': cites ? cs[i].substring(0, 5) : '',
+      });
+    }
+    return LlmResult(text: jsonEncode({'judgments': items}), stopReason: 'end_turn', inputTokens: inTok, outputTokens: outTok, requestId: 'req_$calls');
+  }
+}
+
+class _Fail implements LlmPort {
+  _Fail(this.res);
+  final LlmResult res;
+  @override
+  Future<LlmResult> completeJson(LlmRequest r) async => res;
+}
+
+Map<String, int> textToIncident(List<SynthReport> rs) => {for (final r in rs) if (r.text != null) r.text!: r.trueIncident};
+
+void main() {
+  group('planJudgeJobs', () {
+    test('un trabajo por reporte CON texto que tenga candidatos, en orden cronológico, y sólo contra los ANTERIORES', () {
+      final jobs = planJudgeJobs([T07Dataset('s1', 'synth', fixture())], k: 6);
+      final targets = jobs.map((j) => j.target.reportKey).toList();
+      expect(targets.contains('n1-1'), isFalse, reason: 'sin texto no se juzga');
+      expect(targets.contains('a1-1'), isFalse, reason: 'el primero no tiene anteriores');
+      for (final j in jobs) {
+        for (final c in j.candidates) {
+          expect(c.capturedAtMs, lessThanOrEqualTo(j.target.capturedAtMs), reason: 'sólo anteriores');
+        }
+        expect(j.candidates.length, lessThanOrEqualTo(6));
+        expect(j.candidates, isNotEmpty);
+      }
+      final order = [for (final j in jobs) j.target.capturedAtMs];
+      expect(order, [...order]..sort());
+    });
+
+    test('NO depende del orden de entrada de los reportes', () {
+      final a = planJudgeJobs([T07Dataset('s1', 'synth', fixture())], k: 6);
+      final b = planJudgeJobs([T07Dataset('s1', 'synth', fixture().reversed.toList())], k: 6);
+      List<String> sig(List<JudgeJob> js) => [for (final j in js) '${j.target.reportKey}:${j.candidates.map((c) => c.reportKey).join(',')}'];
+      expect(sig(a), sig(b));
+    });
+
+    test('los candidatos respetan las reglas duras: B (lejos, otro tipo) no es candidato de A ni al revés', () {
+      final jobs = planJudgeJobs([T07Dataset('s1', 'synth', fixture())], k: 6);
+      for (final j in jobs) {
+        final inc = {'a': 0, 'b': 1};
+        final t = j.target.reportKey[0];
+        if (t == 'b') expect(j.candidates.every((c) => c.reportKey[0] == 'b'), isTrue);
+        if (t == 'a') expect(j.candidates.any((c) => c.reportKey[0] == 'b'), isFalse);
+        expect(inc, isNotEmpty);
+      }
+    });
+
+    test('varios conjuntos NO se mezclan', () {
+      final x = fixture();
+      final jobs = planJudgeJobs([T07Dataset('s1', 'synth', x), T07Dataset('s2', 'synth', x)], k: 6);
+      expect(jobs.where((j) => j.dataset == 's1').length, jobs.where((j) => j.dataset == 's2').length);
+      for (final j in jobs) {
+        expect(j.candidates.length, lessThanOrEqualTo(4), reason: 'cada conjunto sólo tiene 6 con texto: no se ven los del otro');
+      }
+    });
+  });
+
+  group('t07Datasets', () {
+    test('por semilla: un conjunto sintético, una corroboración y un rumor, con los tamaños de la configuración', () {
+      final c = T07ModelConfig(seeds: const [11, 12], model: 'claude-sonnet-5-5', effort: 'low', concurrency: 1, budgetUsd: 1, incidents: 10, reports: 80, adversarialPairs: 2, corroborationSources: 4, rumorCopies: 7, rumorSources: 2);
+      final ds = t07Datasets(c);
+      expect([for (final d in ds) d.label], ['semilla-11', 'corroboracion-11', 'rumor-11', 'semilla-12', 'corroboracion-12', 'rumor-12']);
+      expect([for (final d in ds.take(3)) d.kind], ['synth', 'corroboracion', 'rumor']);
+      expect(ds[1].reports.length, 4);
+      expect(ds[2].reports.length, 7);
+      expect(ds[2].reports.map((r) => r.deviceId).toSet().length, 2);
+      expect(ds[0].reports.map((r) => r.trueIncident).where((i) => i >= 0).toSet().length, lessThanOrEqualTo(12));
+      expect(ds[0].reports.length, inInclusiveRange(60, 140));
+      expect(ds[0].reports.first.reportKey, isNot(ds[3].reports.first.reportKey), reason: 'cada semilla genera sus propios reportes');
+    });
+  });
+
+  group('runT07Model con un oráculo que contesta por la verdad', () {
+    final data = [T07Dataset('s1', 'synth', fixture())];
+
+    Future<(T07ModelResult, T07Eval)> run(LlmPort port, {T07ModelConfig? c}) async {
+      final res = await runT07Model(c ?? cfg(), port, datasets: data);
+      return (res, evalT07(data, res.records, minConfidence: (c ?? cfg()).minConfidence));
+    }
+
+    test('el modelo agrupa lo que las reglas dejaban suelto (otras palabras) SIN falsa fusión', () async {
+      final (_, ev) = await run(_Oracle(textToIncident(fixture())));
+      expect(ev.rules.recall, lessThan(1), reason: 'precondición: las reglas solas no unen las paráfrasis');
+      expect(ev.withModel.recall, greaterThan(ev.rules.recall));
+      expect(ev.withModel.falseMergeRate, 0);
+      expect(ev.withModel.mixedGroups, 0);
+      expect(ev.withModel.groups, lessThan(ev.rules.groups));
+    });
+
+    test('el gemelo adversarial (cerca y a la vez, otro suceso) NO se une con un oráculo que lo ve', () async {
+      final (_, ev) = await run(_Oracle(textToIncident(fixture())));
+      final g = ev.groupsOf('s1', ev.modelLinks['s1']!, ev.modelUnlinked['s1']!);
+      expect(g.any((s) => s.contains('c1-1') && s.length > 1), isFalse);
+    });
+
+    test('un juez que dice «same» a TODO se ve en la medición (falsa fusión > 0), pero las reglas duras siguen a salvo', () async {
+      final (_, ev) = await run(_Oracle(const {}, mode: 'same'));
+      expect(ev.withModel.falseMergeRate, greaterThan(0), reason: 'la medición tiene que ver a un juez que une de más');
+      expect(ev.unions.total, greaterThan(0));
+      expect(ev.unions.correct, lessThan(ev.unions.total), reason: 'unió pares de sucesos distintos (A con su gemelo C)');
+      expect(ev.judgments.sameWhenDifferent, greaterThan(0));
+      final g = ev.groupsOf('s1', ev.modelLinks['s1']!, ev.modelUnlinked['s1']!);
+      expect(g.any((s) => s.contains('b1-1') && s.contains('a1-1')), isFalse, reason: 'B está lejos y es de otro tipo: nunca se une con A');
+    });
+
+    test('un juez que dice «different» a todo: con veto parte lo que las reglas unían; sin veto no', () async {
+      final texto = 'edificio caído en la carrera 23 con calle 10, hay heridos';
+      final dup = [
+        T07Dataset('s1', 'synth', [rep('p1-1', inc: 0, text: texto), rep('q1-1', inc: 0, text: texto, minutes: 2)]),
+      ];
+      final res = await runT07Model(cfg(), _Oracle(const {}, mode: 'different'), datasets: dup);
+      final ev = evalT07(dup, res.records, minConfidence: 0.8);
+      expect(ev.rules.groups, 1, reason: 'precondición: las reglas unen dos textos idénticos');
+      expect(ev.withModel.groups, 2, reason: 'con veto el modelo los separa');
+      expect(ev.withModelNoVeto.groups, 1);
+      expect(ev.vetoes.total, 1);
+      expect(ev.vetoes.harmful, 1, reason: 'eran del mismo suceso: un veto malo');
+    });
+
+    test('una unión que las reglas YA hacían no se cuenta como del modelo', () async {
+      final texto = 'edificio caído en la carrera 23 con calle 10, hay heridos';
+      final dup = [
+        T07Dataset('s1', 'synth', [rep('p1-1', inc: 0, text: texto), rep('q1-1', inc: 0, text: texto, minutes: 2)]),
+      ];
+      final res = await runT07Model(cfg(), _Oracle({texto: 0}), datasets: dup);
+      final ev = evalT07(dup, res.records, minConfidence: 0.8);
+      expect(ev.rules.groups, 1, reason: 'precondición: las reglas ya los unen');
+      expect(ev.unions.total, 0);
+    });
+
+    test('dos rumores (verdad −1) que un juez une NO cuentan como «mismo suceso»: no hay suceso', () async {
+      final rs = [
+        rep('r1-1', inc: -1, text: 'dicen por la radio que cayó el puente', sourceClass: 'radio'),
+        rep('r2-1', inc: -1, text: 'por la radio dicen que se cayó el puente', minutes: 1, sourceClass: 'radio'),
+      ];
+      final d = [T07Dataset('s1', 'synth', rs)];
+      final res = await runT07Model(cfg(), _Oracle(const {}, mode: 'same'), datasets: d);
+      final ev = evalT07(d, res.records, minConfidence: 0.8);
+      expect(ev.judgments.total, greaterThan(0));
+      expect(ev.judgments.sameWhenSame, 0);
+      expect(ev.judgments.sameWhenDifferent, ev.judgments.total);
+    });
+
+    test('la matriz distingue «different» de «possible» y cada una según la verdad', () async {
+      final (_, evD) = await run(_Oracle(const {}, mode: 'different'));
+      expect(evD.judgments.differentWhenSame, greaterThan(0), reason: 'dijo «different» a pares del mismo suceso');
+      expect(evD.judgments.differentWhenDifferent, greaterThan(0));
+      expect(evD.judgments.sameWhenSame + evD.judgments.sameWhenDifferent + evD.judgments.possibleWhenSame + evD.judgments.possibleWhenDifferent, 0);
+      final (_, evP) = await run(_Oracle(textToIncident(fixture()), mode: 'possible'));
+      expect(evP.judgments.possibleWhenSame, greaterThan(0));
+      expect(evP.judgments.possibleWhenDifferent, greaterThan(0));
+      expect(evP.judgments.sameWhenSame + evP.judgments.differentWhenSame + evP.judgments.differentWhenDifferent, 0);
+      expect(evP.withModel.groups, evP.rules.groups, reason: '«possible» no une');
+      expect(evP.judgments.total, evP.judgments.possibleWhenSame + evP.judgments.possibleWhenDifferent, reason: 'el total cuenta todas las casillas');
+    });
+
+    test('mide por separado lo que el modelo UNE (y si acertó) y lo que VETA', () async {
+      final (_, ev) = await run(_Oracle(textToIncident(fixture())));
+      expect(ev.unions.total, greaterThan(0));
+      expect(ev.unions.correct, ev.unions.total, reason: 'el oráculo nunca une de más');
+      expect(ev.vetoes.harmful, 0);
+    });
+
+    test('la matriz del juez: veredicto × verdad, sobre los juicios hechos', () async {
+      final (_, ev) = await run(_Oracle(textToIncident(fixture())));
+      expect(ev.judgments.sameWhenSame, greaterThan(0));
+      expect(ev.judgments.sameWhenDifferent, 0);
+      expect(ev.judgments.differentWhenSame, 0);
+      expect(ev.judgments.differentWhenDifferent, greaterThan(0));
+      expect(ev.judgments.total, ev.judgments.sameWhenSame + ev.judgments.sameWhenDifferent + ev.judgments.possibleWhenSame + ev.judgments.possibleWhenDifferent + ev.judgments.differentWhenSame + ev.judgments.differentWhenDifferent);
+    });
+
+    test('lleva el gasto, los tokens, las llamadas y el id de petición de cada una', () async {
+      final o = _Oracle(textToIncident(fixture()));
+      final (res, _) = await run(o);
+      expect(res.records.length, o.calls);
+      expect(res.spentUsd, closeTo(o.calls * 0.007, 1e-9), reason: '1 000 de entrada a 2 USD + 500 de salida a 10 USD por millón');
+      expect(res.records.every((r) => r.requestId != null && r.inputTokens == 1000 && r.outputTokens == 500), isTrue);
+      expect(res.stoppedByBudget, isFalse);
+      expect(res.fallbacks, isEmpty);
+    });
+
+    test('el tope de gasto es DURO: con 1 ¢ no pasa de una llamada y lo dice', () async {
+      final o = _Oracle(textToIncident(fixture()));
+      final (res, _) = await run(o, c: cfg(budget: 0.01, concurrency: 1));
+      expect(o.calls, 1);
+      expect(res.spentUsd, lessThanOrEqualTo(0.01));
+      expect(res.stoppedByBudget, isTrue);
+      expect(res.skipped, greaterThan(0));
+    });
+
+    test('con varias llamadas a la vez el tope tampoco se pasa (el gasto en vuelo cuenta)', () async {
+      final o = _Oracle(textToIncident(fixture()));
+      final (res, _) = await run(o, c: cfg(budget: 0.02, concurrency: 5));
+      expect(res.spentUsd, lessThanOrEqualTo(0.02));
+      expect(o.calls, lessThanOrEqualTo(2));
+    });
+
+    test('el tope usa lo que COSTÓ de verdad cada llamada, no sólo el supuesto inicial (3 000+1 500 tokens = 0,021 USD)', () async {
+      final o = _Oracle(textToIncident(fixture()), inTok: 3000, outTok: 1500);
+      final (res, _) = await run(o, c: cfg(budget: 0.05, concurrency: 1));
+      expect(o.calls, 2, reason: 'tras la primera se sabe que cada una cuesta 0,021: una tercera pasaría de 0,05');
+      expect(res.spentUsd, closeTo(0.042, 1e-9));
+      expect(res.stoppedByBudget, isTrue);
+    });
+
+    test('un juez con confianza BAJA (0,5) no cambia nada y la matriz «confiada» queda vacía', () async {
+      final (_, ev) = await run(_Oracle(textToIncident(fixture()), conf: 0.5));
+      expect(ev.judgments.total, greaterThan(0));
+      expect(ev.judgmentsConfident.total, 0);
+      expect(ev.withModel.groups, ev.rules.groups);
+      expect(ev.unions.total, 0);
+    });
+
+    test('la matriz «confiada» cuenta lo mismo que la total cuando toda la confianza es alta', () async {
+      final (_, ev) = await run(_Oracle(textToIncident(fixture())));
+      expect(ev.judgmentsConfident.total, ev.judgments.total);
+      expect(ev.judgmentsConfident.sameWhenSame, ev.judgments.sameWhenSame);
+    });
+
+    test('un veto sobre un par que las reglas NO unían no cuenta como veto de unión (pero el par queda en unlinked)', () async {
+      final (_, ev) = await run(_Oracle(const {}, mode: 'different'));
+      expect(ev.modelUnlinked['s1'], isNotEmpty);
+      expect(ev.vetoes.total, 0, reason: 'las reglas no tenían ningún «same» en esta fixture: no hubo unión que cortar');
+    });
+
+    test('la cobertura de pares cuenta los verdaderos (7) y los que tienen texto en los dos (4)', () async {
+      final (_, ev) = await run(_Oracle(textToIncident(fixture())));
+      expect(ev.coverageRules.truePairs, 7);
+      expect(ev.coverageRulesText.truePairs, 4);
+      expect(ev.coverageModelText.recallGrouped, greaterThan(ev.coverageRulesText.recallGrouped));
+    });
+
+    test('con DOS conjuntos las métricas se SUMAN (mismos datos dos veces = el doble de pares)', () async {
+      final dos = [T07Dataset('s1', 'synth', fixture()), T07Dataset('s2', 'synth', fixture())];
+      final res = await runT07Model(cfg(), _Oracle(textToIncident(fixture())), datasets: dos);
+      final ev2 = evalT07(dos, res.records, minConfidence: 0.8);
+      final ev1 = evalT07(data, res.records.where((r) => r.dataset == 's1').toList(), minConfidence: 0.8);
+      expect(ev2.withModel.tp, 2 * ev1.withModel.tp);
+      expect(ev2.rules.groups, 2 * ev1.rules.groups);
+      expect(ev2.coverageRules.truePairs, 2 * ev1.coverageRules.truePairs);
+      expect(ev2.unions.total, 2 * ev1.unions.total);
+      expect(ev2.judgments.total, 2 * ev1.judgments.total);
+    });
+
+    test('si el modelo FALLA siempre, la medición cuenta cada causa y el resultado es el de las reglas', () async {
+      final (res, ev) = await run(_Fail(const LlmResult(timedOut: true)));
+      expect(res.fallbacks['plazo_agotado'], res.records.length);
+      expect(ev.withModel.recall, ev.rules.recall);
+      expect(ev.withModel.groups, ev.rules.groups);
+      expect(ev.judgments.total, 0);
+    });
+
+    test('un modelo que contesta basura se cuenta como «salida_invalida» y no cambia nada', () async {
+      final (res, ev) = await run(_Fail(const LlmResult(text: 'claro que sí', stopReason: 'end_turn')));
+      expect(res.fallbacks['salida_invalida'], res.records.length);
+      expect(ev.withModel.groups, ev.rules.groups);
+    });
+  });
+
+  group('T08 con el juez: corroboración y rumor', () {
+    test('5 fuentes independientes con palabras propias forman UN grupo con 5 fuentes, y la confianza sube', () async {
+      final corro = generateCorroboration(sources: 5, seed: 1);
+      final data = [T07Dataset('corroboracion-1', 'corroboracion', corro)];
+      final res = await runT07Model(cfg(), _Oracle(textToIncident(corro)), datasets: data);
+      final ev = evalT07(data, res.records, minConfidence: 0.8);
+      final s = ev.scenarios.single;
+      expect(s.rulesGroups, greaterThan(1), reason: 'precondición: las reglas solas no las agrupan');
+      expect(s.modelGroups, 1);
+      expect(s.modelIndependentSources, 5);
+      expect(s.modelConfidence, greaterThan(s.rulesConfidence));
+    });
+
+    test('un rumor repetido NO gana credibilidad por tener más copias: las fuentes siguen contándose por familias', () async {
+      final rumor = generateRumor(copies: 12, sources: 3, seed: 1);
+      final data = [T07Dataset('rumor-1', 'rumor', rumor)];
+      final res = await runT07Model(cfg(), _Oracle(textToIncident(rumor), mode: 'same'), datasets: data);
+      final s = evalT07(data, res.records, minConfidence: 0.8).scenarios.single;
+      expect(s.modelIndependentSources, lessThanOrEqualTo(3));
+      expect(s.modelConfidence, lessThan(0.8));
+    });
+
+    test('el escenario mide el MAYOR grupo, no uno cualquiera', () async {
+      final rs = [
+        rep('x1-1', inc: 0, text: 'el puente de la calle veinte se partió', minutes: 0),
+        rep('x2-1', inc: 0, text: 'vi caer la mitad del puente cerca', minutes: 2),
+        rep('x3-1', inc: 0, text: 'hay carros debajo del puente colapsado', minutes: 4),
+        rep('y1-1', inc: 1, text: 'incendio en la fábrica de zapatos', minutes: 1, lat: 5.10, lon: -75.60, type: 3),
+      ];
+      final data = [T07Dataset('corroboracion-x', 'corroboracion', rs)];
+      final res = await runT07Model(cfg(), _Oracle(textToIncident(rs)), datasets: data);
+      final s = evalT07(data, res.records, minConfidence: 0.8).scenarios.single;
+      expect(s.modelGroups, 2);
+      expect(s.modelIndependentSources, 3, reason: 'el grupo de 3 fuentes, no el de 1');
+    });
+
+    test('los escenarios no entran en las métricas de pares de T07 (sólo los conjuntos «synth»)', () async {
+      final corro = generateCorroboration(sources: 5, seed: 1);
+      final data = [T07Dataset('s1', 'synth', fixture()), T07Dataset('corroboracion-1', 'corroboracion', corro)];
+      final res = await runT07Model(cfg(), _Oracle({...textToIncident(fixture()), ...textToIncident(corro)}), datasets: data);
+      final ev = evalT07(data, res.records, minConfidence: 0.8);
+      final solo = evalT07([data.first], res.records.where((r) => r.dataset == 's1').toList(), minConfidence: 0.8);
+      expect(ev.withModel.tp, solo.withModel.tp);
+      expect(ev.withModel.groups, solo.withModel.groups);
+      expect(ev.scenarios.length, 1);
+    });
+  });
+
+  group('informes', () {
+    final data = [T07Dataset('s1', 'synth', fixture()), T07Dataset('corroboracion-1', 'corroboracion', generateCorroboration(sources: 5, seed: 1))];
+    late T07ModelResult res;
+    setUpAll(() async {
+      res = await runT07Model(cfg(), _Oracle({...textToIncident(fixture()), ...textToIncident(data[1].reports)}), datasets: data);
+    });
+
+    test('el Markdown trae las tres variantes, la matriz del juez, uniones y vetos, T08, costes y LÍMITES; nunca una clave ni un texto', () {
+      final md = renderT07Model(cfg(), res, data);
+      for (final s in ['T07 con el juez semántico REAL', 'Sólo reglas', 'Reglas + modelo', 'sin veto', 'Matriz del juez', 'Uniones del modelo', 'Vetos del modelo', 'T08', 'Criterio de adopción', 'Lo que esta prueba NO dice', 'claude-sonnet-5-5']) {
+        expect(md, contains(s), reason: s);
+      }
+      expect(md, isNot(contains('sk-ant')));
+      expect(md, contains(kT07DecisionRule), reason: 'el criterio fijado de antemano va junto a los resultados');
+      for (final d in data) {
+        for (final r in d.reports) {
+          if ((r.text ?? '').length > 12) expect(md, isNot(contains(r.text!)), reason: 'el informe no incluye el texto de los reportes');
+        }
+      }
+    });
+
+    test('el CSV es coherente con un oráculo perfecto: «same» ⇔ misma verdad', () {
+      final lines = renderT07ModelCsv(data, res.records).trim().split('\n').skip(1).toList();
+      expect(lines.any((l) => l.contains(',same,')), isTrue);
+      expect(lines.any((l) => l.contains(',different,')), isTrue);
+      for (final l in lines) {
+        if (l.contains(',same,')) expect(l.endsWith(',true'), isTrue, reason: l);
+        if (l.contains(',different,')) expect(l.endsWith(',false'), isTrue, reason: l);
+      }
+    });
+
+    test('el CSV tiene una fila por par juzgado con la verdad, sin texto', () {
+      final csv = renderT07ModelCsv(data, res.records);
+      final lines = csv.trim().split('\n');
+      expect(lines.first, 'dataset,a,b,verdict,confidence,truth_same');
+      expect(lines.length - 1, res.records.fold<int>(0, (a, r) => a + r.judgments.length));
+      for (final d in data) {
+        for (final r in d.reports) {
+          if ((r.text ?? '').length > 12) expect(csv, isNot(contains(r.text!)));
+        }
+      }
+    });
+  });
+}
