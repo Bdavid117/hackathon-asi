@@ -1,0 +1,17 @@
+<section id="agentes" data-transition="fade" style="background:#1B222B;color:#EEF1F5;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:36px">
+<h2 style="font-family:'Rubik', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;color:#EEF1F5">Seis agentes, sin nodo central</h2>
+<table style="font-family:'IBM Plex Sans', Arial, sans-serif;font-size:28px;color:#EEF1F5">
+<tr><th style="width:20%;text-align:left">Agente</th><th style="width:38%;text-align:left">Qué hace</th><th style="width:42%;text-align:left">Su límite</th></tr>
+<tr><td>1 · Recepción</td><td>Valida y normaliza el reporte</td><td>No inventa la ubicación</td></tr>
+<tr><td>2 · Triaje</td><td>Estima urgencia y cita la evidencia</td><td>No baja la urgencia por falta de datos</td></tr>
+<tr><td>3 · Correlación</td><td>Propone posibles duplicados</td><td>Conserva el vínculo con cada original</td></tr>
+<tr><td>4 · Comunicación</td><td>Decide qué se envía primero</td><td>Lo de baja prioridad no desaparece</td></tr>
+<tr><td>5 · Resiliencia</td><td>Vigila los nodos y reanuda</td><td>Sin modelo de lenguaje</td></tr>
+<tr><td>6 · Coordinación</td><td>Recomienda una acción</td><td>No despacha: exige aprobación humana</td></tr>
+</table>
+<div style="display:flex;flex-direction:column;gap:8px;background:#12161C;border-left:8px solid #F2B544;border-radius:12px;padding:28px 32px">
+<p style="font-size:32px;line-height:1.4;color:#EEF1F5">Hoy todos funcionan con reglas. El modelo de lenguaje es un puerto apagado por omisión y solo se probó con un servidor falso.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#A9B4C2">Fichas completas en el PDF de arquitectura, capítulo 6 · docs/resultados/b3.md</p>
+<aside>Un minuto. Sin nodo central: cualquier nodo puede recibir, y el trabajo caro (el modelo, la auditoría) se reparte por rendezvous hashing; si el dueño cae, otro lo toma pasado un plazo. Cada agente tiene su respaldo por reglas. Lo que hay que decir sin que lo pregunten: el modelo de lenguaje NUNCA se consultó de verdad; todo lo del modelo se probó contra un servidor falso. No digas «funciona con el modelo de lenguaje».</aside>
+</section>

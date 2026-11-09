@@ -1,0 +1,21 @@
+<section id="fallos" data-transition="fade" style="background:#1B222B;color:#EEF1F5;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:'Rubik', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;color:#EEF1F5">Cuando algo falla, el sistema sigue</h2>
+<div style="display:flex;flex-direction:row;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#12161C;border:1px solid #2C3644;border-radius:24px;padding:48px">
+<h3 style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:600;line-height:1.2;color:#EEF1F5">El modelo se cuelga</h3>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">El ACK p95 pasa de 9 a 17 ms y todas las tramas se acusan. Antes, con 1 024 descriptores, el nodo moría: se corrigió con un tope de consultas.</p>
+<p style="font-size:24px;font-weight:600;line-height:1.4;color:#F2B544">El modelo era un servidor falso.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#12161C;border:1px solid #2C3644;border-radius:24px;padding:48px">
+<h3 style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:600;line-height:1.2;color:#EEF1F5">Dos coordinadores se contradicen</h3>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Aislados, uno aprueba y otro rechaza. Se conservan las dos decisiones, manda el rechazo y la discrepancia queda a la vista.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#12161C;border:1px solid #2C3644;border-radius:24px;padding:48px">
+<h3 style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:600;line-height:1.2;color:#EEF1F5">Misma semilla, misma huella</h3>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">La demostración se repite y da el mismo SHA-256 de lo que ve el coordinador, sin relojes ni identificadores internos (T15).</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.4;color:#EEF1F5">Cada falla se provoca a propósito y se mide con procesos reales del nodo.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#A9B4C2">docs/resultados/b5.md §1 y §4 · t12.md</p>
+<aside>Un minuto. Tres cosas que fallan a propósito. 1) El modelo colgado: con un tope de consultas simultáneas el sistema sigue con reglas; antes de ese tope el nodo moría con el límite típico de 1 024 descriptores, y lo encontró una revisión, no una medición. 2) Dos coordinadores que se contradicen aislados: no se pierde ninguna decisión; manda la más conservadora hasta que alguien la resuelva a propósito. 3) Reproducibilidad: misma semilla, misma huella. El modelo es FALSO: dilo.</aside>
+</section>

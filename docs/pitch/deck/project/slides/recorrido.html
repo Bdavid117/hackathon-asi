@@ -1,0 +1,48 @@
+<section id="recorrido" data-transition="fade" style="background:#12161C;color:#EEF1F5;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:'Rubik', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;color:#EEF1F5">El recorrido completo, en ocho pasos</h2>
+<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:40px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #4FA3D1;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#4FA3D1">1 · Captura</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Reporte</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">SOS en un toque, en la app Flutter.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #4FA3D1;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#4FA3D1">2 · Captura</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Guardado local</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">SQLite durable; se confirma tras el commit.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #4FA3D1;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#4FA3D1">3 · Transporte</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Envío intermitente</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Trama de 33 B, ACK selectivo y reintentos.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #F2B544;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#F2B544">4 · Decisión</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Agentes</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Seis agentes; triaje y correlación por reglas.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #F2B544;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#F2B544">5 · Decisión</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Priorización</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">P1 a P4, con la evidencia citada.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #F2B544;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#F2B544">6 · Decisión</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Tablero</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Lista corta y aprobación humana.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #4CC38A;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#4CC38A">7 · Resiliencia</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Pérdida del nodo</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">kill -9 con la ráfaga a medias.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#1B222B;border-top:6px solid #4CC38A;border-radius:16px;padding:36px">
+<p style="font-size:24px;font-weight:600;line-height:1.2;color:#4CC38A">8 · Resiliencia</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:32px;font-weight:600;line-height:1.2;color:#EEF1F5">Recuperación</p>
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Réplica entre nodos; huellas idénticas.</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.4;color:#EEF1F5">Un mismo reporte recorre los ocho pasos, y en el 7 un nodo muere de verdad.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#A9B4C2">Recorrido mínimo exigido por el enunciado (figura 6) · datos sintéticos y canales simulados</p>
+<aside>Un minuto. El enunciado pide demostrar un recorrido completo, no seis módulos aislados. Cada paso tiene su prueba: el 1 al 3 en la app y el transporte; el 4 al 6 en los nodos y el tablero; el 7 y el 8 con un nodo que muere de verdad (kill -9). Todo con datos sintéticos y canales simulados, que es lo que el enunciado permite.</aside>
+</section>

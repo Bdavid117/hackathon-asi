@@ -2,6 +2,8 @@
 
 Pensado para **8–10 minutos** (con 5 minutos se omiten los pasos 5 y 7). Cada paso dice qué se ve, qué decir, qué comando lo produce y **qué cifra respalda lo que se dice**. Todo está en el repositorio; nada depende de la red.
 
+> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (12 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
+
 > **Regla del guion:** se dice lo que está medido y se dice dónde termina. Cada «sí» lleva su «pero» (hay una lista al final). Un jurado que encuentra solo un límite que usted no mencionó deja de creer el resto.
 
 ## Antes de empezar (10 min antes)
