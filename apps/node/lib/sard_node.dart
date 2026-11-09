@@ -8,5 +8,6 @@ export 'src/queue_service.dart';
 export 'src/queue_view.dart';
 export 'src/api.dart';
 export 'src/audit.dart';
+export 'src/device_budget.dart';
 export 'src/replicator.dart';
 export 'src/pipeline.dart';

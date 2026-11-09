@@ -9,7 +9,10 @@ import 'ingest.dart';
 import 'pipeline.dart';
 import 'queue_service.dart';
 
-const Map<String, String> _cors = {'access-control-allow-origin': '*'};
+/// Cabeceras CORS **sólo para desarrollo** (`--cors on`). Por omisión NO se envían: el tablero se sirve
+/// del mismo origen que la API, y con un comodín cualquier página abierta en el navegador del
+/// coordinador podría leer la cola (textos y ubicaciones de ciudadanos).
+const Map<String, String> _devCors = {'access-control-allow-origin': '*'};
 
 /// Una trama de un reporte con texto mide como mucho unos 200 bytes; 1 KiB deja margen.
 const int kMaxFrameBytes = 1024;
@@ -17,10 +20,10 @@ const int kMaxFrameBytes = 1024;
 /// Tope de eventos por página de replicación.
 const int kMaxEventsPage = 1000;
 
-Response _json(Object? body, {int status = 200}) => Response(
+Response _json(Object? body, {int status = 200, bool cors = false}) => Response(
       status,
       body: jsonEncode(body),
-      headers: {'content-type': 'application/json; charset=utf-8', ..._cors},
+      headers: {'content-type': 'application/json; charset=utf-8', if (cors) ..._devCors},
     );
 
 /// API HTTP del nodo.
@@ -31,7 +34,7 @@ Response _json(Object? body, {int status = 200}) => Response(
 /// - `GET /api/health`: identidad del nodo y vector de versiones.
 ///
 /// Si se da [pipeline], cada trama recién guardada pasa por los agentes de reglas.
-Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRunner? pipeline, QueueService? queue}) {
+Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRunner? pipeline, QueueService? queue, bool cors = false}) {
   final queueService = queue ?? QueueService(log);
   final router = Router()
     ..post('/frame', (Request req) async {
@@ -54,11 +57,11 @@ Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRun
         r.json,
         headers: {
           'content-type': 'application/json; charset=utf-8',
-          ..._cors,
+          if (cors) ..._devCors,
           // frescura honesta: si es una versión anterior del log, se dice y se dice cuánto
           'x-queue-stale': '${r.stale}',
           'x-queue-age-ms': '${r.ageMs}',
-          'access-control-expose-headers': 'x-queue-stale, x-queue-age-ms',
+          if (cors) 'access-control-expose-headers': 'x-queue-stale, x-queue-age-ms',
         },
       );
     })
@@ -70,13 +73,14 @@ Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRun
       if (origin == null || origin.isEmpty || after == null || limit == null) {
         return Response(400, body: 'parámetros: origin (obligatorio), after, limit');
       }
-      return _json([for (final e in log.readAfter(origin, after, limit: limit.clamp(1, kMaxEventsPage))) e.toJson()]);
+      return _json([for (final e in log.readAfter(origin, after, limit: limit.clamp(1, kMaxEventsPage))) e.toJson()], cors: cors);
     })
     ..get('/api/health', (Request req) => _json({
           'node': log.nodeId,
           'events': log.count(),
           'versionVector': log.versionVector(),
           if (pipeline?.llmStats != null) 'llm': pipeline!.llmStats!.toJson(),
-        }));
+          if (pipeline != null) 'budget': pipeline.budget.toJson(),
+        }, cors: cors));
   return router.call;
 }

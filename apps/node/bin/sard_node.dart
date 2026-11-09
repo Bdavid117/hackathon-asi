@@ -19,6 +19,7 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
   --key       clave de la etiqueta de integridad (por defecto «clave-de-ejemplo»)
   --peers     URLs de los nodos pares separadas por comas, p. ej. http://localhost:8082
   --web-root  directorio con el tablero compilado (apps/dashboard/build/web)
+  --cors      «on» sólo en DESARROLLO (tablero en otro origen). Por omisión no hay CORS: una página ajena no puede leer la cola.
   --llm       «on» para consultar al modelo de lenguaje (usa la variable ANTHROPIC_API_KEY); por defecto apagado.
               Sin clave o sin red el nodo sigue con las reglas. NO verificado contra la API real.
 ''';
@@ -57,7 +58,7 @@ Future<void> main(List<String> args) async {
       llm = ClaudeHttpPort(client: http.Client(), apiKey: apiKey);
     }
   }
-  final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, pipeline: PipelineRunner(log, llm: llm, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r')));
+  final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, cors: o['cors'] == 'on', pipeline: PipelineRunner(log, llm: llm, onLlmFallback: (r) => stderr.writeln('[llm] respaldo por reglas: $r')));
   // La auditoría de vínculos va por lotes, fuera de la ruta del ACK (a lo sumo cada 5 s y sólo si hay
   // reportes nuevos); con muchos reportes calcula en otro isolate.
   final audit = AuditLinker(log);

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:sard_agents/sard_agents.dart';
 
+import 'device_budget.dart';
 import 'event_log.dart';
 import 'merged_reports.dart';
 
@@ -31,7 +32,13 @@ class LlmStats {
 /// no hay motivo para pagar su coste en la ruta del ACK. Si hay modelo de lenguaje, se consulta
 /// DESPUÉS ([enrich]) y deja su propio evento.
 class PipelineRunner {
-  PipelineRunner(this._log, {LlmPort? llm, this.onLlmFallback}) : _llm = llm, llmStats = llm == null ? null : LlmStats();
+  PipelineRunner(this._log, {LlmPort? llm, this.onLlmFallback, DeviceBudget? budget})
+    : _llm = llm,
+      llmStats = llm == null ? null : LlmStats(),
+      budget = budget ?? DeviceBudget();
+
+  /// Presupuesto de trabajo caro por dispositivo (degrada, no rechaza).
+  final DeviceBudget budget;
 
   /// Estadísticas del modelo; `null` si no hay modelo configurado.
   final LlmStats? llmStats;
@@ -82,8 +89,12 @@ class PipelineRunner {
       ),
     ]);
 
+    // Una ficha por trama NUEVA ya guardada. Si el dispositivo se pasó, la trama se guarda y se acusa
+    // igual (las reglas ya corrieron); sólo se omite lo caro: la consulta al modelo.
+    final withinBudget = budget.take(received.body['device_id'] as String? ?? received.reportKey ?? '?');
+
     // El modelo (si hay) se consulta DESPUÉS: el ACK y los eventos de reglas no esperan por él.
-    if (_llm != null) {
+    if (_llm != null && withinBudget) {
       late final Future<void> job;
       job = enrich(received).then<void>((_) {}, onError: (Object _) {}).whenComplete(() => _jobs.remove(job));
       _jobs.add(job);

@@ -33,6 +33,8 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   run "H1 recorrido E2E (seed 42)" dart run packages/sim/bin/e2e_skeleton.dart --seed 42
   # Con más de 300 reportes el nodo calcula la cola en otro isolate: se recorre esa rama con nodos REALES.
   run "H1 con cola grande: rama del isolate (350 reportes)" dart run packages/sim/bin/e2e_skeleton.dart --seed 7 --reports 350
+  # T09/T10/T15: partición + kill -9 + reconexión, y la MISMA semilla debe dar la MISMA huella.
+  run "Demostración adversa (partición, kill -9, huella reproducible)" env PART=4 bash tool/demo.sh 42
 fi
 rm -f "$OUT"
 [ "$fail" -eq 0 ] && echo "TODO EN VERDE" || { echo "HAY FALLOS"; exit 1; }

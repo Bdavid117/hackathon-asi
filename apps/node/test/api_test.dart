@@ -59,6 +59,30 @@ void main() {
     expect(int.tryParse(r.headers['x-queue-age-ms'] ?? ''), isNotNull);
   });
 
+  group('CORS: por omisión una página ajena NO puede leer la cola ni la salud del nodo', () {
+    test('sin la bandera no se envía access-control-allow-origin en ninguna ruta de lectura', () async {
+      await post(vectorBytes('sos_min'));
+      for (final path in ['/api/queue', '/api/health', '/api/events?origin=A&after=0']) {
+        final r = await get(path);
+        expect(r.headers.containsKey('access-control-allow-origin'), isFalse, reason: path);
+      }
+    });
+
+    test('con cors: true (sólo desarrollo) sí se permite', () async {
+      final h = buildHandler(ingest: Ingest(log: log, key: testKey), log: log, cors: true);
+      for (final path in ['/api/queue', '/api/health']) {
+        final r = await Future.sync(() => h(Request('GET', Uri.parse('http://localhost$path'))));
+        expect(r.headers['access-control-allow-origin'], '*', reason: path);
+      }
+    });
+
+    test('una petición previa (OPTIONS) de otro origen no se contesta con permisos', () async {
+      final r = await Future.sync(() => handler(Request('OPTIONS', Uri.parse('http://localhost/api/queue'), headers: {'origin': 'http://malo.example', 'access-control-request-method': 'POST'})));
+      expect(r.headers.containsKey('access-control-allow-origin'), isFalse);
+      expect(r.headers.containsKey('access-control-allow-methods'), isFalse);
+    });
+  });
+
   test('POST /frame con basura responde 400 y no escribe nada', () async {
     final r = await post(Uint8List.fromList([1, 2, 3, 4, 5]));
     expect(r.statusCode, 400);
@@ -96,11 +120,6 @@ void main() {
     expect(h['node'], 'A');
     expect(h['events'], 1);
     expect(h['versionVector'], {'A': 1});
-  });
-
-  test('las rutas /api llevan CORS abierto para el tablero en desarrollo', () async {
-    final r = await get('/api/queue');
-    expect(r.headers['access-control-allow-origin'], '*');
   });
 
   test('una ruta desconocida responde 404', () async {
