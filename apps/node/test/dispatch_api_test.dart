@@ -8,6 +8,8 @@ import 'package:sard_node/sard_node.dart';
 import 'package:shelf/shelf.dart';
 import 'package:test/test.dart';
 
+import 'support.dart' show vectorBytes;
+
 /// `POST /api/dispatch`: el canal por el que un despachador registra lo que oyó por radio, teléfono o en persona.
 /// Se prueba el nodo ENTERO (ruta, agentes, cola, réplica), no funciones sueltas.
 const String coordinator = 'coord-2026';
@@ -137,6 +139,39 @@ void main() {
       await post(api, informe());
       await post(api, informe({'id': 'zzzzzzzz1111', 'text': 'incendio en una bodega', 'origin': 'Estación 4'}));
       expect(count(), 2);
+    });
+  });
+
+  group('la fila de la lista dice de dónde viene el incidente', () {
+    Future<List<Map<String, Object?>>> filas(Handler h) async => ((await json(await get(h, '/api/incidents')))['items']! as List).cast<Map<String, Object?>>();
+
+    test('un incidente hecho de un informe lleva fromDispatch = su tamaño; uno de la app, 0', () async {
+      await post(api, informe());
+      await Future.sync(() => api(Request('POST', Uri.parse('http://localhost/frame'), body: vectorBytes('sos_min'))));
+      final items = await filas(api);
+      expect(items.length, 2);
+      final radio = items.firstWhere((i) => (i['id']! as String).startsWith('desp-'));
+      final app = items.firstWhere((i) => !(i['id']! as String).startsWith('desp-'));
+      expect(radio['fromDispatch'], 1);
+      expect(radio['size'], 1);
+      expect(app['fromDispatch'], 0);
+    });
+
+    test('tres informes del mismo texto forman UN grupo de 3 y los tres cuentan como de despachador', () async {
+      for (final o in ['Estación 3', 'Estación 4', 'Estación 5']) {
+        await post(api, informe({'id': 'copia-${o.hashCode}-abcd', 'text': 'hay un edificio caído con gente atrapada en el barrio centro', 'origin': o}));
+      }
+      final items = await filas(api);
+      expect(items.length, 1);
+      expect(items.single['size'], 3);
+      expect(items.single['fromDispatch'], 3);
+    });
+
+    test('el detalle trae lo mismo que la fila', () async {
+      await post(api, informe());
+      final id = (await filas(api)).single['id']! as String;
+      final d = await json(await get(api, '/api/incidents/${Uri.encodeComponent(id)}'));
+      expect(d['fromDispatch'], 1);
     });
   });
 

@@ -36,7 +36,7 @@ Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal
 
 ## Un paso más, si hay un minuto: el despachador (Escenario 2)
 
-En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que se «oyó por radio», de quién viene, marcar «Atrapado» y «Herido» y enviar. Aparece un incidente **P1** con **una sola fuente y confianza 0,2**, «Sin ubicación» y «Todavía no se puede recomendar: falta saber la ubicación»; la observación dice «Informe por teléfono · registrado 15:35 por Ana Gómez · origen: …». Qué decir: «Es información de segunda mano: se conserva, se prioriza por lo que indica, pero no se amplifica (el mismo texto de tres orígenes es **una** fuente) y no inventa el dónde.» Respaldo: T16, `bash tool/dispatch_check.sh` (tres nodos reales, ≈ 1 min), `docs/resultados/despachador.md`.
+En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que se «oyó por radio», de quién viene, marcar «Atrapado» y «Herido» y enviar. Aparece un incidente **P1**, marcado **«De segunda mano»** en la lista, con **una sola fuente y confianza 0,2**, «Sin ubicación» y «Todavía no se puede recomendar: falta saber la ubicación»; la observación dice «Informe por teléfono · registrado 15:35 por Ana Gómez · origen: …». Qué decir: «Es información de segunda mano: se conserva, se prioriza por lo que indica, pero no se amplifica (el mismo texto de tres orígenes es **una** fuente) y no inventa el dónde.» Respaldo: T16, `bash tool/dispatch_check.sh` (tres nodos reales, ≈ 1 min), `docs/resultados/despachador.md`.
 
 ## Frases que NO se deben decir (y por qué)
 

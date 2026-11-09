@@ -152,7 +152,7 @@ Future<void> _run(List<String> args) async {
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
   stdout.writeln('sard_node $id escuchando en :${server.port} (${log.count()} eventos en el log, ${resources.length} recursos declarados)');
   if (coordinatorToken == null) {
-    stdout.writeln('AVISO: sin --coordinator-token cualquiera con acceso a la red lee la cola (ubicaciones) y puede registrar aprobaciones.');
+    stdout.writeln('AVISO: sin --coordinator-token cualquiera con acceso a la red lee la cola (ubicaciones), puede registrar aprobaciones y puede registrar informes de despachador (p. ej. un P1 inventado).');
   }
   if (peerToken == null) {
     stdout.writeln('AVISO: sin --peer-token /api/events queda abierto: entrega los reportes crudos con su ubicación.');

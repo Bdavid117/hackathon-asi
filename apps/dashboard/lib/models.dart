@@ -215,6 +215,7 @@ class IncidentRow {
     required this.recommendation,
     required this.approval,
     required this.shared,
+    this.fromDispatch = 0,
   });
 
   factory IncidentRow.fromJson(Map<String, Object?> m) {
@@ -242,6 +243,8 @@ class IncidentRow {
       recommendation: RecommendationBrief.fromJson(m['recommendation']),
       approval: ApprovalBrief.fromJson(m['approval']),
       shared: [for (final s in _list(m['sharedResources'] ?? const <Object?>[], 'sharedResources')) SharedResource.fromJson(s)],
+      // Un nodo anterior no lo manda: 0. Un valor de otro tipo o negativo también se lee como 0.
+      fromDispatch: m['fromDispatch'] is int && (m['fromDispatch']! as int) > 0 ? m['fromDispatch']! as int : 0,
     );
   }
 
@@ -266,6 +269,15 @@ class IncidentRow {
   final RecommendationBrief recommendation;
   final ApprovalBrief approval;
   final List<SharedResource> shared;
+
+  /// Cuántos de los reportes del incidente son informes de despachador (de segunda mano).
+  final int fromDispatch;
+
+  /// Todo el incidente viene de informes de despachador.
+  bool get isSecondHand => fromDispatch > 0 && fromDispatch >= size;
+
+  /// Al menos un informe de despachador entre sus reportes.
+  bool get hasDispatch => fromDispatch > 0;
 
   bool get hasLocation => lat != null && lon != null;
 }

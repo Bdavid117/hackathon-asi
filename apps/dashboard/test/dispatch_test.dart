@@ -73,6 +73,62 @@ void main() {
     });
   });
 
+  group('la fila de la lista dice de dónde viene el incidente', () {
+    Map<String, Object?> filaJson({int? fromDispatch, int size = 1}) {
+      final j = fixture('incidents_short.json');
+      final item = Map<String, Object?>.from((j['items']! as List).first as Map);
+      return {...item, 'size': size, 'fromDispatch': ?fromDispatch};
+    }
+
+    test('un nodo que no manda fromDispatch (uno anterior) se lee como 0: ninguna marca', () {
+      expect(IncidentRow.fromJson(filaJson()).fromDispatch, 0);
+      expect(IncidentRow.fromJson(filaJson()).isSecondHand, isFalse);
+      expect(IncidentRow.fromJson(filaJson()).hasDispatch, isFalse);
+    });
+
+    test('todo el grupo de despachador = de segunda mano; sólo una parte = «incluye» un informe', () {
+      final todo = IncidentRow.fromJson(filaJson(fromDispatch: 2, size: 2));
+      expect(todo.isSecondHand, isTrue);
+      expect(todo.hasDispatch, isTrue);
+      final parte = IncidentRow.fromJson(filaJson(fromDispatch: 1, size: 3));
+      expect(parte.isSecondHand, isFalse);
+      expect(parte.hasDispatch, isTrue);
+    });
+
+    test('un valor de otro tipo se lee como 0 (no rompe la lista)', () {
+      expect(IncidentRow.fromJson({...filaJson(), 'fromDispatch': 'dos'}).fromDispatch, 0);
+      expect(IncidentRow.fromJson({...filaJson(), 'fromDispatch': -3}).fromDispatch, 0);
+    });
+
+    Future<void> mostrar(WidgetTester tester, Map<String, Object?> fila) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1280, 900);
+      addTearDown(tester.view.reset);
+      final j = fixture('incidents_short.json');
+      final page = IncidentsPage.fromJson({...j, 'items': [fila]});
+      await tester.pumpWidget(MaterialApp(home: DashboardScreen(api: FakeApi(short: page), every: null, clock: () => DateTime.fromMillisecondsSinceEpoch(1786371100 * 1000))));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('la tarjeta de un incidente SÓLO de informes dice «De segunda mano»', (tester) async {
+      await mostrar(tester, filaJson(fromDispatch: 1, size: 1));
+      expect(find.text('De segunda mano'), findsOneWidget);
+      expect(find.text('Incluye informe de despachador'), findsNothing);
+    });
+
+    testWidgets('la de un grupo MIXTO dice «Incluye informe de despachador» (la app no se tapa)', (tester) async {
+      await mostrar(tester, filaJson(fromDispatch: 1, size: 2));
+      expect(find.text('Incluye informe de despachador'), findsOneWidget);
+      expect(find.text('De segunda mano'), findsNothing);
+    });
+
+    testWidgets('un incidente de la app no lleva ninguna de las dos marcas', (tester) async {
+      await mostrar(tester, filaJson(fromDispatch: 0));
+      expect(find.text('De segunda mano'), findsNothing);
+      expect(find.text('Incluye informe de despachador'), findsNothing);
+    });
+  });
+
   group('HttpDashboardApi.dispatch (contrato con el nodo)', () {
     final literal = jsonDecode(File('../node/test/fixtures/dispatch_request.json').readAsStringSync()) as Map<String, Object?>;
 

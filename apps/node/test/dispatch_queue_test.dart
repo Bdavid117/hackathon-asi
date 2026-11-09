@@ -25,7 +25,7 @@ void main() {
             'text': text,
             'medium': medium,
             'who': who,
-            if (origin != null) 'origin': origin,
+            'origin': ?origin,
             'flags': flags,
             'people': people,
           }))

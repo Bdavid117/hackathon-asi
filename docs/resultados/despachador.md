@@ -13,7 +13,7 @@ El Escenario 2 del enunciado habla de despachadores que «reciben ráfagas de da
 | La fuente (`app` / `radio`) sale del evento y llega al agente 3 y al JSON de la cola | `merged_reports.dart`, `queue_view.dart` |
 | El texto de este canal **no** se envía al modelo de lenguaje | `pipeline.dart` (`_sinModelo`) |
 | El arranque del nodo ya no depende de que todo `report.received` traiga `frame_seq` | `ingest.dart` |
-| «Registrar informe» en el tablero: formulario, cliente HTTP, observación de segunda mano | `apps/dashboard/lib/dispatch_dialog.dart`, `api.dart`, `detail_panel.dart` |
+| «Registrar informe» en el tablero: formulario, cliente HTTP, observación de segunda mano y marca **«De segunda mano»** en la fila de la lista (`fromDispatch` en el resumen del incidente) | `apps/dashboard/lib/dispatch_dialog.dart`, `api.dart`, `detail_panel.dart` |
 | Comprobación con tres nodos reales | `tool/dispatch_check.sh` (dentro de `tool/test_all.sh`) |
 
 **El cuerpo** (`test/fixtures/dispatch_request.json`, el mismo literal que leen la prueba del nodo y la del tablero):
@@ -39,12 +39,12 @@ El Escenario 2 del enunciado habla de despachadores que «reciben ráfagas de da
 
 | Qué | Resultado |
 |---|---|
-| Pruebas nuevas del nodo | **85** (323 → 408): validación (≈ 40 entradas malas), registro, idempotencia, conflicto, cuerpo con todas las claves de una trama real, cola, independencia, JSON, ruta (415/413/400/401/409), `ETag`, réplica, reinicio, modelo |
-| Pruebas nuevas del tablero | **36** (138 → 174): modelo, **contrato HTTP contra el mismo literal que lee el nodo**, formulario, ids de reintento, doble toque, anchos 320–1 280 px, observación, evidencia |
-| Mutaciones | **44** cambios deliberados al código (27 en el nodo, 17 en el tablero): todos acabaron detectados por alguna prueba. **3 sobrevivieron al primer intento** y obligaron a añadir pruebas (el informe no debe ocupar un hueco del modelo; la caché debe invalidarse sin pipeline; el botón debe cambiar de forma según el ancho) |
+| Pruebas nuevas del nodo | **88** (323 → 411): validación (≈ 40 entradas malas), registro, idempotencia, conflicto, cuerpo con todas las claves de una trama real, cola, independencia, JSON, ruta (415/413/400/401/409), `ETag`, réplica, reinicio, modelo |
+| Pruebas nuevas del tablero | **42** (138 → 180): modelo, marca en la lista, **contrato HTTP contra el mismo literal que lee el nodo**, formulario, ids de reintento, doble toque, anchos 320–1 280 px, observación, evidencia |
+| Mutaciones | **51** cambios deliberados al código (29 en el nodo, 22 en el tablero): todos acabaron detectados por alguna prueba. **3 sobrevivieron al primer intento** y obligaron a añadir pruebas (el informe no debe ocupar un hueco del modelo; la caché debe invalidarse sin pipeline; el botón debe cambiar de forma según el ancho) |
 | `tool/dispatch_check.sh` | Con **tres nodos reales** (procesos, HTTP, disco): registro, reintento sin escribir, 409, 415/400/413 sin escribir, convivencia con tramas de la app, **`kill -9` y reinicio**, códigos de acceso, réplica a otro nodo y reinicio de éste. **Quitando la defensa del arranque el script falla** («el nodo A no arrancó»: `Null check` en `ingest.dart`) |
-| Tablero real en Chrome | Se abrió el tablero compilado, se pulsó «Registrar informe», se llenó (teléfono, texto, origen, atrapado, herido, 2–5, nombre) y se envió: el nodo lo aceptó, lo mostró como incidente **P1**, fuente `radio`, medio `telefono`, 1 fuente, confianza 0,2, «Fuente única» y «Sin ubicación» (`/api/incidents`) |
-| `bash tool/test_all.sh` | 1 287 casos en verde (124 + 89 + 267 + 98 + 408 + 127 + 174), análisis limpio, H1 ×2, demostración adversa, T12, ráfaga, T14, tablero web, códigos de acceso e informe de despachador |
+| Tablero real en Chrome | Se abrió el tablero compilado (con el escenario de ejemplo), se pulsó «Registrar informe», se llenó (teléfono, texto, origen, atrapado, herido, 2–5, nombre) y se envió: el nodo lo aceptó, lo mostró como incidente **P1**, fuente `radio`, medio `telefono`, 1 fuente, confianza 0,2, «Fuente única» y «Sin ubicación» (`/api/incidents`); la lista lo marca **«De segunda mano»** y el SOS de la app, no |
+| `bash tool/test_all.sh` | 1 296 casos en verde (124 + 89 + 267 + 98 + 411 + 127 + 180), análisis limpio, H1 ×2, demostración adversa, T12, ráfaga, T14, tablero web, códigos de acceso e informe de despachador |
 
 ### Un defecto que este trabajo habría introducido
 
@@ -57,7 +57,6 @@ Un informe no tiene `frame_seq` ni `device_id` de dispositivo, y el constructor 
 - **La credibilidad 0,2 de `radio` es un supuesto**, no un dato.
 - **Sin ubicación no hay recomendación** (agente 6): el informe llega a la cola, con su urgencia, pero el coordinador debe resolver el dónde.
 - **«Mensaje a medio terminar»** no tiene una marca propia: quien registra puede escribirlo en el texto, pero el sistema no lo detecta ni lo señala como incertidumbre.
-- **La fila de la lista no dice de dónde viene un incidente**; sólo el detalle lo hace.
 - **Quien registra no está autenticado** (`who` es declarado; el código de acceso no es identidad) y no hay límite de tasa ni de tamaño por persona.
 
 ## 5. Cómo reproducirlo

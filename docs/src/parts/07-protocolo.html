@@ -126,6 +126,7 @@ ver|tipo · flags · device_id · seq · rev · len · carga (13 B) · etiqueta<
 <ul>
   <li><strong>El evento.</strong> Se escribe un <code>report.received</code> con <code>channel: dispatcher</code>, <code>source_class: radio</code> (credibilidad base 0,2, supuesta y sin calibrar), el medio, el origen y quién lo registró. Lleva las mismas claves que uno de trama, con nulos en las propias de la trama (<code>frame_seq</code>, <code>ref_seq</code>, <code>battery_q</code>): ningún lector tropieza. Se replica entre nodos como cualquier evento.</li>
   <li><strong>Sin ubicación.</strong> El agente 1 no la inventa y no hay campo para ella; como consecuencia el agente 6 no recomienda («falta saber la ubicación») y el coordinador debe resolver el dónde.</li>
+  <li><strong>La lista lo dice.</strong> Un incidente hecho sólo de informes de despachador se marca «De segunda mano» en su fila; uno mixto, «Incluye informe de despachador».</li>
   <li><strong>La hora es la del nodo al registrar</strong>, no la de cuando se oyó; el tablero lo dice.</li>
   <li><strong>El modelo de lenguaje no ve este texto</strong> aunque esté activado: por radio es más probable que traiga nombres, teléfonos y direcciones, y hoy no se redacta nada (§8).</li>
   <li><strong>Autorización.</strong> Con <code>--coordinator-token</code> exige ese código (denegado por omisión bajo <code>/api/</code>); sin él, quien llegue por red puede registrar. El código no identifica a quien registra.</li>

@@ -111,6 +111,8 @@ class IncidentCard extends StatelessWidget {
                         children: [
                           if (row.needsReview) const Pill('Revisar', color: DashColors.warn, filled: true),
                           if (row.highUncertainty) const Pill('Incertidumbre alta', color: DashColors.warn, icon: Icons.help_outline),
+                          if (row.isSecondHand) const Pill('De segunda mano', color: DashColors.warn, icon: Icons.record_voice_over_outlined)
+                          else if (row.hasDispatch) const Pill('Incluye informe de despachador', color: DashColors.warn, icon: Icons.record_voice_over_outlined),
                           if (!row.hasLocation) const Pill('Sin ubicación', color: DashColors.muted, icon: Icons.location_off_outlined),
                           Pill(recommendationChip(row), color: proposed ? DashColors.text : DashColors.muted),
                           if (showApproval) _approvalPill(approval),

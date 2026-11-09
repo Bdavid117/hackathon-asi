@@ -178,6 +178,8 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
     'people': people,
     'peopleLabel': PeopleBucket.fromCode(people).label,
     'sources': b.view.sources,
+    // Cuántos de los reportes del grupo son informes de despachador (segunda mano), para que la lista lo diga.
+    'fromDispatch': members.where((m) => m.source == 'radio').length,
     'confidence': members.first.confidence,
     'uncertainty': uncertainty,
     'needsReview': uncertainty.any(_reviewCodes.contains),
