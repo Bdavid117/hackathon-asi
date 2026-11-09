@@ -54,6 +54,19 @@ abstract class DashboardApi {
     String note = '',
     List<String> supersedes = const [],
   });
+
+  /// Registra un informe de despachador (radio, teléfono o en persona). Es información de segunda mano y no lleva
+  /// ubicación. [id] lo genera quien llama: reintentar con el mismo [id] y el mismo contenido no duplica el informe.
+  /// Lanza si el nodo no lo acepta o no responde: el informe **no** se da por registrado.
+  Future<void> dispatch({
+    required String id,
+    required String text,
+    required String medium,
+    required String who,
+    String? origin,
+    List<String> flags = const [],
+    int people = 0,
+  });
 }
 
 class _Cached {
@@ -166,5 +179,36 @@ class HttpDashboardApi implements DashboardApi {
         .timeout(timeout);
     if (r.statusCode == 401) _denied();
     if (r.statusCode != 200) throw ApiException(r.statusCode, utf8.decode(r.bodyBytes));
+  }
+
+  @override
+  Future<void> dispatch({
+    required String id,
+    required String text,
+    required String medium,
+    required String who,
+    String? origin,
+    List<String> flags = const [],
+    int people = 0,
+  }) async {
+    final cleanOrigin = origin?.trim();
+    final r = await _client
+        .post(
+          _base.resolve('/api/dispatch'),
+          headers: _h({'content-type': 'application/json'}),
+          body: jsonEncode({
+            'id': id,
+            'text': text,
+            'medium': medium,
+            if (cleanOrigin != null && cleanOrigin.isNotEmpty) 'origin': cleanOrigin,
+            'who': who,
+            'flags': flags,
+            'people': people,
+          }),
+        )
+        .timeout(timeout);
+    if (r.statusCode == 401) _denied();
+    // Un cuerpo de error que no sea UTF-8 (un proxy intermedio) no debe volver el rechazo en otra excepción.
+    if (r.statusCode != 200) throw ApiException(r.statusCode, utf8.decode(r.bodyBytes, allowMalformed: true));
   }
 }

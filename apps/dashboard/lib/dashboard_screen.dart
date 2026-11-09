@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'access_prompt.dart';
 import 'api.dart';
+import 'dispatch_dialog.dart';
 import 'brand.dart';
 import 'detail_panel.dart';
 import 'incident_card.dart';
@@ -237,6 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         appBar: AppBar(
           title: _title,
           actions: [
+            Builder(builder: _dispatchButton),
             Padding(
               padding: const EdgeInsets.only(right: 16),
               child: Center(child: _Freshness(page: page, offline: _offline)),
@@ -284,6 +286,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  /// «Registrar informe»: en pantallas anchas con texto; en estrechas sólo el ícono (no le quita sitio al título).
+  Widget _dispatchButton(BuildContext context) {
+    final narrow = MediaQuery.sizeOf(context).width < 700;
+    return narrow
+        ? IconButton(key: const Key('dispatch_open'), tooltip: 'Registrar informe', onPressed: () => _openDispatch(context), icon: const Icon(Icons.edit_note))
+        : TextButton.icon(key: const Key('dispatch_open'), onPressed: () => _openDispatch(context), icon: const Icon(Icons.edit_note), label: const Text('Registrar informe'));
+  }
+
+  Future<void> _openDispatch(BuildContext context) async {
+    final ok = await showDialog<bool>(context: context, builder: (_) => Theme(data: dashTheme(), child: DispatchDialog(api: widget.api, who: _who)));
+    if (ok != true || !mounted || !context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(key: Key('dispatch_done'), content: Text('Informe registrado. Aparecerá en la lista en unos segundos.')));
+    _load();
   }
 
   static const Widget _title = Row(

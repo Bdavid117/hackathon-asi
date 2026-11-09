@@ -39,6 +39,10 @@ class FakeApi implements DashboardApi {
   Object? failNodes;
   Object? failDetail;
   Object? failDecide;
+  Object? failDispatch;
+
+  /// Si se da, `dispatch` espera a que se complete (para probar el doble toque mientras se envía).
+  Completer<void>? holdDispatch;
   final List<Call> calls = [];
 
   /// Si se da, el nodo simulado exige ese código (como `--coordinator-token`): sin él lanza [AccessDenied].
@@ -102,5 +106,14 @@ class FakeApi implements DashboardApi {
     onDecide?.call();
     _check();
     if (failDecide != null) throw failDecide!;
+  }
+
+  @override
+  Future<void> dispatch({required String id, required String text, required String medium, required String who, String? origin, List<String> flags = const [], int people = 0}) async {
+    calls.add(Call('dispatch', {'id': id, 'text': text, 'medium': medium, 'who': who, 'origin': origin, 'flags': flags, 'people': people}));
+    final gate = holdDispatch;
+    if (gate != null) await gate.future;
+    _check();
+    if (failDispatch != null) throw failDispatch!;
   }
 }

@@ -283,9 +283,9 @@ class _Why extends StatelessWidget {
                   children: [
                     TextSpan(text: signalLabel(e.code), style: const TextStyle(fontWeight: FontWeight.w700)),
                     if (e.field != null)
-                      TextSpan(text: ' — indicador marcado${e.reportKey == null ? '' : ' en el reporte ${e.reportKey}'}')
+                      TextSpan(text: ' — indicador marcado${e.reportKey == null ? '' : ' en el ${_noun(d, e.reportKey!)}'}')
                     else
-                      TextSpan(text: ' — «${e.quote}» en el texto${e.reportKey == null ? '' : ' del reporte ${e.reportKey}'}'),
+                      TextSpan(text: ' — «${e.quote}» en el texto${e.reportKey == null ? '' : ' del ${_noun(d, e.reportKey!)}'}'),
                   ],
                 ),
                 style: const TextStyle(fontSize: 14, height: 1.3),
@@ -301,6 +301,40 @@ class _Why extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Cómo se nombra un informe de despachador en las frases de evidencia: por su medio y por quién lo registró (su
+/// clave interna `desp-…` no le dice nada a quien lee). `null` si [key] es de la app (se nombra por su clave).
+String? _dispatchNoun(IncidentDetail d, String key) {
+  final m = d.members.where((o) => o.reportKey == key).firstOrNull;
+  if (m == null) return key.startsWith('desp-') ? 'informe de un despachador' : null;
+  if (!m.isDispatch) return null;
+  final via = switch (m.medium) {
+    'telefono' => 'por teléfono',
+    'presencial' => 'en persona',
+    _ => 'por radio',
+  };
+  return 'informe $via${m.registeredBy == null ? '' : ' de ${m.registeredBy}'}';
+}
+
+/// «reporte» más su clave (de la app) o «informe por teléfono de Ana» (de un despachador), para «en el …» / «del …».
+String _noun(IncidentDetail d, String key) => _dispatchNoun(d, key) ?? 'reporte $key';
+
+/// La línea de encabezado de una observación. Un informe de despachador NO se presenta como un reporte de la app:
+/// dice por qué medio llegó, que la hora es la de REGISTRO (no la de cuando se oyó), quién lo registró y de quién
+/// viene; y no enseña la clave interna.
+String _observationHeader(Observation m) {
+  final people = m.people == 0 ? '' : ' · ${m.peopleLabel} personas';
+  final location = m.hasLocation ? '' : ' · sin ubicación';
+  if (!m.isDispatch) return 'Reporte ${m.reportKey} · ${clockLabel(m.capturedAt)}$people$location';
+  final via = switch (m.medium) {
+    'telefono' => 'Informe por teléfono',
+    'presencial' => 'Informe en persona',
+    _ => 'Informe por radio',
+  };
+  final by = m.registeredBy == null ? '' : ' por ${m.registeredBy}';
+  final origin = m.origin == null ? '' : ' · origen: ${m.origin}';
+  return '$via · registrado ${clockLabel(m.capturedAt)}$by$origin$people$location';
 }
 
 class _Observations extends StatelessWidget {
@@ -327,7 +361,8 @@ class _Observations extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Reporte ${m.reportKey} · ${clockLabel(m.capturedAt)}${m.people == 0 ? '' : ' · ${m.peopleLabel} personas'}${m.hasLocation ? '' : ' · sin ubicación'}',
+                    _observationHeader(m),
+                    key: Key('obs_header_${m.reportKey}'),
                     style: const TextStyle(fontSize: 12, color: DashColors.muted),
                   ),
                   const SizedBox(height: 4),
@@ -404,7 +439,7 @@ class _Recommendation extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 3),
                   child: Text(
-                    '${signalLabel(c.signal)}${c.quote != null ? ' — «${c.quote}»' : (c.field != null && c.signal != 'ubicacion' ? ' — indicador marcado' : '')} (${c.reportKey})',
+                    '${signalLabel(c.signal)}${c.quote != null ? ' — «${c.quote}»' : (c.field != null && c.signal != 'ubicacion' ? ' — indicador marcado' : '')} (${_dispatchNoun(d, c.reportKey) ?? c.reportKey})',
                     style: const TextStyle(fontSize: 13, color: DashColors.muted),
                   ),
                 ),

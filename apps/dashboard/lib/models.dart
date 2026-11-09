@@ -273,7 +273,7 @@ class IncidentRow {
 // ───────────────────────────── detalle ─────────────────────────────
 
 class Observation {
-  const Observation({required this.reportKey, required this.urgency, required this.rev, required this.flags, required this.text, required this.lat, required this.lon, required this.people, required this.peopleLabel, required this.capturedAt, required this.signals, required this.uncertainty});
+  const Observation({required this.reportKey, required this.urgency, required this.rev, required this.flags, required this.text, required this.lat, required this.lon, required this.people, required this.peopleLabel, required this.capturedAt, required this.signals, required this.uncertainty, this.source = 'app', this.medium, this.origin, this.registeredBy});
 
   factory Observation.fromJson(Object? j) {
     final m = _map(j, 'member');
@@ -290,6 +290,11 @@ class Observation {
       capturedAt: _int(m['capturedAt'], 'capturedAt'),
       signals: _strings(m['signals'], 'signals'),
       uncertainty: _strings(m['uncertainty'], 'uncertainty'),
+      // Un nodo anterior no manda la fuente: es de la app. Tolerante a tipos equivocados.
+      source: m['source'] is String && (m['source']! as String).isNotEmpty ? m['source']! as String : 'app',
+      medium: m['medium'] is String ? m['medium']! as String : null,
+      origin: m['origin'] is String ? m['origin']! as String : null,
+      registeredBy: m['registeredBy'] is String ? m['registeredBy']! as String : null,
     );
   }
 
@@ -307,6 +312,15 @@ class Observation {
   final List<String> uncertainty;
 
   bool get hasLocation => lat != null && lon != null;
+
+  /// De dónde viene: `app` (una trama del teléfono) o `radio` (información de segunda mano que registró un
+  /// despachador). Sólo en los de despachador hay medio, origen y quién la registró.
+  final String source;
+  final String? medium;
+  final String? origin;
+  final String? registeredBy;
+
+  bool get isDispatch => source == 'radio';
 }
 
 class Citation {
@@ -502,6 +516,7 @@ const Map<String, String> _uncertainty = {
   'juicios_discrepantes': 'Juicios discrepantes',
   'baja_confianza_modelo': 'Baja confianza del modelo',
   'texto_truncado': 'Texto truncado',
+  'fuente_no_independiente': 'Fuentes no independientes',
 };
 
 String uncertaintyLabel(String code) => _uncertainty[code] ?? _humanize(code);
