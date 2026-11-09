@@ -66,6 +66,7 @@
     <tr><td class="id">T13</td><td>Seguridad de los agentes</td><td>Textos con instrucciones maliciosas; solicitudes sin datos suficientes; salidas fuera de esquema.</td><td>Acciones, recursos o ubicaciones inventados; salidas inválidas aceptadas</td><td>0</td></tr>
     <tr><td class="id">T14</td><td>Carga cognitiva del tablero</td><td>Lista de 1 000 reportes y 80 incidentes; revisión con personas.</td><td>Elementos a revisar para cubrir los P1; P1 fuera de la vista inicial</td><td>0 P1 ocultos; P1 a un clic</td></tr>
     <tr><td class="id">T15</td><td>Recorrido completo reproducible</td><td>Los ocho pasos con un solo comando y una semilla fija.</td><td>Huella de las proyecciones entre ejecuciones</td><td>Igual con la misma semilla</td></tr>
+    <tr><td class="id">T16</td><td>Canal del despachador</td><td>Informes de radio, teléfono o en persona por <code>POST /api/dispatch</code>, con tres nodos reales, <code>kill -9</code> y réplica.</td><td>Aceptado, conservado y mostrado con su fuente; reintento sin duplicar; el mismo texto de varios orígenes cuenta como una fuente</td><td>Ningún informe aceptado se pierde ni se esconde; el reinicio no mata al nodo; un rumor no se amplifica</td></tr>
   </tbody>
   <caption>Catálogo de pruebas. Cada una produce datos que alimentan el informe del entregable 6.</caption>
 </table>
@@ -112,6 +113,16 @@
     <tr><td class="id">T15</td><td>Misma semilla ⇒ misma huella en cada par de ejecuciones (<code>bash tool/demo.sh 42</code>).</td><td>La huella cubre cola, incidentes, recomendaciones y aprobaciones; no relojes ni quién decidió.</td></tr>
   </tbody>
   <caption>Resultados de B4–B5, con lo que cada cifra sí y no demuestra.</caption>
+</table>
+
+<h3>Resultados del canal del despachador (T16)</h3>
+<p>Con tres nodos <em>reales</em> (<code>tool/dispatch_check.sh</code>) y el tablero compilado abierto en Chrome. El detalle, las decisiones y los límites están en <code>docs/resultados/despachador.md</code>.</p>
+<table class="tight">
+  <thead><tr><th style="width:8%">Prueba</th><th>Resultado</th><th>Límite</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T16</td><td>Un informe se acepta, pasa por los agentes y aparece como incidente con su fuente (<code>radio</code>), medio, origen y quién lo registró, sin ubicación. Un reintento no escribe nada; el mismo id con otro contenido es 409; lo que no es JSON es 415, lo roto 400 y lo enorme 413, sin escribir nada. <code>kill -9</code> y reinicio: el nodo arranca y lo conserva (un <code>report.received</code> sin <code>frame_seq</code> lo tumbaba antes de esta prueba). La réplica lo lleva a otro nodo. Tres informes con el mismo texto y orígenes distintos son <strong>una</strong> fuente, confianza 0,2.</td><td>No se probó con despachadores ni con radio real. <strong>No resuelve el Reto 4</strong>: otros orígenes con otras palabras no se agrupan. La credibilidad 0,2 es un supuesto. Sin ubicación, el agente 6 no recomienda.</td></tr>
+  </tbody>
+  <caption>Resultados de T16, con lo que sí y no demuestra.</caption>
 </table>
 
 <h2 id="s9-4">Informe de resultados (plantilla del entregable 6)</h2>

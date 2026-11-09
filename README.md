@@ -8,7 +8,8 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 
 **B0 a B5 implementados y medidos.** B4 y B5 —la app captura personas y frase; el nodo calcula incidentes con la recomendación del agente 6 y la aprobación registrada; el tablero del coordinador; el reparto del trabajo caro entre nodos; la ráfaga de 10 000 reportes y la demostración con una condición adversa— están en [`docs/resultados/b5.md`](docs/resultados/b5.md) (decisiones y mutaciones en [`b5-decisiones.md`](docs/resultados/b5-decisiones.md)). **Lo que NO se logró o no se probó:** el modelo de lenguaje nunca se consultó de verdad (todo con un servidor falso); el agrupamiento casi no fusiona, así que la ventaja del tablero es de orden y no de agrupación; no hubo prueba con coordinadores; las particiones fueron de 5–20 s; quien aprueba no está autenticado y la clave de integridad es compartida. ⚠️ En B3, **dos de los tres criterios medidos no se cumplen** (T06 recall de P1 78,5 % frente a 95 %; T07 sólo cumple «falsa fusión ≤ 1 %» en conjunto y porque casi no agrupa: una de cinco semillas nuevas llega a 2,9 %) y se reportan así, con su diagnóstico, en [`docs/resultados/b3.md`](docs/resultados/b3.md). Los datos son sintéticos y el modelo de lenguaje no se probó contra la API real. **`--llm on` envía el texto libre de los ciudadanos a un tercero sin redactar datos personales** (apagado por defecto; ver PDF §8). Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado y la app se comporta bien en sus condiciones: **se guarda sin red y sale solo al volver la señal** (en el emulador de Android: 1 s tras devolver la red), usa **GPS y batería reales** (ubicación como revisión del mismo reporte; modos normal, ahorro y sólo SOS) y reparte el envío con **envejecimiento y cuota anti-inanición**.
 
-- **1 166 pruebas automáticas** (el protocolo se cuenta en VM y en Chrome) en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
+- **1 287 pruebas automáticas** (el protocolo se cuenta en VM y en Chrome) en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
+- **Canal del despachador (T16):** en el tablero, «Registrar informe» deja que una persona registre lo que oyó por radio, teléfono o en persona (`POST /api/dispatch`). Entra como información **de segunda mano**: una fuente, confianza 0,2 (supuesta), **sin ubicación** (el agente 6 no recomienda hasta saber el dónde), idempotente, replicable, y su texto **no** se envía al modelo. **No resuelve el Reto 4** (otros orígenes con otras palabras siguen sin agruparse) ni se probó con despachadores reales: [`docs/resultados/despachador.md`](docs/resultados/despachador.md), `bash tool/dispatch_check.sh` (tres nodos reales).
 - **Sin probar en hardware real ni con radio real** (todo en emuladores).
 
 | Qué | Dónde |
@@ -21,8 +22,9 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 | Resultados: verificación en dispositivo | [`docs/resultados/b2-dispositivo.md`](docs/resultados/b2-dispositivo.md) |
 | Resultados: agentes y deduplicación (B3) | [`docs/resultados/b3.md`](docs/resultados/b3.md) |
 | Resultados: B4+B5 (T01, T09–T15), decisiones y límites | [`docs/resultados/b5.md`](docs/resultados/b5.md) · [`b5-decisiones.md`](docs/resultados/b5-decisiones.md) · [`t12.md`](docs/resultados/t12.md) · [`t14.md`](docs/resultados/t14.md) · [`b5-rafaga.md`](docs/resultados/b5-rafaga.md) |
+| Resultados: canal del despachador (T16), decisiones y límites | [`docs/resultados/despachador.md`](docs/resultados/despachador.md) |
 | Guion de la demostración y del pitch | [`docs/pitch/guion.md`](docs/pitch/guion.md) |
-| Presentación del pitch (12 láminas, con capturas reales; fuentes en `docs/pitch/deck/`, se regenera con `python3 -I docs/pitch/build_pdf.py --pdf docs/pitch/SARD-pitch.pdf`) | [`docs/pitch/SARD-pitch.pdf`](docs/pitch/SARD-pitch.pdf) |
+| Presentación del pitch (13 láminas, con capturas reales; fuentes en `docs/pitch/deck/`, se regenera con `python3 -I docs/pitch/build_pdf.py --pdf docs/pitch/SARD-pitch.pdf`) | [`docs/pitch/SARD-pitch.pdf`](docs/pitch/SARD-pitch.pdf) |
 | Oráculo del códec (genera los vectores de prueba) | [`docs/src/tools/frame_size.py`](docs/src/tools/frame_size.py) |
 
 ## Estructura
@@ -37,9 +39,10 @@ config/recursos.json   recursos declarados SINTÉTICOS que el agente 6 puede nom
 apps/mobile/           app ciudadana (Flutter)
 apps/dashboard/        tablero del coordinador (Flutter Web)
 spikes/sqlite_kill/    prueba técnica: SQLite ante kill -9
-tool/test_all.sh       toda la batería de pruebas (≈ 4 min)
+tool/test_all.sh       toda la batería de pruebas (≈ 6 min)
 tool/demo.sh           demostración adversa reproducible (partición, kill -9, decisiones contradictorias, misma semilla ⇒ misma huella)
 tool/web_smoke.sh      el tablero compilado, abierto en Chrome sin cabeza
+tool/dispatch_check.sh el canal del despachador con tres nodos reales (registro, reintento, kill -9, códigos, réplica)
 tool/device_check.sh   pruebas de integración en Android o iOS contra un nodo real
 tool/android_*_check.sh  sin red → sale solo; batería real → modos
 ```
@@ -48,7 +51,7 @@ tool/android_*_check.sh  sin red → sale solo; batería real → modos
 
 ```bash
 dart pub get                                   # resuelve el workspace
-bash tool/test_all.sh                          # pruebas + análisis + H1 + demostración + T12 + T14 + tablero web (≈ 4 min)
+bash tool/test_all.sh                          # pruebas + análisis + H1 + demostración + T12 + T14 + tablero web + canal del despachador (≈ 6 min)
 
 # Un nodo con el tablero (compilar el tablero antes)
 (cd apps/dashboard && flutter build web --no-web-resources-cdn)
@@ -101,5 +104,5 @@ Fuentes del documento: `docs/src/parts/*.html` (contenido), `docs/src/diagrams.p
 ## Pendiente
 
 - **Repositorio accesible al jurado (entregable 2):** está publicado como **privado** en `github.com/Bdavid117/hackathon-asi`. Falta darle acceso al jurado: hacerlo público, o añadir a cada integrante como colaborador (Settings → Collaborators).
-- **Un canal de entrada para el despachador** (radio de onda corta o informes manuales): hoy el nodo sólo recibe tramas binarias de la app, y `radio` como fuente sólo existe en el generador sintético.
+- **Mejorar el canal del despachador** (T16): hoy un informe llega **sin ubicación** (por eso el agente 6 no recomienda), un «mensaje a medio terminar» no se marca como incertidumbre, la fila de la lista no dice de dónde viene un incidente, quien registra no está autenticado y nunca se probó con despachadores reales.
 - **Para que SARD sea más que una demostración:** probar el modelo con la API real, un agrupamiento que de verdad fusione (las cinco fuentes independientes de T08 siguen sin agruparse de punta a punta), una prueba con coordinadores, el mapa de cobertura que advierta de que el silencio no es seguridad (pospuesto), la redacción de datos personales antes de enviar texto al modelo, y la fragmentación de tramas (definida, no implementada).

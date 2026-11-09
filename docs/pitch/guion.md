@@ -2,7 +2,7 @@
 
 Pensado para **8–10 minutos** (con 5 minutos se omiten los pasos 5 y 7). Cada paso dice qué se ve, qué decir, qué comando lo produce y **qué cifra respalda lo que se dice**. Todo está en el repositorio; nada depende de la red.
 
-> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (12 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
+> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (13 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
 
 > **Regla del guion:** se dice lo que está medido y se dice dónde termina. Cada «sí» lleva su «pero» (hay una lista al final). Un jurado que encuentra solo un límite que usted no mencionó deja de creer el resto.
 
@@ -34,6 +34,10 @@ Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal
 | 6 | 7:30–8:30 | **El modelo falla.** Mostrar la tabla de `docs/resultados/t12.md` (o `dart run packages/sim/bin/t12.dart --reports 100`, ≈ 1 min): con el modelo colgado, el ACK p95 pasa de 9 a 17 ms; todas acusadas. Y la ráfaga de 5 000 con el modelo colgado y el límite de 1 024 descriptores: **antes el nodo moría**, ahora 0 fallidas (con un tope de consultas simultáneas; a cambio, la mayoría de los reportes con texto se quedan sólo con reglas). Y el reparto/relevo entre dos nodos. | «Si el modelo se cuelga, el sistema sigue con reglas. Y el trabajo caro se reparte entre nodos; si el dueño cae, otro lo toma.» | T12. **El modelo es falso: dígalo.** |
 | 7 | 8:30–9:30 | **Lo que no funciona.** La cifra de T06 (recall de P1 78,5 % frente a 95 %), el agrupamiento que casi no fusiona, T14 (la mejora es de ordenar, no de agrupar). | «Lo que no cumplimos, lo medimos y lo decimos. Esto es lo que el modelo y las personas tienen que resolver.» | `docs/resultados/b3.md`, `b5.md` §5 y §7. |
 
+## Un paso más, si hay un minuto: el despachador (Escenario 2)
+
+En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que se «oyó por radio», de quién viene, marcar «Atrapado» y «Herido» y enviar. Aparece un incidente **P1** con **una sola fuente y confianza 0,2**, «Sin ubicación» y «Todavía no se puede recomendar: falta saber la ubicación»; la observación dice «Informe por teléfono · registrado 15:35 por Ana Gómez · origen: …». Qué decir: «Es información de segunda mano: se conserva, se prioriza por lo que indica, pero no se amplifica (el mismo texto de tres orígenes es **una** fuente) y no inventa el dónde.» Respaldo: T16, `bash tool/dispatch_check.sh` (tres nodos reales, ≈ 1 min), `docs/resultados/despachador.md`.
+
 ## Frases que NO se deben decir (y por qué)
 
 - «Funciona con el modelo de lenguaje.» → Nunca se consultó la API real; todo fue con un servidor falso.
@@ -41,6 +45,8 @@ Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal
 - «Resiste una partición de 10 minutos.» → Se probó 5–20 s, por configuración, no por red.
 - «Es seguro.» → Con los códigos de acceso activos, el tablero y la réplica exigen un código compartido (sin ellos, el nodo está abierto). Ese código no dice quién aprobó, viaja sin cifrar (sin TLS) y no tiene límite de intentos; la clave de integridad de las tramas es compartida y pública en el repositorio, así que quien llegue por red puede falsificar tramas (`/frame` está abierto a propósito).
 - «Mejora el tiempo del coordinador.» → No hubo prueba con coordinadores. Lo medido es *elementos a revisar* con datos sintéticos.
+- «El despachador resuelve el Reto 4.» → No: otros orígenes con otras palabras siguen sin agruparse; sólo el mismo texto se funde (y cuenta como una fuente).
+- «Probado con despachadores / con radio real.» → Lo teclea una persona; no se probó con despachadores ni con radio.
 - «Probado en teléfonos.» → Emulador de Android y simulador de iOS; ningún teléfono real ni radio real.
 
 ## Preguntas probables

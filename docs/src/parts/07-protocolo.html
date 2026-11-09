@@ -108,3 +108,26 @@ ver|tipo · flags · device_id · seq · rev · len · carga (13 B) · etiqueta<
   </tbody>
   <caption>Tamaños medidos con <code>python3 docs/src/tools/frame_size.py</code>. Un SOS entregado y confirmado cuesta 55 bytes en total (33 B de ida y 22 B de vuelta), sin contar reintentos.</caption>
 </table>
+
+<h2 id="s7-8">Canal del despachador (fuera de la trama)</h2>
+<p>El Escenario 2 habla de «rumores capturados por radio de onda corta y mensajes a medio terminar». La trama binaria de este capítulo es de la app; lo que un despachador oye lo registra una persona en el tablero, por <code>POST /api/dispatch</code> (JSON, sólo <code>application/json</code>, hasta 8 KiB). Es información de <strong>segunda mano</strong> y recorre el mismo camino que un aviso de la app.</p>
+<table class="tight">
+  <thead><tr><th style="width:22%">Campo</th><th>Significado</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td>De 8 a 64 caracteres, lo genera el tablero. Reintentar con el mismo <code>id</code> y el mismo contenido <strong>no duplica</strong> (200, <code>duplicate: true</code>); el mismo <code>id</code> con otro contenido es un <strong>409</strong>, no se descarta en silencio.</td></tr>
+    <tr><td><code>text</code></td><td>Lo que se oyó; hasta 500 <em>caracteres</em> (no bytes). Es dato no confiable, como cualquier texto ciudadano.</td></tr>
+    <tr><td><code>medium</code></td><td><code>radio</code>, <code>telefono</code> o <code>presencial</code>: sólo una etiqueta para quien lee; los tres comparten la clase de fuente <code>radio</code>.</td></tr>
+    <tr><td><code>origin</code></td><td>Opcional: de quién viene la información. <strong>Decide la independencia</strong>: el mismo origen es una fuente; varios orígenes con el mismo texto son copias y también cuentan como una.</td></tr>
+    <tr><td><code>who</code></td><td>Quién registra (declarado, no autenticado).</td></tr>
+    <tr><td><code>flags</code>, <code>people</code></td><td>Opcionales, con el mismo significado que en la app (por nombre y por código de rango). Con sólo texto el triaje por reglas acierta menos.</td></tr>
+  </tbody>
+  <caption>Cuerpo de <code>POST /api/dispatch</code>. Cualquier otro campo se rechaza (400) diciendo cuál.</caption>
+</table>
+<ul>
+  <li><strong>El evento.</strong> Se escribe un <code>report.received</code> con <code>channel: dispatcher</code>, <code>source_class: radio</code> (credibilidad base 0,2, supuesta y sin calibrar), el medio, el origen y quién lo registró. Lleva las mismas claves que uno de trama, con nulos en las propias de la trama (<code>frame_seq</code>, <code>ref_seq</code>, <code>battery_q</code>): ningún lector tropieza. Se replica entre nodos como cualquier evento.</li>
+  <li><strong>Sin ubicación.</strong> El agente 1 no la inventa y no hay campo para ella; como consecuencia el agente 6 no recomienda («falta saber la ubicación») y el coordinador debe resolver el dónde.</li>
+  <li><strong>La hora es la del nodo al registrar</strong>, no la de cuando se oyó; el tablero lo dice.</li>
+  <li><strong>El modelo de lenguaje no ve este texto</strong> aunque esté activado: por radio es más probable que traiga nombres, teléfonos y direcciones, y hoy no se redacta nada (§8).</li>
+  <li><strong>Autorización.</strong> Con <code>--coordinator-token</code> exige ese código (denegado por omisión bajo <code>/api/</code>); sin él, quien llegue por red puede registrar. El código no identifica a quien registra.</li>
+  <li><strong>Límite.</strong> No agrupa lo que no se parece: varios orígenes que cuentan el mismo suceso con otras palabras siguen siendo incidentes distintos (T08 de punta a punta). Resultados y límites: <code>docs/resultados/despachador.md</code> (T16).</li>
+</ul>

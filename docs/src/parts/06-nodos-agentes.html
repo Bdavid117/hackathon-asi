@@ -94,7 +94,7 @@
   <caption>Agente 1 · Recepción y normalización</caption>
   <tbody>
     <tr><td>Objetivo</td><td>Convertir cada observación en un reporte normalizado y validado, con los campos faltantes explícitos.</td></tr>
-    <tr><td>Entradas</td><td><code>report.received</code>: carga decodificada, canal, hora de llegada, desfase de reloj estimado.</td></tr>
+    <tr><td>Entradas</td><td><code>report.received</code>: carga decodificada, canal, hora de llegada, desfase de reloj estimado. Dos canales de entrada: la trama de la app y el informe de un despachador ({{ref:s7-8}}), que llega sin ubicación y como fuente de segunda mano.</td></tr>
     <tr><td>Salidas</td><td><code>report.normalized</code>: campos, errores de validación, campos desconocidos, campos faltantes, ubicación (valor o nulo, origen, calidad).</td></tr>
     <tr><td>Herramientas</td><td>Validador de esquema; decodificador de trama; extractor de texto libre (modelo, opcional).</td></tr>
     <tr><td>Memoria</td><td>Ninguna entre reportes. Lee catálogos de tipos y de lugares conocidos (sólo lectura).</td></tr>

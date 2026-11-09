@@ -1,17 +1,49 @@
 {
   "v": 4,
-  "createdOnFiles": { "v": 1, "at": "2026-11-09T19:20:00Z" },
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-11-09T19:20:00Z"
+  },
   "lists": "css",
   "title": "SARD — pitch y demostración",
-  "order": ["cover", "problema", "recorrido", "app", "agentes", "tablero", "caida", "rafaga", "fallos", "limites", "sigue", "repro"],
+  "order": [
+    "cover",
+    "problema",
+    "recorrido",
+    "app",
+    "agentes",
+    "tablero",
+    "despachador",
+    "caida",
+    "rafaga",
+    "fallos",
+    "limites",
+    "sigue",
+    "repro"
+  ],
   "sections": {
-    "s1": { "description": "El problema y el recorrido de ocho pasos que se demuestra", "start": "cover" },
-    "s2": { "description": "Lo construido y lo medido, con sus cifras", "start": "app" },
-    "s3": { "description": "Lo que no cumplimos, lo que sigue y cómo reproducirlo", "start": "limites" }
+    "s1": {
+      "description": "El problema y el recorrido de ocho pasos que se demuestra",
+      "start": "cover"
+    },
+    "s2": {
+      "description": "Lo construido y lo medido, con sus cifras",
+      "start": "app"
+    },
+    "s3": {
+      "description": "Lo que no cumplimos, lo que sigue y cómo reproducirlo",
+      "start": "limites"
+    }
   },
   "faces": {
-    "rubik": { "family": "Rubik", "href": "https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap" },
-    "ibm-plex-sans": { "family": "IBM Plex Sans", "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" }
+    "rubik": {
+      "family": "Rubik",
+      "href": "https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap"
+    },
+    "ibm-plex-sans": {
+      "family": "IBM Plex Sans",
+      "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    }
   },
   "designSystems": []
 }
