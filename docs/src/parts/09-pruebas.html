@@ -69,12 +69,12 @@
   </tbody>
   <caption>Catálogo de pruebas. Cada una produce datos que alimentan el informe del entregable 6.</caption>
 </table>
-<p><strong>Resultados medidos en B3</strong> (datos sintéticos; semillas de calibración distintas de las de reporte; todo en <code>docs/resultados/b3.md</code>):</p>
+<p><strong>Resultados medidos en B3</strong> (datos sintéticos; umbrales calibrados con unas semillas y cifras de otras generadas <em>después de congelar el código</em>; todo en <code>docs/resultados/b3.md</code>):</p>
 <table class="tight">
   <thead><tr><th style="width:12%">Prueba</th><th>Resultado</th><th style="width:22%">¿Cumple?</th></tr></thead>
   <tbody>
-    <tr><td class="id">T06</td><td>Recall de P1 por reglas <strong>77,5 %</strong>; precisión de P1 100 %. El 13,8 % de los reportes P1 no trae información que lo delate: por reglas el techo es ≈ 86 %. Contando la revisión humana como acierto: 88,6 %, <strong>escalando el 27 % de todos los reportes</strong> (sólo el 20 % de los escalados era de verdad P1 o P2).</td><td><strong>No.</strong> La brecha de la paráfrasis es la que el modelo debería cerrar, y no está medida.</td></tr>
-    <tr><td class="id">T07</td><td>Falsa fusión 0,00 % con el θ calibrado que usa el nodo (0,29 % con los umbrales iniciales del PDF, pero 0–1,8 % según la semilla y 2,6 % en calibración), con <strong>recall de pares 0,5 %</strong>. Sin texto agrupa 0 % y sugiere 15,9 % con 98 % de precisión.</td><td><strong>Sólo trivialmente</strong>: casi no agrupa.</td></tr>
+    <tr><td class="id">T06</td><td>Recall de P1 por reglas <strong>78,5 %</strong>; precisión de P1 100 %. El 12,8 % de los reportes P1 no trae información que lo delate: por reglas el techo es ≈ 87 %. Contando la revisión humana como acierto: 87,7 %, <strong>escalando el 26 % de todos los reportes</strong> (sólo el 23 % de los escalados era de verdad P1 o P2).</td><td><strong>No.</strong> La brecha de la paráfrasis es la que el modelo debería cerrar, y no está medida.</td></tr>
+    <tr><td class="id">T07</td><td>Con el θ calibrado que usa el nodo, falsa fusión <strong>0,68 % en conjunto pero hasta 2,9 % en una de cinco semillas nunca vistas</strong> (1,7 % en conjunto con los umbrales iniciales del PDF, hasta 6,3 % por semilla), con <strong>recall de pares 0,4 %</strong>. Sin texto agrupa 0 % y sugiere 15,7 % con 97 % de precisión.</td><td><strong>Sólo en conjunto y trivialmente</strong>: casi no agrupa y una semilla de cinco lo incumple.</td></tr>
     <tr><td class="id">T08</td><td>Confianza 0,20 (1 000 copias de 3 fuentes) frente a 0,99 (5 fuentes independientes) sobre grupos dados.</td><td><strong>Sí, sobre grupos dados</strong>; de punta a punta las 5 fuentes con palabras propias no se agrupan.</td></tr>
   </tbody>
   <caption>T06–T08 tal como se midieron (no tal como se esperaba).</caption>
