@@ -98,12 +98,9 @@ bool _editDistanceAtMostOne(String a, String b) {
   return s.substring(i) == l.substring(i + 1);
 }
 
-/// Parecido entre dos textos, de 0 a 1: palabras de contenido compartidas sobre palabras de
-/// contenido totales (Jaccard), con tolerancia a una falta de ortografía. Si a uno le falta el
-/// texto, **0**: no hay nada que comparar, y no se parecen por no tener nada que decir.
-double textSimilarity(String? a, String? b) {
+({int matched, int a, int b}) _match(String? a, String? b) {
   final ta = contentTokens(a).toList(), tb = contentTokens(b).toList();
-  if (ta.isEmpty || tb.isEmpty) return 0.0;
+  if (ta.isEmpty || tb.isEmpty) return (matched: 0, a: ta.length, b: tb.length);
   final used = List<bool>.filled(tb.length, false);
   var matched = 0;
   for (final x in ta) {
@@ -115,5 +112,28 @@ double textSimilarity(String? a, String? b) {
       }
     }
   }
-  return matched / (ta.length + tb.length - matched);
+  return (matched: matched, a: ta.length, b: tb.length);
+}
+
+/// Parecido entre dos textos, de 0 a 1: palabras de contenido compartidas sobre palabras de
+/// contenido totales (Jaccard), con tolerancia a una falta de ortografía. Si a uno le falta el
+/// texto, **0**: no hay nada que comparar, y no se parecen por no tener nada que decir.
+///
+/// Es la similitud *cruda*: con una sola palabra de contenido en cada texto puede dar 1. Para
+/// decidir si dos reportes son del mismo suceso se usa [weightedTextSimilarity].
+double textSimilarity(String? a, String? b) {
+  final m = _match(a, b);
+  if (m.a == 0 || m.b == 0) return 0.0;
+  return m.matched / (m.a + m.b - m.matched);
+}
+
+/// Similitud ponderada por la **masa de evidencia**: la similitud cruda multiplicada por
+/// `mín(1, palabras compartidas / evidenceTokens)`. Una frase genérica de una o dos palabras
+/// («hay un incendio», «varios heridos») la dicen personas distintas sobre sucesos distintos, así
+/// que coincidir en ella casi no prueba nada; coincidir en cinco o más palabras sí.
+double weightedTextSimilarity(String? a, String? b, {int evidenceTokens = 5}) {
+  final m = _match(a, b);
+  if (m.a == 0 || m.b == 0) return 0.0;
+  final raw = m.matched / (m.a + m.b - m.matched);
+  return raw * (m.matched >= evidenceTokens ? 1.0 : m.matched / evidenceTokens);
 }

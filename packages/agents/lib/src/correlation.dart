@@ -50,6 +50,7 @@ class Weights {
     this.thetaHi = 0.80,
     this.thetaLo = 0.55,
     this.thetaHiNoLoc = 0.92,
+    this.textEvidenceTokens = 5,
   });
 
   final double wd, wt, wk, ws;
@@ -60,8 +61,11 @@ class Weights {
   /// puntaje se apoya sólo en la hora, el tipo y el texto.
   final double thetaHiNoLoc;
 
+  /// Palabras compartidas necesarias para dar crédito completo a la similitud del texto.
+  final int textEvidenceTokens;
+
   Weights copyWith({double? thetaHi, double? thetaHiNoLoc}) => Weights(
-    wd: wd, wt: wt, wk: wk, ws: ws, tau: tau, thetaLo: thetaLo,
+    wd: wd, wt: wt, wk: wk, ws: ws, tau: tau, thetaLo: thetaLo, textEvidenceTokens: textEvidenceTokens,
     thetaHi: thetaHi ?? this.thetaHi,
     thetaHiNoLoc: thetaHiNoLoc ?? this.thetaHiNoLoc,
   );
@@ -93,7 +97,7 @@ PairScore scorePair(Observation a, Observation b, [Weights w = const Weights()])
   final dtMs = (a.capturedAtMs - b.capturedAtMs).abs();
   final temporal = exp(-dtMs / w.tau.inMilliseconds);
   final tipo = a.incidentType == b.incidentType ? 1.0 : 0.0;
-  final texto = textSimilarity(a.text, b.text);
+  final texto = weightedTextSimilarity(a.text, b.text, evidenceTokens: w.textEvidenceTokens);
   final terms = <String, double>{'temporal': temporal, 'tipo': tipo, 'texto': texto};
   final uncertainty = <String>[];
 

@@ -67,14 +67,14 @@ void main() {
     });
 
     test('texto: idéntico ⇒ 1; si a uno le falta ⇒ 0', () {
-      expect(scorePair(obs('a', text: 'puente colapsado calle veinte'), obs('b', text: 'puente colapsado calle veinte')).terms['texto'], 1.0);
+      expect(scorePair(obs('a', text: 'puente colapsado calle veinte carros abajo'), obs('b', text: 'puente colapsado calle veinte carros abajo')).terms['texto'], 1.0);
       expect(scorePair(obs('a', text: 'puente colapsado'), obs('b')).terms['texto'], 0.0);
     });
   });
 
   group('decisión tri-estado con los pesos del PDF (0,40 · 0,15 · 0,15 · 0,30; θhi 0,80; θlo 0,55)', () {
     test('mismo punto, misma hora, mismo tipo y mismo texto ⇒ same (puntaje 1,0)', () {
-      final p = scorePair(obs('a', text: 'puente colapsado calle veinte'), obs('b', text: 'puente colapsado calle veinte'));
+      final p = scorePair(obs('a', text: 'puente colapsado calle veinte carros abajo'), obs('b', text: 'puente colapsado calle veinte carros abajo'));
       expect(p.score, closeTo(1.0, 1e-9));
       expect(p.state, LinkState.same);
     });
@@ -86,7 +86,7 @@ void main() {
     });
 
     test('lejos pero con la misma hora, tipo y texto: 0,60 ⇒ possible, jamás same', () {
-      final p = scorePair(obs('a', text: 'puente colapsado calle veinte'), obs('b', eastM: 5000, text: 'puente colapsado calle veinte'));
+      final p = scorePair(obs('a', text: 'puente colapsado calle veinte carros abajo'), obs('b', eastM: 5000, text: 'puente colapsado calle veinte carros abajo'));
       expect(p.score, closeTo(0.60, 1e-9));
       expect(p.state, LinkState.possible);
     });
@@ -112,13 +112,13 @@ void main() {
 
   group('sin ubicación: umbral más estricto y marca ubicacion_ausente', () {
     test('texto idéntico, misma hora y tipo ⇒ same (puntaje renormalizado 1,0 ≥ 0,92)', () {
-      final p = scorePair(obs('a', eastM: null, text: 'puente colapsado calle veinte'), obs('b', eastM: null, text: 'puente colapsado calle veinte'));
+      final p = scorePair(obs('a', eastM: null, text: 'puente colapsado calle veinte carros abajo'), obs('b', eastM: null, text: 'puente colapsado calle veinte carros abajo'));
       expect(p.state, LinkState.same);
       expect(p.uncertainty, contains('ubicacion_ausente'));
     });
 
     test('con sólo uno sin ubicación no se puede usar la distancia: el otro cuenta como sin ubicación', () {
-      final p = scorePair(obs('a', eastM: null, text: 'puente colapsado calle veinte'), obs('b', text: 'puente colapsado calle veinte'));
+      final p = scorePair(obs('a', eastM: null, text: 'puente colapsado calle veinte carros abajo'), obs('b', text: 'puente colapsado calle veinte carros abajo'));
       expect(p.uncertainty, contains('ubicacion_ausente'));
       expect(p.terms.containsKey('espacial'), isFalse);
     });
@@ -141,6 +141,23 @@ void main() {
         capturedAtMs: _t0, text: 'x', sourceClass: 'app',
       );
       expect(scorePair(a, obs('b')).uncertainty, contains('ubicacion_ausente'));
+    });
+  });
+
+  group('frases genéricas no prueban que sea el mismo suceso (hallazgo de T07)', () {
+    test('sin ubicación, «hay un incendio» en ambos y a la misma hora NO es same', () {
+      final p = scorePair(obs('a', eastM: null, text: 'hay un incendio'), obs('b', eastM: null, text: 'hay un incendio, urgente'));
+      expect(p.state, isNot(LinkState.same));
+    });
+
+    test('sin ubicación, «no hay atrapados» frente a «estoy atrapado» NO es same (una palabra con una falta)', () {
+      final p = scorePair(obs('a', eastM: null, text: 'no hay atrapados'), obs('b', eastM: null, text: 'estoy atrapado'));
+      expect(p.state, isNot(LinkState.same));
+    });
+
+    test('un rumor largo copiado sigue siendo same entre sus copias', () {
+      const r = 'dicen por la radio que el puente de la calle veinte colapsó, que nadie pase';
+      expect(scorePair(obs('a', eastM: null, text: r, cls: 'radio'), obs('b', eastM: null, text: r, cls: 'radio', dtMs: 7000)).state, LinkState.same);
     });
   });
 
