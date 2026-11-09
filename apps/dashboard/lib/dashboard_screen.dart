@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'api.dart';
+import 'brand.dart';
 import 'detail_panel.dart';
 import 'incident_card.dart';
 import 'models.dart';
@@ -194,7 +195,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
       data: dashTheme(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('SARD · Tablero del coordinador'),
+          title: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SardMark(key: Key('brand_mark'), size: 30),
+              SizedBox(width: 10),
+              Flexible(child: Text('SARD · Tablero del coordinador', overflow: TextOverflow.ellipsis)),
+            ],
+          ),
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 16),

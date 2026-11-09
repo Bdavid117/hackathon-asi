@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 /// operaciones y no deslumbra). El color de urgencia nunca va solo: siempre lo acompaña el texto P1–P4.
 abstract final class DashColors {
   static const Color bg = Color(0xFF12161C);
+  static const Color sos = Color(0xFFD23B2E);
   static const Color surface = Color(0xFF1B222B);
   static const Color surfaceHigh = Color(0xFF263241);
   static const Color border = Color(0xFF3F4C5E);
