@@ -6,16 +6,16 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 
 ## Estado actual
 
-**B0, B1 y B2 implementados y verificados.** Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado y la app se comporta bien en sus condiciones: **se guarda sin red y sale solo al volver la señal** (en el emulador de Android: 1 s tras devolver la red), usa **GPS y batería reales** (ubicación como revisión del mismo reporte; modos normal, ahorro y sólo SOS) y reparte el envío con **envejecimiento y cuota anti-inanición**.
+**B0, B1, B2 y B3 implementados y medidos.** ⚠️ En B3, **dos de los tres criterios medidos no se cumplen** (T06 recall de P1 77,5 % frente a 95 %; T07 sólo cumple «falsa fusión ≤ 1 %» porque casi no agrupa) y se reportan así, con su diagnóstico, en [`docs/resultados/b3.md`](docs/resultados/b3.md). Los datos son sintéticos y el modelo de lenguaje no se probó contra la API real. Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado y la app se comporta bien en sus condiciones: **se guarda sin red y sale solo al volver la señal** (en el emulador de Android: 1 s tras devolver la red), usa **GPS y batería reales** (ubicación como revisión del mismo reporte; modos normal, ahorro y sólo SOS) y reparte el envío con **envejecimiento y cuota anti-inanición**.
 
-- **351 pruebas automáticas** en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
+- **552 pruebas automáticas** en verde (`bash tool/test_all.sh`) más pruebas de integración en el emulador de Android y el simulador de iOS (`tool/device_check.sh`, `tool/android_offline_check.sh`, `tool/android_battery_check.sh`).
 - **Sin probar en hardware real ni con radio real** (todo en emuladores).
 
 | Qué | Dónde |
 |---|---|
 | Diseño: análisis del enunciado, arquitectura, protocolo, agentes, pruebas y plan (v0.2) | [`docs/SARD-arquitectura-app-movil.pdf`](docs/SARD-arquitectura-app-movil.pdf) |
 | Decisión: desarrollo individual, Dart de punta a punta y corte de alcance | [`docs/adr/0001-desarrollo-individual-dart.md`](docs/adr/0001-desarrollo-individual-dart.md) |
-| Planes de implementación: B0/B1 y B2 | [`docs/superpowers/plans/`](docs/superpowers/plans/) |
+| Planes de implementación: B0/B1, B2 y B3 | [`docs/superpowers/plans/`](docs/superpowers/plans/) |
 | Resultados: H1 (recorrido de punta a punta) | [`docs/resultados/h1.md`](docs/resultados/h1.md) |
 | Resultados: transporte T02–T04 en tiempo virtual | [`docs/resultados/b2.md`](docs/resultados/b2.md) |
 | Resultados: verificación en dispositivo | [`docs/resultados/b2-dispositivo.md`](docs/resultados/b2-dispositivo.md) |

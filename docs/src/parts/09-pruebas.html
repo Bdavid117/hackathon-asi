@@ -69,6 +69,16 @@
   </tbody>
   <caption>Catálogo de pruebas. Cada una produce datos que alimentan el informe del entregable 6.</caption>
 </table>
+<p><strong>Resultados medidos en B3</strong> (datos sintéticos; semillas de calibración distintas de las de reporte; todo en <code>docs/resultados/b3.md</code>):</p>
+<table class="tight">
+  <thead><tr><th style="width:12%">Prueba</th><th>Resultado</th><th style="width:22%">¿Cumple?</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T06</td><td>Recall de P1 por reglas <strong>77,5 %</strong> (88,6 % contando la revisión humana como acierto; precisión de P1 100 %). El 13,8 % de los reportes P1 no trae información que lo delate, así que por reglas el techo es ≈ 86 %.</td><td><strong>No.</strong> La brecha de la paráfrasis es la que el modelo debería cerrar, y no está medida.</td></tr>
+    <tr><td class="id">T07</td><td>Falsa fusión 0,27 % con los umbrales del PDF y 0,00 % con θ calibrado, pero <strong>recall de pares 0,5–1,1 %</strong>; la cifra es inestable (0–1,64 % según la semilla, 3,78 % en calibración).</td><td><strong>Sólo trivialmente</strong>: casi no agrupa. Sugiere el 22,6 % de los pares con 82 % de precisión.</td></tr>
+    <tr><td class="id">T08</td><td>Confianza 0,20 (1 000 copias de 3 fuentes) frente a 0,99 (5 fuentes independientes) sobre grupos dados.</td><td><strong>Sí, sobre grupos dados</strong>; de punta a punta las 5 fuentes con palabras propias no se agrupan.</td></tr>
+  </tbody>
+  <caption>T06–T08 tal como se midieron (no tal como se esperaba).</caption>
+</table>
 
 <h2 id="s9-3">Métricas</h2>
 <table class="tight">

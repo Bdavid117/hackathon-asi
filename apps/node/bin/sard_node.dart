@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:sard_agents/sard_agents.dart';
 import 'package:sard_node/sard_node.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as io;
@@ -18,6 +19,8 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
   --key       clave de la etiqueta de integridad (por defecto «clave-de-ejemplo»)
   --peers     URLs de los nodos pares separadas por comas, p. ej. http://localhost:8082
   --web-root  directorio con el tablero compilado (apps/dashboard/build/web)
+  --llm       «on» para consultar al modelo de lenguaje (usa la variable ANTHROPIC_API_KEY); por defecto apagado.
+              Sin clave o sin red el nodo sigue con las reglas. NO verificado contra la API real.
 ''';
 
 Map<String, String> _parse(List<String> args) {
@@ -45,7 +48,16 @@ Future<void> main(List<String> args) async {
 
   final log = EventLog.open(p.join(data, 'log.db'), nodeId: id);
   final key = Uint8List.fromList(utf8.encode(o['key'] ?? 'clave-de-ejemplo'));
-  final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, pipeline: PipelineRunner(log));
+  LlmPort? llm;
+  if (o['llm'] == 'on') {
+    final apiKey = Platform.environment['ANTHROPIC_API_KEY'];
+    if (apiKey == null || apiKey.isEmpty) {
+      stderr.writeln('--llm on pide la variable ANTHROPIC_API_KEY; sin ella el nodo sigue sólo con reglas.');
+    } else {
+      llm = ClaudeHttpPort(client: http.Client(), apiKey: apiKey);
+    }
+  }
+  final api = buildHandler(ingest: Ingest(log: log, key: key), log: log, pipeline: PipelineRunner(log, llm: llm));
   final web = o['web-root'];
   final Handler handler = web == null
       ? api

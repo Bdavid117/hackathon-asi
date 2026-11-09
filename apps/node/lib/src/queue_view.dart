@@ -99,8 +99,18 @@ List<QueueItem> buildQueue(EventLog log) {
   final groups = groupObservations(ordered);
   final ids = groupIds(groups);
 
+  // Juicios del modelo de lenguaje (si los hubo), por reporte. Sólo valen para el texto que analizaron.
+  final modelEvents = <String, List<Event>>{};
+  for (final e in log.allOfType('triage.assessed')) {
+    if (e.body['mode'] != 'rules+llm' || e.reportKey == null) continue;
+    (modelEvents[e.reportKey!] ??= []).add(e);
+  }
   final triaged = {
-    for (final m in merged) m.reportKey: triage(m.flags, text: m.text, hasLocation: m.hasLocation && m.locQuality.hasCoordinates),
+    for (final m in merged)
+      m.reportKey: _effective(
+        triage(m.flags, text: m.text, hasLocation: m.hasLocation && m.locQuality.hasCoordinates),
+        [for (final e in modelEvents[m.reportKey] ?? const <Event>[]) if (m.text != null && e.body['analyzed_text'] == m.text) e],
+      ),
   };
   final assessments = <String, GroupAssessment>{};
   final groupUrgency = <String, Urgency>{};
@@ -142,7 +152,7 @@ List<QueueItem> buildQueue(EventLog log) {
         groupUrgency: groupUrgency[id]!,
         sources: a.independentSources,
         confidence: a.confidence,
-        uncertainty: {...t.uncertainty, ...a.uncertainty}.toList(),
+        uncertainty: ({...t.uncertainty, ...a.uncertainty}.toList()..sort()),
         escalate: t.escalateToHuman,
         similar: [for (final s in sug.take(5)) s.$2],
       ),
@@ -155,4 +165,53 @@ List<QueueItem> buildQueue(EventLog log) {
     return c != 0 ? c : a.reportKey.compareTo(b.reportKey);
   });
   return items;
+}
+
+const List<String> _codeOrder = [
+  'atrapado',
+  'herido',
+  'incendio',
+  'dificultad_respiratoria',
+  'via_bloqueada',
+  'estructura_inestable',
+  'menores_mayores',
+  'medicacion',
+];
+
+/// Triaje por reglas combinado con los juicios del modelo sobre el texto vigente: manda la urgencia
+/// **más grave** (el modelo nunca baja nada), las señales se unen, y si los juicios difieren se
+/// marca `juicios_discrepantes`. Listas en orden canónico para que dos nodos produzcan lo mismo.
+TriageResult _effective(TriageResult rules, List<Event> model) {
+  if (model.isEmpty) return rules;
+  var urgency = rules.urgency;
+  final modelUrgencies = <Urgency>{};
+  final signals = {...rules.signals};
+  final uncertainty = {...rules.uncertainty};
+  var modelAsksReview = false;
+  var interpreted = false;
+  for (final e in model) {
+    final u = Urgency.values.firstWhere((x) => x.name.toUpperCase() == e.body['urgency'], orElse: () => Urgency.p4);
+    modelUrgencies.add(u);
+    if (u.index < urgency.index) urgency = u;
+    for (final c in (e.body['signals'] as List? ?? const []).cast<String>()) {
+      if (!rules.signals.contains(c)) interpreted = true;
+      signals.add(c);
+    }
+    uncertainty.addAll((e.body['uncertainty'] as List? ?? const []).cast<String>());
+    if (e.body['escalate_to_human'] == true) modelAsksReview = true;
+  }
+  if (interpreted) {
+    uncertainty.remove('texto_no_interpretado');
+    uncertainty.remove('sin_detalle');
+  }
+  if (modelUrgencies.length > 1 || modelUrgencies.any((u) => u != rules.urgency)) uncertainty.add('juicios_discrepantes');
+  return TriageResult(
+    urgency: urgency,
+    signals: [for (final c in _codeOrder) if (signals.contains(c)) c],
+    mode: 'rules+llm',
+    evidence: rules.evidence,
+    confidence: rules.confidence,
+    uncertainty: uncertainty.toList()..sort(),
+    escalateToHuman: modelAsksReview || (rules.escalateToHuman && !interpreted),
+  );
 }
