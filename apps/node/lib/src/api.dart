@@ -57,7 +57,63 @@ Response _projectionResponse(Request req, QueueRead r, bool cors, String body) {
   return Response.ok(body, headers: headers);
 }
 
-Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRunner? pipeline, QueueService? queue, NodeHealth? health, bool cors = false}) {
+/// Compara en tiempo constante (no revela con el tiempo cuántos caracteres acertó quien adivina).
+bool _constantTimeEquals(List<int> a, List<int> b) {
+  var diff = a.length ^ b.length;
+  final n = a.length < b.length ? a.length : b.length;
+  for (var i = 0; i < n; i++) {
+    diff |= a[i] ^ b[i];
+  }
+  return diff == 0;
+}
+
+/// `Authorization: Bearer <código>`: el esquema no distingue mayúsculas (RFC 7235), el código sí, y se compara
+/// ENTERO (un prefijo, un sufijo o un espacio de más no sirven).
+bool _bearerMatches(String? header, String expected) {
+  if (header == null) return false;
+  final m = RegExp(r'^bearer (.*)$', caseSensitive: false).firstMatch(header);
+  if (m == null) return false;
+  return _constantTimeEquals(utf8.encode(m.group(1)!), utf8.encode(expected));
+}
+
+/// Qué código exige una ruta (`null` = abierta). DENEGADO POR OMISIÓN: todo lo que cuelgue de `/api/` exige
+/// código salvo `/api/health`; una ruta nueva no queda abierta por olvido. `/frame` (los ciudadanos no tienen
+/// código) y el tablero estático siguen abiertos. La réplica (`/api/events`, los reportes crudos con ubicación)
+/// pide el código de PARES; lo demás, el del coordinador; no son intercambiables.
+String? _tokenFor(String path, String? coordinatorToken, String? peerToken) {
+  if (path == 'frame' || path == 'api/health' || !path.startsWith('api/')) return null;
+  return path == 'api/events' ? peerToken : coordinatorToken;
+}
+
+Handler _guarded(Handler inner, {String? coordinatorToken, String? peerToken}) {
+  if (coordinatorToken == null && peerToken == null) return inner;
+  return (Request req) {
+    final needed = _tokenFor(req.url.path, coordinatorToken, peerToken);
+    if (needed != null && !_bearerMatches(req.headers['authorization'], needed)) {
+      return Response(
+        401,
+        body: 'se exige el código de acceso (cabecera Authorization: Bearer …)',
+        headers: {'www-authenticate': 'Bearer realm="sard"', 'content-type': 'text/plain; charset=utf-8'},
+      );
+    }
+    return inner(req);
+  };
+}
+
+Handler buildHandler({
+  required Ingest ingest,
+  required EventLog log,
+  PipelineRunner? pipeline,
+  QueueService? queue,
+  NodeHealth? health,
+  bool cors = false,
+
+  /// Código de acceso del coordinador (`--coordinator-token`): lo que ve y decide. NO es identidad.
+  String? coordinatorToken,
+
+  /// Código de la réplica entre nodos (`--peer-token`): protege `/api/events`.
+  String? peerToken,
+}) {
   final queueService = queue ?? QueueService(log);
   final router = Router()
     ..post('/frame', (Request req) async {
@@ -156,5 +212,5 @@ Handler buildHandler({required Ingest ingest, required EventLog log, PipelineRun
           if (pipeline?.llmStats != null) 'llm': pipeline!.llmStats!.toJson(),
           if (pipeline != null) 'budget': pipeline.budget.toJson(),
         }, cors: cors));
-  return router.call;
+  return _guarded(router.call, coordinatorToken: coordinatorToken, peerToken: peerToken);
 }

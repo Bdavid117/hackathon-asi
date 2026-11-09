@@ -49,6 +49,10 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   if [ $rc -eq 0 ]; then echo "OK    $(tail -1 "$OUT")"
   elif [ $rc -eq 77 ]; then echo "OMITIDA  $(tail -1 "$OUT")"
   else echo "FALLÓ"; tail -15 "$OUT"; fail=1; fi
+  # Códigos de acceso con 3 nodos reales (puertos 8191–8193): 401 sin código, réplica con código de pares.
+  printf '%-34s' "Códigos de acceso (3 nodos)"
+  bash tool/access_check.sh > "$OUT" 2>&1; rc=$?
+  if [ $rc -eq 0 ]; then echo "OK    $(tail -1 "$OUT")"; else echo "FALLÓ"; tail -20 "$OUT"; fail=1; fi
 fi
 rm -f "$OUT" "$OUT.t12.md" "$OUT.t14.md" "$OUT.burst.md"
 [ "$fail" -eq 0 ] && echo "TODO EN VERDE" || { echo "HAY FALLOS"; exit 1; }

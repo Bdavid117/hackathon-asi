@@ -20,6 +20,7 @@ class PollingReplicator {
     this.pageSize = 500,
     NodeHealth? health,
     this.onReplicated,
+    this.peerToken,
   })  : _log = log,
         _peers = peers,
         _client = client,
@@ -31,6 +32,9 @@ class PollingReplicator {
   final NodeHealth? _health;
   final Duration timeout;
   final int pageSize;
+
+  /// Código de la réplica (`--peer-token`): se envía como `Authorization: Bearer` a los pares.
+  final String? peerToken;
 
   /// Se llama con los eventos que SÍ se añadieron al log (no los que ya estaban), tras cada página.
   /// Sirve para que el dueño de un reporte lo procese aunque haya entrado por otro nodo. Si falla, la
@@ -53,7 +57,7 @@ class PollingReplicator {
   }
 
   Future<Map<String, Object?>> _getJson(Uri uri) async {
-    final r = await _client.get(uri).timeout(timeout);
+    final r = await _client.get(uri, headers: {if (peerToken != null) 'authorization': 'Bearer $peerToken'}).timeout(timeout);
     if (r.statusCode != 200) throw http.ClientException('HTTP ${r.statusCode}', uri);
     return {'body': jsonDecode(utf8.decode(r.bodyBytes))};
   }

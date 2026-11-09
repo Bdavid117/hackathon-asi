@@ -15,6 +15,14 @@ class ApiException implements Exception {
   String toString() => 'ApiException($status): $message';
 }
 
+/// El nodo exige un código de acceso (HTTP 401): falta o ya no vale. No es un fallo del nodo.
+class AccessDenied implements Exception {
+  const AccessDenied();
+
+  @override
+  String toString() => 'AccessDenied';
+}
+
 /// El incidente pedido ya no existe en la vista actual (pudo fusionarse con otro o dividirse): se vuelve
 /// a pedir la lista, no es un fallo del nodo.
 class IncidentGone implements Exception {
@@ -27,6 +35,10 @@ class IncidentGone implements Exception {
 
 /// Lo que el tablero necesita del nodo. Una interfaz para poder probar la pantalla sin red.
 abstract class DashboardApi {
+  /// Código de acceso del coordinador (`--coordinator-token` del nodo), que se envía como
+  /// `Authorization: Bearer`. Vive sólo en memoria: no se guarda en el navegador. NO es identidad.
+  set accessCode(String? code);
+
   Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, int offset = 0, int limit = 200});
   Future<IncidentDetail> detail(String id);
   Future<NodesStatus> nodes();
@@ -59,6 +71,19 @@ class HttpDashboardApi implements DashboardApi {
   final Uri _base;
   final Duration timeout;
   final Map<String, _Cached> _cache = {};
+  String? _code;
+
+  @override
+  set accessCode(String? code) => _code = code;
+
+  /// Cabeceras de toda petición: el código (si hay) y las propias de la llamada. Nunca va en la dirección.
+  Map<String, String> _h([Map<String, String> extra = const {}]) => {...extra, if (_code != null) 'authorization': 'Bearer $_code'};
+
+  /// Un 401 es «falta el código o ya no vale»: se olvida lo leído (era de alguien con acceso) y se avisa.
+  Never _denied() {
+    _cache.clear();
+    throw const AccessDenied();
+  }
 
   static bool _stale(http.BaseResponse r) => r.headers['x-queue-stale'] == 'true';
   static int _age(http.BaseResponse r) => int.tryParse(r.headers['x-queue-age-ms'] ?? '') ?? 0;
@@ -81,7 +106,8 @@ class HttpDashboardApi implements DashboardApi {
     final uri = _base.resolve('/api/incidents').replace(queryParameters: query.isEmpty ? null : query);
     final key = uri.toString();
     final cached = _cache[key];
-    final r = await _client.get(uri, headers: {'if-none-match': ?cached?.etag}).timeout(timeout);
+    final r = await _client.get(uri, headers: _h({'if-none-match': ?cached?.etag})).timeout(timeout);
+    if (r.statusCode == 401) _denied();
     if (r.statusCode == 304) {
       if (cached == null) {
         _cache.remove(key);
@@ -98,7 +124,8 @@ class HttpDashboardApi implements DashboardApi {
 
   @override
   Future<IncidentDetail> detail(String id) async {
-    final r = await _client.get(_base.resolve('/api/incidents/${Uri.encodeComponent(id)}')).timeout(timeout);
+    final r = await _client.get(_base.resolve('/api/incidents/${Uri.encodeComponent(id)}'), headers: _h()).timeout(timeout);
+    if (r.statusCode == 401) _denied();
     if (r.statusCode == 404) throw IncidentGone(id);
     if (r.statusCode != 200) throw ApiException(r.statusCode, r.body);
     return IncidentDetail.fromJson(_decode(r), stale: _stale(r), ageMs: _age(r));
@@ -106,7 +133,8 @@ class HttpDashboardApi implements DashboardApi {
 
   @override
   Future<NodesStatus> nodes() async {
-    final r = await _client.get(_base.resolve('/api/nodes')).timeout(timeout);
+    final r = await _client.get(_base.resolve('/api/nodes'), headers: _h()).timeout(timeout);
+    if (r.statusCode == 401) _denied();
     if (r.statusCode != 200) throw ApiException(r.statusCode, r.body);
     return NodesStatus.fromJson(_decode(r));
   }
@@ -124,7 +152,7 @@ class HttpDashboardApi implements DashboardApi {
     final r = await _client
         .post(
           _base.resolve('/api/approval'),
-          headers: {'content-type': 'application/json'},
+          headers: _h({'content-type': 'application/json'}),
           body: jsonEncode({
             'recommendationId': recommendationId,
             'incidentId': incidentId,
@@ -136,6 +164,7 @@ class HttpDashboardApi implements DashboardApi {
           }),
         )
         .timeout(timeout);
+    if (r.statusCode == 401) _denied();
     if (r.statusCode != 200) throw ApiException(r.statusCode, utf8.decode(r.bodyBytes));
   }
 }

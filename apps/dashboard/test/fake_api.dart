@@ -41,6 +41,16 @@ class FakeApi implements DashboardApi {
   Object? failDecide;
   final List<Call> calls = [];
 
+  /// Si se da, el nodo simulado exige ese código (como `--coordinator-token`): sin él lanza [AccessDenied].
+  String? requireCode;
+  String? _code;
+  @override
+  set accessCode(String? code) => _code = code;
+  String? get accessCode => _code;
+  void _check() {
+    if (requireCode != null && _code != requireCode) throw const AccessDenied();
+  }
+
   /// Se ejecuta antes de contestar `detail`: permite cambiar el incidente «mientras la persona decide».
   void Function(String id)? onDetail;
   void Function()? onDecide;
@@ -53,6 +63,7 @@ class FakeApi implements DashboardApi {
   @override
   Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, int offset = 0, int limit = 200}) async {
     calls.add(Call('incidents', {'view': view, 'urgency': urgency, 'bare': bare, 'offset': offset, 'limit': limit}));
+    _check();
     if (failIncidents != null) throw failIncidents!;
     if (view == 'short') {
       final gate = holdShort;
@@ -69,6 +80,7 @@ class FakeApi implements DashboardApi {
   @override
   Future<IncidentDetail> detail(String id) async {
     calls.add(Call('detail', {'id': id}));
+    _check();
     onDetail?.call(id);
     if (failDetail != null) throw failDetail!;
     final d = details[id];
@@ -79,6 +91,7 @@ class FakeApi implements DashboardApi {
   @override
   Future<NodesStatus> nodes() async {
     calls.add(Call('nodes'));
+    _check();
     if (failNodes != null) throw failNodes!;
     return nodesStatus;
   }
@@ -87,6 +100,7 @@ class FakeApi implements DashboardApi {
   Future<void> decide({required String recommendationId, required String incidentId, required List<String> members, required bool granted, required String who, String note = '', List<String> supersedes = const []}) async {
     calls.add(Call('decide', {'recommendationId': recommendationId, 'incidentId': incidentId, 'members': members, 'granted': granted, 'who': who, 'note': note, 'supersedes': supersedes}));
     onDecide?.call();
+    _check();
     if (failDecide != null) throw failDecide!;
   }
 }

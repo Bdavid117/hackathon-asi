@@ -292,6 +292,20 @@ void main() {
       expect(find.byKey(const Key('decision_ok')), findsNothing);
     });
 
+    testWidgets('si el nodo ya no acepta el código, lo dice con esas palabras y NO se da por registrada', (tester) async {
+      await boot(tester, p1With(), tweak: (a) => a.failDecide = const AccessDenied());
+      await open(tester, 'approve_button');
+      await tester.enterText(find.byKey(const Key('who_field')), 'Ana');
+      await tester.tap(find.byKey(const Key('confirm_decision')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('approval_dialog')), findsOneWidget);
+      expect(find.byKey(const Key('decision_ok')), findsNothing);
+      final msg = tester.widget<Text>(find.byKey(const Key('decision_error'))).data!;
+      expect(msg, contains('código de acceso'));
+      expect(msg, contains('NO quedó registrada'));
+      expect(msg, isNot(contains('AccessDenied')), reason: 'nada de nombres de clases en pantalla');
+    });
+
     testWidgets('un doble clic en «Registrar» envía UNA sola decisión', (tester) async {
       final api = await boot(tester, p1With());
       await open(tester, 'approve_button');

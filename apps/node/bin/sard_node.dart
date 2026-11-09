@@ -24,6 +24,12 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
   --llm-url   URL base del modelo (sólo PRUEBAS y demostración: un servidor falso; por omisión la API real).
   --takeover  segundos que espera cada nodo del relevo antes de hacer el trabajo caro (modelo, auditoría) de un
               reporte que no es suyo según el reparto por rendezvous (por omisión 10).
+  --coordinator-token  código de acceso del COORDINADOR (también SARD_COORDINATOR_TOKEN; mínimo 8 caracteres): lo
+              exigen el tablero (lectura) y la aprobación; el tablero lo pide al abrirse. NO es identidad: un código
+              compartido no dice quién aprobó. Sin él, cualquiera con acceso a la red lee y aprueba.
+  --peer-token  código de la RÉPLICA entre nodos (también SARD_PEER_TOKEN; mínimo 8): protege /api/events, que entrega
+              los reportes crudos con su ubicación. Todos los nodos del grupo deben usar el mismo. Sin él, /api/events
+              queda abierto aunque haya código de coordinador.
   --llm       «on» para consultar al modelo de lenguaje (usa la variable ANTHROPIC_API_KEY); por defecto apagado.
               Sin clave o sin red el nodo sigue con las reglas. NO verificado contra la API real.
 ''';
@@ -58,6 +64,23 @@ Future<void> _run(List<String> args) async {
     exit(64);
   }
   final port = int.tryParse(o['port'] ?? '8081') ?? 8081;
+  // Los códigos pueden venir de una variable de entorno para no dejarlos a la vista en `ps`.
+  String? secret(String flag, String env) {
+    final v = o[flag] ?? Platform.environment[env];
+    if (v == null) return null;
+    if (v.length < 8) {
+      stderr.writeln('--$flag: el código debe tener al menos 8 caracteres.');
+      exit(64);
+    }
+    return v;
+  }
+
+  final coordinatorToken = secret('coordinator-token', 'SARD_COORDINATOR_TOKEN');
+  final peerToken = secret('peer-token', 'SARD_PEER_TOKEN');
+  if (coordinatorToken != null && coordinatorToken == peerToken) {
+    stderr.writeln('El código del coordinador y el de la réplica deben ser distintos: quien copia el log no debe poder aprobar.');
+    exit(64);
+  }
   Directory(data).createSync(recursive: true);
 
   final log = EventLog.open(p.join(data, 'log.db'), nodeId: id);
@@ -96,6 +119,8 @@ Future<void> _run(List<String> args) async {
     health: health,
     queue: QueueService(log, resources: resources),
     pipeline: pipeline,
+    coordinatorToken: coordinatorToken,
+    peerToken: peerToken,
   );
   // La auditoría de vínculos va por lotes, fuera de la ruta del ACK (a lo sumo cada 5 s y sólo si hay
   // reportes nuevos); con muchos reportes calcula en otro isolate.
@@ -107,7 +132,7 @@ Future<void> _run(List<String> args) async {
       : Cascade().add(api).add(createStaticHandler(web, defaultDocument: 'index.html')).handler;
 
   if (peers.isNotEmpty) {
-    final replicator = PollingReplicator(log: log, peers: peers, client: http.Client(), health: health, onReplicated: (events) {
+    final replicator = PollingReplicator(log: log, peers: peers, client: http.Client(), health: health, peerToken: peerToken, onReplicated: (events) {
       for (final e in events) {
         pipeline.onReplicated(e);
       }
@@ -126,6 +151,15 @@ Future<void> _run(List<String> args) async {
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
   stdout.writeln('sard_node $id escuchando en :${server.port} (${log.count()} eventos en el log, ${resources.length} recursos declarados)');
+  if (coordinatorToken == null) {
+    stdout.writeln('AVISO: sin --coordinator-token cualquiera con acceso a la red lee la cola (ubicaciones) y puede registrar aprobaciones.');
+  }
+  if (peerToken == null) {
+    stdout.writeln('AVISO: sin --peer-token /api/events queda abierto: entrega los reportes crudos con su ubicación.');
+  }
+  if (coordinatorToken != null || peerToken != null) {
+    stdout.writeln('Códigos de acceso activos (coordinador: ${coordinatorToken != null ? 'sí' : 'no'}, réplica: ${peerToken != null ? 'sí' : 'no'}). Un código compartido NO identifica a quien aprueba.');
+  }
 
   Future<void> shutdown(ProcessSignal _) async {
     await server.close(force: true);

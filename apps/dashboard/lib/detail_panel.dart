@@ -553,6 +553,8 @@ class _DecisionDialogState extends State<_DecisionDialog> {
       if (mounted) Navigator.of(context).pop<_DecisionOutcome>(_Registered(who));
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = 'El nodo no aceptó la decisión (${e.status}): ${e.message}. No quedó registrada.');
+    } on AccessDenied {
+      if (mounted) setState(() => _error = 'El nodo no acepta el código de acceso. La decisión NO quedó registrada: cierra este cuadro y escribe el código de nuevo.');
     } on IncidentGone {
       if (mounted) setState(() => _error = 'Este incidente ya no existe tal como estaba. No se registró nada: cierra y vuelve a abrirlo.');
     } on Object catch (e) {

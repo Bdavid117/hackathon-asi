@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'access_prompt.dart';
 import 'api.dart';
 import 'brand.dart';
 import 'detail_panel.dart';
@@ -45,6 +46,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _failure;
   String? _selected;
   bool _loading = false;
+
+  /// El nodo exige código y no se tiene (o ya no vale): sólo se ve la pantalla de acceso, sin datos.
+  bool _locked = false;
+  bool _triedCode = false;
+  bool _hadAccess = false;
   Timer? _timer;
   final ValueNotifier<String> _who = ValueNotifier<String>('');
 
@@ -75,7 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Lee la vista actual (y el estado de los nodos). En las vistas por páginas se vuelve a leer lo ya
   /// cargado (hasta 1 000 filas) para que no se quede viejo.
   Future<void> _load() async {
-    if (_loading) return;
+    if (_loading || _locked) return;
     _loading = true;
     final mode = _mode, urgency = _urgency;
     unawaited(
@@ -86,8 +92,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _nodesUnknown = false;
           });
         }
-      }).catchError((Object _) {
-        if (mounted) {
+      }).catchError((Object e) {
+        if (e is AccessDenied) {
+          _lock();
+        } else if (mounted) {
           setState(() => _nodesUnknown = true);
         }
       }),
@@ -107,7 +115,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _offline = false;
         _invalid = false;
         _failure = null;
+        _hadAccess = true;
+        _triedCode = false;
       });
+    } on AccessDenied {
+      _lock();
     } on FormatException {
       if (mounted) setState(() => _invalid = true);
     } on ApiException catch (e) {
@@ -128,6 +140,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _loading = false;
     }
   }
+
+  /// Se pierde el acceso: se olvida lo leído (no se deja en memoria lo de alguien sin código) y se pide de nuevo.
+  void _lock() {
+    if (!mounted || _locked) return;
+    setState(() {
+      _locked = true;
+      _page = null;
+      _items.clear();
+      _nodes = null;
+      _selected = null;
+      _offline = false;
+    });
+  }
+
+  void _submitCode(String code) {
+    widget.api.accessCode = code;
+    _triedCode = true;
+    setState(() => _locked = false);
+    _load();
+  }
+
+  String? get _lockMessage => _triedCode ? 'Ese código no es correcto. Revísalo e inténtalo de nuevo.' : (_hadAccess ? 'El nodo ya no acepta el código que tenías. Escríbelo de nuevo.' : null);
 
   Future<void> _loadMore() async {
     final page = _page;
@@ -188,6 +222,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_locked) {
+      return Theme(
+        data: dashTheme(),
+        child: Scaffold(appBar: AppBar(title: _title), body: AccessPrompt(onSubmit: _submitCode, message: _lockMessage)),
+      );
+    }
     final page = _page;
     final wide = MediaQuery.sizeOf(context).width >= _wide;
     final list = _buildList(context, page);
@@ -195,14 +235,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       data: dashTheme(),
       child: Scaffold(
         appBar: AppBar(
-          title: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SardMark(key: Key('brand_mark'), size: 30),
-              SizedBox(width: 10),
-              Flexible(child: Text('SARD · Tablero del coordinador', overflow: TextOverflow.ellipsis)),
-            ],
-          ),
+          title: _title,
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -252,6 +285,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  static const Widget _title = Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SardMark(key: Key('brand_mark'), size: 30),
+      SizedBox(width: 10),
+      Flexible(child: Text('SARD · Tablero del coordinador', overflow: TextOverflow.ellipsis)),
+    ],
+  );
 
   Widget _buildList(BuildContext context, IncidentsPage? page) {
     if (page == null) {
