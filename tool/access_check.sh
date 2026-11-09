@@ -13,8 +13,10 @@ bad() { printf '  ✗ %s\n' "$1"; fail=1; }
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 expect() { local want="$1" got="$2" what="$3"; [ "$got" = "$want" ] && ok "$what ($got)" || bad "$what: esperaba $want y fue $got"; }
 D=$(mktemp -d)
+# El tablero compilado (apps/dashboard/build/web) lo ignora git: si no está, se omite sólo esa comprobación.
+WEB=""; [ -f apps/dashboard/build/web/index.html ] && WEB="--web-root ../dashboard/build/web"
 start() { # id puerto coord par peers
-  (cd apps/node && SARD_COORDINATOR_TOKEN="$3" SARD_PEER_TOKEN="$4" nohup dart run bin/sard_node.dart --id "$1" --port "$2" --data "$D/$1" --peers "$5" --web-root ../dashboard/build/web > "$D/$1.log" 2>&1 &)
+  (cd apps/node && SARD_COORDINATOR_TOKEN="$3" SARD_PEER_TOKEN="$4" nohup dart run bin/sard_node.dart --id "$1" --port "$2" --data "$D/$1" --peers "$5" $WEB > "$D/$1.log" 2>&1 &)
   for _ in $(seq 1 80); do curl -s "localhost:$2/api/health" >/dev/null 2>&1 && return 0; sleep 0.5; done
   echo "el nodo $1 no arrancó"; cat "$D/$1.log"; exit 1
 }
@@ -32,7 +34,7 @@ expect 401 "$(code localhost:8191/api/nodes)" "GET /api/nodes"
 expect 401 "$(code -X POST -H 'content-type: application/json' -d '{}' localhost:8191/api/approval)" "POST /api/approval"
 expect 401 "$(code 'localhost:8191/api/events?origin=A')" "GET /api/events"
 expect 200 "$(code localhost:8191/api/health)" "GET /api/health (abierto)"
-expect 200 "$(code localhost:8191/)" "tablero estático (abierto)"
+if [ -n "$WEB" ]; then expect 200 "$(code localhost:8191/)" "tablero estático (abierto)"; else echo "  - tablero estático: OMITIDO (no hay apps/dashboard/build/web)"; fi
 echo "Con códigos"
 expect 200 "$(code -H 'Authorization: Bearer coord-AAAA' localhost:8191/api/incidents)" "coordinador → /api/incidents"
 expect 401 "$(code -H 'Authorization: Bearer pares-1234' localhost:8191/api/incidents)" "código de pares → /api/incidents"

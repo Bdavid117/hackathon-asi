@@ -72,4 +72,40 @@ void main() {
       });
     }
   });
+
+  group('con la letra del sistema agrandada (accesibilidad) el pie de la tarjeta no se desborda', () {
+    for (final scale in [1.3, 2.0]) {
+      for (final width in [320.0, 411.0]) {
+        testWidgets('letra ×$scale a $width dp, sin y con ubicación: la tarjeta (reports_screen.dart) no desborda', (tester) async {
+          // Se recogen TODOS los errores de dibujo (takeException sólo da el primero) y se filtra por archivo.
+          // `onError` se restaura en un finally DENTRO del test: con addTearDown, si un expect falla el binding se
+          // cuelga («A test overrode FlutterError.onError…»).
+          final errors = <FlutterErrorDetails>[];
+          final previous = FlutterError.onError;
+          FlutterError.onError = errors.add;
+          try {
+            tester.platformDispatcher.textScaleFactorTestValue = scale;
+            await boot(tester, width);
+            await tester.tap(find.byKey(const Key('sos_button')));
+            await tester.pump();
+            outbox.enqueueSos(
+              const NewReport(incidentType: 1, flags: 0x41, peopleBucket: 2, batteryQ: 5, locQuality: LocQuality.within50m, lat: 5.07, lon: -75.51),
+              now: t0,
+            );
+            await boot(tester, width);
+          } finally {
+            FlutterError.onError = previous;
+            tester.platformDispatcher.clearAllTestValues();
+          }
+          final fromCard = [for (final e in errors) if (e.toString().contains('reports_screen.dart')) e.exceptionAsString().split('\n').first];
+          expect(fromCard, isEmpty, reason: 'la tarjeta del aviso no puede desbordar con letra grande');
+          if (scale <= 1.3) {
+            expect(errors, isEmpty, reason: 'a ×1.3 la pantalla entera cabe');
+          }
+          // A ×2.0 la columna de chips de sos_screen.dart:307 se desborda 22 px (ya ocurría ANTES del cambio del pie:
+          // se comprobó con 80e105d). Es un hallazgo abierto de accesibilidad, no de esta prueba.
+        });
+      }
+    }
+  });
 }
