@@ -2,7 +2,7 @@
 
 Pensado para **8–10 minutos** (con 5 minutos se omiten los pasos 5 y 7). Cada paso dice qué se ve, qué decir, qué comando lo produce y **qué cifra respalda lo que se dice**. Todo está en el repositorio; nada depende de la red.
 
-> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (13 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
+> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (15 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
 
 > **Regla del guion:** se dice lo que está medido y se dice dónde termina. Cada «sí» lleva su «pero» (hay una lista al final). Un jurado que encuentra solo un límite que usted no mencionó deja de creer el resto.
 
@@ -22,6 +22,18 @@ dart run packages/sim/bin/seed_scenario.dart --node http://localhost:8081 --now 
 
 Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal con `bash tool/demo.sh 42` **ya ensayada** (con `PART=4` dura ≈ 45 s en total, porque la ejecuta dos veces para comprobar la huella). **Plan B** si falla la máquina: las capturas y las tablas están en `docs/resultados/b5.md` y en el PDF (§6.7 y §9).
 
+## Cuánto dura la presentación: elija una ruta
+
+Las **notas del orador de las 15 láminas suman ≈ 16 minutos** si se dicen todas; los pasos de la demostración de abajo suman 8–10 minutos y se pueden alternar con las láminas. Rutas propuestas (los tiempos salen de las notas de cada lámina; ensáyelas con reloj, no son una medición):
+
+| Duración | Láminas, en este orden | Se omite |
+|---|---|---|
+| **5 min** | portada (0:20) · recorrido (0:40) · tablero (1:00) · caída de un nodo (1:30) · lo que no cumplimos (1:00) · reproducir (0:30) | todo lo demás |
+| **10 min** | portada · problema (0:30) · recorrido (0:40) · app (1:00) · tablero (1:30) · caída (1:30) · modelo (1:00) · Reto 4 (1:00) · lo que no cumplimos (1:00) · lo que sigue (0:30) · reproducir (0:20) | agentes, despachador, ráfaga, fallos |
+| **15 min** | las 15 láminas, sin demostración en vivo (o con 2 min de la app) | — |
+
+La lámina de «lo que no cumplimos» **no se omite nunca**: es la que más crédito da. Si hay demostración en vivo, sustituye a la lámina correspondiente (app, tablero o caída), no se suma.
+
 ## Los pasos
 
 | # | Minutos | Qué se ve | Qué decir | Qué lo respalda |
@@ -33,6 +45,10 @@ Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal
 | 5 | 6:30–7:30 | En esa misma salida: **«dos coordinadores deciden a la vez, uno en cada nodo, y se contradicen»** → ambos nodos muestran el incidente «rechazada» con la discrepancia marcada. Y al final: «misma semilla ⇒ misma huella». | «Aislados, dos personas se contradijeron. No se pierde ninguna decisión; manda la más conservadora hasta que alguien la resuelva a propósito.» | T10 y T15. |
 | 6 | 7:30–8:30 | **El modelo falla.** Mostrar la tabla de `docs/resultados/t12.md` (o `dart run packages/sim/bin/t12.dart --reports 100`, ≈ 1 min): con el modelo colgado, el ACK p95 pasa de 9 a 17 ms; todas acusadas. Y la ráfaga de 5 000 con el modelo colgado y el límite de 1 024 descriptores: **antes el nodo moría**, ahora 0 fallidas (con un tope de consultas simultáneas; a cambio, la mayoría de los reportes con texto se quedan sólo con reglas). Y el reparto/relevo entre dos nodos. | «Si el modelo se cuelga, el sistema sigue con reglas. Y el trabajo caro se reparte entre nodos; si el dueño cae, otro lo toma.» | T12. **El modelo es falso: dígalo.** |
 | 7 | 8:30–9:30 | **Lo que no funciona.** La cifra de T06 (recall de P1 78,5 % frente a 95 %), el agrupamiento que casi no fusiona, T14 (la mejora es de ordenar, no de agrupar). | «Lo que no cumplimos, lo medimos y lo decimos. Esto es lo que el modelo y las personas tienen que resolver.» | `docs/resultados/b3.md`, `b5.md` §5 y §7. |
+
+## Un paso más, si hay un minuto: el Reto 4 con el modelo (lámina «Reto 4 con el modelo: medido, no adoptado»)
+
+No hay demostración en vivo (la API real cuesta y tarda ≈ 12 min): se enseña la lámina y, si preguntan, `docs/resultados/reto4-juez.md` y `t07-modelo.md`. Lo que se dice: el juez une más (recall de pares 0,8 % → 4,4 %; 97,7 % de sus uniones acertadas; en la corroboración de 5 fuentes reúne 4 y la confianza pasa de 0,60 a 0,97) **pero la falsa fusión sube de 1,2 % a 2,2 %** frente al límite de 1 %, y por eso **no está en el nodo**. Lo que respalda que no se midió a posteriori: el criterio de adopción está commiteado (`6ed2fe5`) antes de gastar y el código medido es `8e10d47`.
 
 ## Un paso más, si hay un minuto: el despachador (Escenario 2)
 
@@ -57,4 +73,5 @@ En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que 
 - **¿Y si cae el nodo dueño del trabajo del modelo?** El siguiente en el orden de *rendezvous* lo toma pasado un plazo (10 s por omisión); el ACK y las reglas nunca dependieron de él. Medido con dos nodos.
 - **¿Por qué no usar un `429` para limitar a un dispositivo abusivo?** Porque la clave es compartida: alguien podría falsificar el identificador de una víctima y bloquear su SOS. Se *degrada* (se omite sólo el modelo) y nunca se rechaza un primer reporte.
 - **¿Qué es la «huella»?** Un SHA-256 de lo que ve el coordinador (quién está con quién, urgencias, recomendaciones y estado de las aprobaciones) sin relojes ni identificadores internos. Si dos nodos tienen la misma, muestran lo mismo.
+- **¿Por qué no subieron el umbral del juez a 0,85 y lo volvieron a medir?** Porque los cinco errores están todos en 0,80 y esa idea sale de los mismos datos que se midieron: probarla exige semillas nuevas y un criterio nuevo escrito antes (≈ 6 USD, 12 min). Se dejó como hipótesis, no como resultado (`docs/resultados/reto4-juez.md`).
 - **¿Se pueden reproducir las cifras?** Sí: `docs/resultados/b5.md` §8 lista cada comando.

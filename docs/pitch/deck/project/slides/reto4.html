@@ -1,0 +1,23 @@
+<section id="reto4" data-transition="fade" style="background:#1B222B;color:#EEF1F5;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-family:'Rubik', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;color:#EEF1F5">Reto 4 con el modelo: medido, no adoptado</h2>
+<div style="display:flex;flex-direction:row;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#12161C;border-radius:24px;padding:40px">
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Pares del mismo suceso unidos</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.2;color:#4CC38A">0,8 → 4,4&#160;%</p>
+<p style="font-size:24px;line-height:1.4;color:#A9B4C2">y el 97,7&#160;% de las uniones del modelo eran correctas (216 de 221).</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#12161C;border-radius:24px;padding:40px">
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Falsa fusión (criterio ≤ 1&#160;%)</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.2;color:#F2B544">1,2 → 2,2&#160;%</p>
+<p style="font-size:24px;line-height:1.4;color:#A9B4C2">cinco uniones malas, todas gemelos adversariales a confianza 0,80, justo el umbral.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#12161C;border-radius:24px;padding:40px">
+<p style="font-size:28px;line-height:1.4;color:#A9B4C2">Cinco fuentes independientes</p>
+<p style="font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.2;color:#4FA3D1">4 de 5 en un grupo</p>
+<p style="font-size:24px;line-height:1.4;color:#A9B4C2">la confianza sube de 0,60 a 0,97; la quinta aporta un detalle que nadie más cita.</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.4;color:#EEF1F5">El criterio se escribió y se subió al repositorio antes de gastar, y se aplicó por código: no se cumple, así que el nodo no usa el juez.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#A9B4C2">Datos sintéticos, una corrida, 963 consultas (5,66 USD); la corroboración usa cinco textos fijos: un caso, no cinco · docs/resultados/reto4-juez.md</p>
+<aside>Un minuto. Es el Reto 4: distinguir un rumor repetido de una emergencia corroborada por fuentes independientes, y para eso hay que reconocer que dos personas cuentan lo mismo con otras palabras. Las reglas casi no lo logran (agrupan el 0,43&#160;% de los pares verdaderos). Probamos un juez con el modelo real. El modelo propone y el código dispone: un par fuera de la ventana de tiempo, de tipo distinto o más lejos de lo que permite su precisión no se une nunca, diga lo que diga el modelo. Medimos una sola vez, con semillas nuevas, y el criterio de adopción lo escribimos y lo subimos al repositorio ANTES de gastar. Resultado: une más (el recall de pares pasa de 0,8 a 4,4&#160;%), el 97,7&#160;% de sus uniones es correcto y, en la corroboración de cinco fuentes, reúne cuatro y la confianza sube de 0,60 a 0,97. Pero la falsa fusión sube de 1,2 a 2,2&#160;% frente al límite de 1&#160;%: los cinco errores son gemelos adversariales del generador, todos con confianza 0,80, justo el umbral. Aplicado el criterio, no se cumple y el nodo no lo usa. Si preguntan: que un umbral más alto lo arregle es una hipótesis sacada de los mismos datos y exige semillas nuevas; no es un resultado. Límites a decir: datos sintéticos, una corrida, y la corroboración usa cinco textos fijos (un caso, no cinco). Frase que NO se debe decir: «el modelo resuelve el Reto 4».</aside>
+</section>
