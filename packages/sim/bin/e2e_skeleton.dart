@@ -170,6 +170,13 @@ Future<void> main(List<String> args) async {
     check(reportKeys.every(keysA.contains) && reportKeys.every(keysB.contains), 'cada reporte acusado está en la cola de A y de B');
     check(keysA.toSet().length == keysA.length && keysB.toSet().length == keysB.length, 'ninguna cola tiene duplicados');
     check(jsonEncode(keysA) == jsonEncode(keysB), 'ambas colas tienen el mismo orden');
+    // La cola declara su frescura (con más de 300 reportes se calcula en otro isolate y puede servirse una
+    // versión anterior marcada como tal).
+    final raw = await client.get(urlA.resolve('/api/queue'));
+    check(
+      raw.headers['x-queue-stale'] != null && int.tryParse(raw.headers['x-queue-age-ms'] ?? '') != null,
+      'la cola declara su frescura (x-queue-stale=${raw.headers['x-queue-stale']}, x-queue-age-ms=${raw.headers['x-queue-age-ms']})',
+    );
     // El grupo se calcula al leer sobre los reportes fusionados: tras replicar y tras un kill -9, los dos
     // nodos deben mostrar los MISMOS grupos (identificador, tamaño, fuentes y urgencia del grupo).
     Map<String, String> groupsOf(List<Map<String, Object?>> q) => {
