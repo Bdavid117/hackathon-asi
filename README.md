@@ -43,6 +43,7 @@ spikes/sqlite_kill/    prueba técnica: SQLite ante kill -9
 tool/test_all.sh       toda la batería de pruebas (≈ 6 min)
 tool/demo.sh           demostración adversa reproducible (partición, kill -9, decisiones contradictorias, misma semilla ⇒ misma huella)
 tool/web_smoke.sh      el tablero compilado, abierto en Chrome sin cabeza
+tool/build_apk.sh      APK de release de la app ciudadana en dist/ (`bash tool/build_apk.sh` para el celular con la IP de esta Mac; `emulador` para el emulador)
 tool/dispatch_check.sh el canal del despachador con tres nodos reales (registro, reintento, kill -9, códigos, réplica)
 tool/device_check.sh   pruebas de integración en Android o iOS contra un nodo real
 tool/android_*_check.sh  sin red → sale solo; batería real → modos
@@ -58,6 +59,9 @@ bash tool/test_all.sh                          # pruebas + análisis + H1 + demo
 (cd apps/dashboard && flutter build web --no-web-resources-cdn)
 (cd apps/node && dart run bin/sard_node.dart --id A --port 8081 --data /tmp/sard-A --web-root ../dashboard/build/web --resources ../../config/recursos.json)
 dart run packages/sim/bin/seed_scenario.dart            # opcional: 8 incidentes de ejemplo para ver el tablero
+
+# El APK para instalar en un celular Android (la IP del nodo queda compilada dentro; misma Wi-Fi que esta Mac)
+bash tool/build_apk.sh
 
 # La app (iOS: localhost; emulador de Android: 10.0.2.2)
 (cd apps/mobile && flutter run -d <dispositivo> --dart-define=NODES=http://localhost:8081)
