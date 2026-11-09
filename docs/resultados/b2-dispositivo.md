@@ -64,6 +64,8 @@ Además de las pruebas automatizadas, usé la app a mano en el emulador de Andro
 
 **Observaciones que NO corregí** (decisiones tuyas o de diseño; ninguna rompe el envío):
 1. **Un SOS sin indicadores queda en P4, la urgencia más baja** (debajo de «vía bloqueada»). Está en la tabla de triaje documentada y probada, así que no es un accidente, pero en el tablero se ve claro: quien pulsa SOS sin dar detalles queda al final de la cola. «No saber» no debería ser lo mismo que «poco urgente». **Decisión pendiente tuya**: subir el SOS sin banderas a P3 o P2 cambia la tabla del PDF §5, `prioHintFromFlags` y sus pruebas.
+
+   > **Resuelto (9 nov 2026).** Desde B3 un SOS sin banderas ni texto es **P3 + «sin detalle» + revisión humana** (`prioHintFromFlags(0)`), porque la ficha del agente 2 dice que la falta de datos nunca baja la urgencia. El usuario dejó la decisión a criterio de quien desarrolla y **se queda en P3**; volver a P4 es una línea y sus pruebas.
 2. Las revisiones automáticas (la ubicación que llega después) aparecen en la lista como filas aparte («Detalle #2») que la persona no creó; sería más claro plegarlas dentro de su SOS.
 3. Sin señal el texto es «Guardado en tu teléfono»: no dice que **se enviará solo** al haber señal. Mejor: «Guardado — se enviará solo cuando haya señal».
 4. En iOS el cuadro de permiso de ubicación aparece **antes del primer fotograma**, sobre una pantalla en blanco. No bloquea, pero la primera impresión es un cuadro sobre nada; convendría pedirlo después de pintar la pantalla.
@@ -82,7 +84,7 @@ Partí de lo que molestó al usar la app a mano (observaciones 2 a 4 de la secci
 
 **Una confesión de método:** escribí la interfaz antes que las pruebas de lo nuevo (detalles después del SOS, tarjeta, franja de sin señal), lo que va contra el ciclo prueba-primero. Lo remedié escribiendo después las pruebas y **estropeando a propósito** la función para comprobar que las pruebas la detectan: desactivar «detalles después del SOS», dejar que un reloj que retrocede cuente como «vivo» y permitir re-enviar un indicador ya enviado hicieron fallar 4, 1 y 1 pruebas respectivamente. Las pruebas de agrupación por incidente y de la bandeja (`reportOf`) sí se escribieron antes.
 
-**Sigue pendiente** (de la sección anterior): el SOS sin indicadores queda en P4 (decisión tuya) y la batería se lee cada 60 s. **Nuevo, sin resolver:** las franjas de aviso (sin señal, batería) empujan el contenido hacia abajo al aparecer, y con letra del sistema muy grande la zona de estado crece; los wireframes del PDF son el boceto de partida y no se redibujaron.
+**Sigue pendiente** (de la sección anterior): (el SOS sin indicadores ya no queda en P4: ver la nota de arriba) y la batería se lee cada 60 s. **Nuevo, sin resolver:** las franjas de aviso (sin señal, batería) empujan el contenido hacia abajo al aparecer, y con letra del sistema muy grande la zona de estado crece; los wireframes del PDF son el boceto de partida y no se redibujaron.
 
 ## Limitaciones declaradas
 

@@ -21,13 +21,23 @@ class LlmRequest {
 
 /// Lo que devolvió el modelo (o por qué no devolvió nada utilizable).
 class LlmResult {
-  const LlmResult({this.text, this.stopReason, this.timedOut = false, this.error});
+  const LlmResult({this.text, this.stopReason, this.timedOut = false, this.error, this.inputTokens, this.outputTokens, this.model, this.requestId});
 
   /// El primer bloque de texto de la respuesta (el JSON pedido).
   final String? text;
   final String? stopReason;
   final bool timedOut;
   final String? error;
+
+  /// Tokens que la API cobró por la petición (`usage`), para llevar el gasto. `null` si no los trajo o venían raros.
+  /// En los modelos que piensan, los de salida incluyen el razonamiento.
+  final int? inputTokens;
+  final int? outputTokens;
+
+  /// El modelo que contestó (`model` de la respuesta) y el identificador de la petición (cabecera `request-id`), por si
+  /// hay que reclamar o depurar. Nunca llevan la clave.
+  final String? model;
+  final String? requestId;
 
   /// ¿Hay una respuesta completa y utilizable? Una negativa (`refusal`), un corte por `max_tokens`,
   /// un plazo agotado o un error no lo son.
@@ -58,6 +68,7 @@ class ClaudeHttpPort implements LlmPort {
     Uri? baseUrl,
     this.apiVersion = '2026-10-21',
     this.maxTokens = 8192,
+    this.effort,
   }) : _client = client,
        _apiKey = apiKey,
        baseUrl = baseUrl ?? Uri.parse('https://api.anthropic.com');
@@ -72,6 +83,10 @@ class ClaudeHttpPort implements LlmPort {
   /// `max_tokens`; con un tope bajo la respuesta se cortaría siempre (`stop_reason: max_tokens`) y el
   /// triaje caería al respaldo de reglas sin que nada fallara a la vista.
   final int maxTokens;
+
+  /// `low`, `medium`, `high`… (`output_config.effort`): cuánto razona el modelo. Para clasificar un reporte basta poco, y
+  /// menos razonamiento es menos latencia y menos gasto. `null` = el de la API para ese modelo (en Sonnet 5.5, `high`).
+  final String? effort;
 
   @override
   Future<LlmResult> completeJson(LlmRequest request) async {
@@ -89,16 +104,18 @@ class ClaudeHttpPort implements LlmPort {
               ],
               'output_config': {
                 'format': {'type': 'json_schema', 'schema': request.schema},
+                if (effort != null) 'effort': effort,
               },
             }),
           )
           .timeout(request.timeout);
+      final requestId = res.headers['request-id'];
       if (res.statusCode != 200) {
-        // El mensaje NO incluye el cuerpo de la respuesta ni las cabeceras (podrían eco de la clave).
-        return LlmResult(error: 'HTTP ${res.statusCode}');
+        // El mensaje NO incluye el cuerpo de la respuesta ni las cabeceras (podrían eco de la clave); sólo el request-id.
+        return LlmResult(error: 'HTTP ${res.statusCode}', requestId: requestId);
       }
       final body = jsonDecode(res.body);
-      if (body is! Map) return const LlmResult(error: 'respuesta no es un objeto JSON');
+      if (body is! Map) return LlmResult(error: 'respuesta no es un objeto JSON', requestId: requestId);
       final stop = body['stop_reason'] as String?;
       String? text;
       final content = body['content'];
@@ -110,7 +127,16 @@ class ClaudeHttpPort implements LlmPort {
           }
         }
       }
-      return LlmResult(text: text, stopReason: stop);
+      final usage = body['usage'];
+      int? tokens(String k) => usage is Map && usage[k] is int && (usage[k] as int) >= 0 ? usage[k] as int : null;
+      return LlmResult(
+        text: text,
+        stopReason: stop,
+        inputTokens: tokens('input_tokens'),
+        outputTokens: tokens('output_tokens'),
+        model: body['model'] is String ? body['model'] as String : null,
+        requestId: requestId,
+      );
     } on TimeoutException {
       return const LlmResult(timedOut: true);
     } on FormatException {
@@ -251,6 +277,12 @@ String _reasonOf(LlmResult r) {
   return 'sin_texto';
 }
 
+/// La petición de triaje que el nodo le hace al modelo: el mensaje de sistema, el reporte como dato delimitado, las
+/// banderas marcadas y el esquema de la respuesta. Pública para que el humo y la medición con el modelo real usen
+/// **exactamente** la misma petición que el nodo.
+LlmRequest buildTriageRequest(int flags, String text, {Duration timeout = const Duration(seconds: 8)}) =>
+    LlmRequest(system: _system, user: _userMessage(flags, text), schema: _schema, timeout: timeout);
+
 /// Triaje con modelo de lenguaje **y respaldo por reglas**. Siempre devuelve un resultado y nunca
 /// lanza: ante cualquier fallo del modelo (plazo, negativa, error, JSON o cita inválidos, código
 /// inventado) se devuelve el resultado de las reglas con `mode: 'rules'`.
@@ -275,7 +307,7 @@ Future<TriageResult> triageWithModel(
   if (text == null || text.trim().isEmpty) return rules;
   final LlmResult res;
   try {
-    res = await port.completeJson(LlmRequest(system: _system, user: _userMessage(flags, text), schema: _schema, timeout: timeout)).timeout(timeout);
+    res = await port.completeJson(buildTriageRequest(flags, text, timeout: timeout)).timeout(timeout);
   } on TimeoutException {
     onFallback?.call('plazo_agotado');
     return rules;
