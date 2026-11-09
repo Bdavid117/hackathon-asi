@@ -6,6 +6,7 @@ environment:
   sdk: ^3.11.0
 dependencies:
   sard_protocol: any
+  http: ^1.6.0
 dev_dependencies:
   lints: ^6.1.0
   test: ^1.30.0
