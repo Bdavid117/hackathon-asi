@@ -170,6 +170,12 @@ Future<void> main(List<String> args) async {
     check(reportKeys.every(keysA.contains) && reportKeys.every(keysB.contains), 'cada reporte acusado está en la cola de A y de B');
     check(keysA.toSet().length == keysA.length && keysB.toSet().length == keysB.length, 'ninguna cola tiene duplicados');
     check(jsonEncode(keysA) == jsonEncode(keysB), 'ambas colas tienen el mismo orden');
+    // El grupo se calcula al leer sobre los reportes fusionados: tras replicar y tras un kill -9, los dos
+    // nodos deben mostrar los MISMOS grupos (identificador, tamaño, fuentes y urgencia del grupo).
+    Map<String, String> groupsOf(List<Map<String, Object?>> q) => {
+      for (final i in q) i['reportKey']! as String: '${i['group']}|${i['groupSize']}|${i['sources']}|${i['groupUrgency']}',
+    };
+    check(jsonEncode(groupsOf(qa)) == jsonEncode(groupsOf(qb)), 'ambas colas muestran los mismos grupos (${qa.map((i) => i['group']).toSet().length} grupos)');
     check(keysA.length == total && keysB.length == total, 'ambas colas tienen exactamente $total reportes (A=${keysA.length}, B=${keysB.length})');
     final withText = (total + 4) ~/ 5;
     check(qa.where((i) => i['text'] != null).length == withText, 'las $withText revisiones con texto se fundieron con su reporte');

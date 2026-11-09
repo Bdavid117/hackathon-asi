@@ -120,4 +120,14 @@ void main() {
     expect(log.count(), 2);
     log.close();
   });
+
+  test('allOfType devuelve sólo los eventos de ese tipo, en orden de llegada', () {
+    final log = EventLog.open(':memory:', nodeId: 'A');
+    addTearDown(log.close);
+    final a = log.append('report.received', {'n': 1}, reportKey: 'k-1', rev: 0);
+    log.append('report.normalized', {'n': 2}, reportKey: 'k-1', rev: 0);
+    final c = log.append('report.received', {'n': 3}, reportKey: 'k-2', rev: 0);
+    expect(log.allOfType('report.received').map((e) => e.id), [a.id, c.id]);
+    expect(log.allOfType('nada'), isEmpty);
+  });
 }

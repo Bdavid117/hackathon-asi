@@ -191,6 +191,9 @@ class EventLog {
   /// Todos los eventos, en el orden en que entraron en este log.
   List<Event> all() => _db.select('SELECT * FROM events ORDER BY rowid').map(_row).toList();
 
+  /// Los eventos de un tipo, en orden de llegada (sin leer todo el log).
+  List<Event> allOfType(String type) => _db.select('SELECT * FROM events WHERE type = ? ORDER BY rowid', [type]).map(_row).toList();
+
   /// Número de eventos del log (sin cargarlos).
   int count() => _db.select('SELECT COUNT(*) AS c FROM events').first['c'] as int;
 

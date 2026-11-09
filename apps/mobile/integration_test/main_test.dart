@@ -77,7 +77,11 @@ void main() {
 
       final added = ((await events()).skip(
         before,
-      )).cast<Map<String, Object?>>().map((e) => e['type']).toList();
+      )).cast<Map<String, Object?>>().map((e) => e['type']).where(
+        // `incident.linked` (agente 3) es auditoría y puede aparecer entre ternas: no es parte de la
+        // secuencia que este chequeo fija.
+        (t) => const {'report.received', 'report.normalized', 'triage.assessed'}.contains(t),
+      ).toList();
       // Cada trama que el nodo guarda deja su terna received → normalized → triage. Con el permiso
       // de ubicación concedido el SOS puede llevar además una revisión con GPS (otra terna).
       const terna = ['report.received', 'report.normalized', 'triage.assessed'];

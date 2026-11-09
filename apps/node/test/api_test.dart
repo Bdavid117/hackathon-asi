@@ -30,6 +30,15 @@ void main() {
     expect(decodeAck(bytes, testKey).covers(17), isTrue);
   });
 
+  test('GET /api/queue expone grupo, fuentes, confianza, incertidumbre, escalado y sugerencias', () async {
+    await post(vectorBytes('sos_min'));
+    final q = (await json(await get('/api/queue')))! as List<Object?>;
+    final item = q.single! as Map<String, Object?>;
+    for (final k in ['group', 'groupSize', 'groupUrgency', 'sources', 'confidence', 'uncertainty', 'escalate', 'similar']) {
+      expect(item.containsKey(k), isTrue, reason: k);
+    }
+  });
+
   test('POST /frame con basura responde 400 y no escribe nada', () async {
     final r = await post(Uint8List.fromList([1, 2, 3, 4, 5]));
     expect(r.statusCode, 400);

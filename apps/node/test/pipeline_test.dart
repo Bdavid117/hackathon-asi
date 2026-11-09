@@ -40,6 +40,79 @@ void main() {
     expect(out[0].body['lat'], isNull);
   });
 
+  Event rec2(String key, {String? device, int flags = 0, double? lat = 5.07, String? text}) => log.append(
+    'report.received',
+    {
+      'device_id': device ?? key.split('-').first,
+      'frame_seq': 1,
+      'flags': flags,
+      'incident_type': 1,
+      'loc_quality': lat == null ? 0 : 2,
+      'lat': lat,
+      'lon': lat == null ? null : -75.51,
+      'text': text,
+      'captured_at': 1786370851,
+      'received_at': 5000,
+    },
+    reportKey: key,
+    rev: 0,
+  );
+
+  group('agente 2 v2: el evento de triaje lleva evidencia', () {
+    test('trae evidencia, confianza, incertidumbre y si pide revisión humana', () {
+      final out = PipelineRunner(log).run(rec2('aa-1', flags: SituationFlags.atrapado, text: 'estoy atrapado bajo la losa'));
+      final b = out[1].body;
+      expect(b['urgency'], 'P2');
+      expect(b['escalate_to_human'], isFalse);
+      expect(b['confidence'], isA<num>());
+      expect(b['uncertainty'], isA<List<Object?>>());
+      final ev = (b['evidence']! as List).cast<Map<String, Object?>>();
+      expect(ev.any((e) => e['field'] == 'flags.atrapado'), isTrue);
+      expect(ev.any((e) => e['quote'] == 'atrapado'), isTrue);
+    });
+
+    test('un SOS sin banderas ni texto: P3, sin_detalle y revisión humana (sin datos nunca baja la urgencia)', () {
+      final out = PipelineRunner(log).run(rec2('aa-1', lat: null));
+      expect(out[1].body['urgency'], 'P3');
+      expect(out[1].body['escalate_to_human'], isTrue);
+      expect(out[1].body['uncertainty'], containsAll(['sin_detalle', 'ubicacion_ausente']));
+    });
+  });
+
+  group('agente 3: rastro de auditoría `incident.linked`', () {
+    const t = 'puente colapsado calle veinte carros abajo';
+
+    test('un reporte solo no deja ningún incident.linked', () {
+      final out = PipelineRunner(log).run(rec2('aa-1', text: t));
+      expect(out.map((e) => e.type), ['report.normalized', 'triage.assessed']);
+    });
+
+    test('un segundo reporte casi idéntico de otro dispositivo deja UN incident.linked con el primero', () {
+      PipelineRunner(log).run(rec2('aa-1', text: t));
+      final out = PipelineRunner(log).run(rec2('bb-1', lat: 5.0701, text: t));
+      expect(out.map((e) => e.type), ['report.normalized', 'triage.assessed', 'incident.linked']);
+      final linked = out.last;
+      final links = (linked.body['links']! as List).cast<Map<String, Object?>>();
+      expect(links.single['other'], 'aa-1');
+      expect(links.single['state'], 'same');
+      expect(linked.reportKey, 'bb-1');
+      expect(linked.inputs, [out[1].id]);
+    });
+
+    test('uno lejano o con otro texto no deja vínculo', () {
+      PipelineRunner(log).run(rec2('aa-1', text: t));
+      final out = PipelineRunner(log).run(rec2('bb-1', lat: 5.5, text: t));
+      expect(out.map((e) => e.type), ['report.normalized', 'triage.assessed']);
+    });
+
+    test('la pareja `possible` también deja rastro, marcada como tal', () {
+      PipelineRunner(log).run(rec2('aa-1'));
+      final out = PipelineRunner(log).run(rec2('bb-1', lat: 5.0701));
+      final links = (out.last.body['links']! as List).cast<Map<String, Object?>>();
+      expect(links.single['state'], 'possible');
+    });
+  });
+
   group('integrado en la API', () {
     late Handler handler;
     setUp(() => handler = buildHandler(ingest: Ingest(log: log, key: testKey), log: log, pipeline: PipelineRunner(log)));
