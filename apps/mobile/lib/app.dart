@@ -65,6 +65,14 @@ class _SardAppState extends State<SardApp> {
   DateTime? _liveAt;
   bool _saveError = false;
 
+  // Personas afectadas: el rango marcado para el próximo SOS (selección única) y el que ya salió con
+  // el aviso vivo. Y la frase: el campo (su estado vive aquí para que el refresco de cada segundo no
+  // lo toque) y la última enviada, para confirmarla.
+  int _people = 0;
+  int _livePeople = 0;
+  final TextEditingController _phrase = TextEditingController();
+  String? _phraseSent;
+
   /// Pánico: toques repetidos en menos de este plazo son el mismo SOS, no uno por toque.
   static const Duration sosDebounce = Duration(seconds: 2);
 
@@ -89,6 +97,7 @@ class _SardAppState extends State<SardApp> {
   void dispose() {
     _timer?.cancel();
     _batteryTimer?.cancel();
+    _phrase.dispose();
     super.dispose();
   }
 
@@ -153,7 +162,7 @@ class _SardAppState extends State<SardApp> {
       try {
         widget.outbox.enqueueRevision(
           _liveKey!,
-          _report(flags: union, fix: _usableFix(now)),
+          _report(flags: union, fix: _usableFix(now), people: _livePeople),
           now: now,
         );
       } on Object {
@@ -171,14 +180,69 @@ class _SardAppState extends State<SardApp> {
     setState(() => _selected ^= bit);
   }
 
-  NewReport _report({required int flags, LocationFix? fix}) {
+  /// Marca el rango de personas. Antes del SOS (o con el aviso ya vencido) sólo se elige: viajará en el
+  /// SOS, y tocar el elegido lo quita. Con el aviso vivo sale enseguida como revisión del mismo reporte;
+  /// se puede corregir a otro rango, y tocar el ya enviado no repite nada.
+  void _pickPeople(int code) {
+    final now = (widget.clock ?? DateTime.now)();
+    if (_isDetailLive(now)) {
+      if (code == _livePeople) return;
+      try {
+        widget.outbox.enqueueRevision(
+          _liveKey!,
+          _report(flags: _liveFlags, fix: _usableFix(now), people: code),
+          now: now,
+        );
+      } on Object {
+        _saveFailed();
+        return;
+      }
+      _haptic(HapticFeedback.selectionClick);
+      _livePeople = code;
+      _liveAt = now;
+      setState(() => _saveError = false);
+      _requestSend();
+      return;
+    }
+    _haptic(HapticFeedback.selectionClick);
+    setState(() => _people = _people == code ? 0 : code);
+  }
+
+  /// Envía la frase como una revisión del aviso vivo. Si guardar falla, se conserva lo escrito.
+  void _sendPhrase() {
+    final now = (widget.clock ?? DateTime.now)();
+    final text = _phrase.text.trim();
+    if (text.isEmpty || !_isDetailLive(now)) return;
+    try {
+      widget.outbox.enqueueRevision(
+        _liveKey!,
+        _report(flags: _liveFlags, fix: _usableFix(now), people: _livePeople, text: text),
+        now: now,
+      );
+    } on Object {
+      _saveFailed();
+      return;
+    }
+    _haptic(HapticFeedback.selectionClick);
+    _liveAt = now;
+    _phrase.clear();
+    setState(() {
+      _saveError = false;
+      _phraseSent = text;
+    });
+    FocusManager.instance.primaryFocus?.unfocus();
+    _requestSend();
+  }
+
+  NewReport _report({required int flags, LocationFix? fix, int people = 0, String? text}) {
     final q = fix == null
         ? LocQuality.none
         : locQualityFromAccuracy(fix.accuracyMeters);
     return NewReport(
       incidentType: 1, // SOS genérico
       flags: flags,
-      peopleBucket: 0,
+      peopleBucket: people,
+      text: text,
       batteryQ: batteryQFromPercent(_percent),
       locQuality: q,
       lat: q.hasCoordinates ? fix!.lat : null,
@@ -232,7 +296,7 @@ class _SardAppState extends State<SardApp> {
       try {
         widget.outbox.enqueueRevision(
           _liveKey!,
-          _report(flags: union, fix: _usableFix(now)),
+          _report(flags: union, fix: _usableFix(now), people: _livePeople),
           now: now,
         );
       } on Object {
@@ -249,7 +313,7 @@ class _SardAppState extends State<SardApp> {
       return;
     }
 
-    final report = _report(flags: flags, fix: _usableFix(now));
+    final report = _report(flags: flags, fix: _usableFix(now), people: _people);
     final OutboxEntry entry;
     try {
       entry = widget.outbox.enqueueSos(report, now: now);
@@ -259,9 +323,12 @@ class _SardAppState extends State<SardApp> {
     }
     _liveKey = entry.reportKey;
     _liveFlags = flags;
+    _livePeople = _people;
     _liveAt = now;
     setState(() {
       _selected = 0;
+      _people = 0;
+      _phraseSent = null;
       _saveError = false;
     });
     _requestSend();
@@ -285,9 +352,10 @@ class _SardAppState extends State<SardApp> {
     try {
       // Las banderas vigentes (si entretanto se añadieron otras, la revisión las lleva).
       final flags = reportKey == _liveKey ? _liveFlags : 0;
+      final people = reportKey == _liveKey ? _livePeople : 0;
       widget.outbox.enqueueRevision(
         reportKey,
-        _report(flags: flags, fix: fix),
+        _report(flags: flags, fix: fix, people: people),
         now: (widget.clock ?? DateTime.now)(),
       );
     } on Object {
@@ -372,6 +440,10 @@ class _SardAppState extends State<SardApp> {
                 ),
               Expanded(
                 child: CustomScrollView(
+                  // Arrastrar la lista cierra el teclado: así el botón SOS, que queda arriba, siempre
+                  // se puede alcanzar aunque se esté escribiendo una frase.
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   slivers: [
                     SliverToBoxAdapter(
                       child: SosPanel(
@@ -380,6 +452,13 @@ class _SardAppState extends State<SardApp> {
                         onToggle: _toggle,
                         onSos: _sos,
                         showFlags: _mode != PowerMode.sosOnly,
+                        people: _people,
+                        peopleSent: _isDetailLive(now) ? _livePeople : 0,
+                        onPeople: _pickPeople,
+                        phrase: _phrase,
+                        phraseLive: _isDetailLive(now),
+                        phraseConfirmation: _phraseSent,
+                        onSendPhrase: _sendPhrase,
                         status: hero == null
                             ? null
                             : IncidentCard(

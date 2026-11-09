@@ -273,11 +273,21 @@ void main() {
           findsNothing,
           reason: 'nada en curso que destacar',
         );
+        // El historial queda bajo el panel (SOS, indicadores, personas y frase): se desplaza hasta verlo.
+        Future<void> verHistorial() async {
+          await tester.drag(find.byType(CustomScrollView), const Offset(0, -1500));
+          await tester.pump();
+        }
+
+        await verHistorial();
         expect(find.text('Tus avisos'), findsOneWidget);
         expect(find.textContaining('SOS de las'), findsOneWidget);
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, 1500)); // de vuelta arriba
+        await tester.pump();
         await tester.tap(find.byKey(const Key('sos_button')));
         await tester.pump();
         expect(find.byKey(const Key('last_status')), findsOneWidget);
+        await verHistorial();
         expect(find.text('Tus avisos'), findsOneWidget);
       },
     );
@@ -351,6 +361,92 @@ void main() {
           inicial,
           reason: 'al añadir un detalle después del SOS',
         );
+      },
+    );
+  });
+
+  group('personas y frase tampoco se mueven', () {
+    testWidgets(
+      'los rangos de personas, el campo y el botón de la frase conservan posición y tamaño con el SOS, el GPS, el acuse, marcar, escribir y enviar',
+      (tester) async {
+        tester.view.devicePixelRatio = 2.625;
+        tester.view.physicalSize = const Size(411 * 2.625, 914 * 2.625);
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          SardApp(outbox: outbox, refreshEvery: const Duration(milliseconds: 100), clock: () => now),
+        );
+        await tester.pump();
+        Rect r(String k) => tester.getRect(find.byKey(Key(k)));
+        final herido = r('flag_herido');
+        final p2 = r('people_2');
+        final p5 = r('people_5');
+        expect(p2.top, greaterThan(herido.bottom), reason: 'los rangos van debajo de los indicadores');
+        expect(p2.height, p5.height, reason: 'todos los rangos miden lo mismo de alto');
+        expect((p2.width - p5.width).abs(), lessThan(0.01), reason: 'y de ancho');
+
+        void sinCambios(String cuando) {
+          expect(r('flag_herido'), herido, reason: 'indicador: $cuando');
+          expect(r('people_2'), p2, reason: 'rango 2–5: $cuando');
+          expect(r('people_5'), p5, reason: 'rango «Más de 100»: $cuando');
+        }
+
+        await tester.tap(find.byKey(const Key('people_2')));
+        await tester.pump(const Duration(milliseconds: 200));
+        sinCambios('al marcar un rango antes del SOS');
+
+        await tester.tap(find.byKey(const Key('sos_button')));
+        await tester.pump(const Duration(milliseconds: 200));
+        sinCambios('al tocar SOS (aparece la tarjeta de estado)');
+
+        final sos = outbox.all().single;
+        outbox.enqueueRevision(
+          sos.reportKey,
+          const NewReport(incidentType: 1, flags: 0, peopleBucket: 2, batteryQ: 5, locQuality: LocQuality.within50m, lat: 5.07, lon: -75.51),
+          now: now,
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        sinCambios('al llegar la ubicación');
+
+        outbox.applyAck(Ack(deviceId: outbox.deviceId, ackSeq: sos.frameSeq + 1, bitmap: 1));
+        await tester.pump(const Duration(milliseconds: 200));
+        sinCambios('al pasar de «Guardado» a «Enviado a un nodo»');
+
+        now = now.add(const Duration(seconds: 30));
+        await tester.tap(find.byKey(const Key('people_3')));
+        await tester.pump(const Duration(milliseconds: 200));
+        sinCambios('al corregir el rango después del SOS');
+
+        // Desde aquí el campo puede desplazar la lista para verse (es un desplazamiento, no un
+        // reacomodo): se compara la posición RELATIVA entre los controles.
+        Rect rel(String k) => r(k).shift(-r('flag_herido').topLeft);
+        final relP2 = rel('people_2');
+        await tester.ensureVisible(find.byKey(const Key('phrase_field')));
+        await tester.pump();
+        final relField = rel('phrase_field');
+        final relSend = rel('send_phrase');
+        final relCounter = rel('phrase_counter');
+        final relSent = rel('phrase_sent');
+
+        void relativo(String cuando) {
+          expect(rel('people_2'), relP2, reason: 'rango: $cuando');
+          expect(rel('phrase_field'), relField, reason: 'campo: $cuando');
+          expect(rel('send_phrase'), relSend, reason: 'botón: $cuando');
+          expect(rel('phrase_counter'), relCounter, reason: 'contador: $cuando');
+          expect(rel('phrase_sent'), relSent, reason: 'confirmación: $cuando');
+        }
+
+        await tester.enterText(find.byKey(const Key('phrase_field')), 'hay humo');
+        await tester.pump(const Duration(milliseconds: 200));
+        relativo('al escribir una frase corta');
+
+        await tester.enterText(find.byKey(const Key('phrase_field')), 'estamos en el techo, no podemos bajar, hay humo en las escaleras y un vecino herido ' * 2);
+        await tester.pump(const Duration(milliseconds: 200));
+        relativo('al llenar el campo hasta el tope de 140 bytes');
+
+        await tester.tap(find.byKey(const Key('send_phrase')));
+        await tester.pump(const Duration(milliseconds: 200));
+        relativo('al enviar la frase (aparece la confirmación)');
+        await tester.pumpWidget(const SizedBox());
       },
     );
   });

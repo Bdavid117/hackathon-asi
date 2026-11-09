@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Ejecuta en un dispositivo las pruebas de integración que usan el main() real contra un nodo real:
-#   app_test (SOS → nodo → reabrir), main_test (agentes en el nodo) y gps_test (ubicación real).
+#   app_test (SOS → nodo → reabrir), main_test (agentes en el nodo), gps_test (ubicación real) y
+#   details_test (SOS → «2–5 personas» → una frase → el nodo muestra personas, texto y triaje).
 #   bash tool/device_check.sh android emulator-5554
 #   bash tool/device_check.sh ios <UDID del simulador>
 set -u
@@ -16,7 +17,7 @@ case "$PLATFORM" in
   *) echo "plataforma desconocida: $PLATFORM"; exit 64 ;;
 esac
 fail=0
-for t in app_test main_test gps_test; do
+for t in app_test main_test gps_test details_test; do
   pkill -f "bin/sard_node.dart" 2>/dev/null; sleep 1; D=$(mktemp -d)
   (cd apps/node && nohup dart run bin/sard_node.dart --id A --port 8081 --data "$D" > /dev/null 2>&1 &)
   for _ in $(seq 1 60); do curl -s localhost:8081/api/health >/dev/null 2>&1 && break; sleep 0.5; done

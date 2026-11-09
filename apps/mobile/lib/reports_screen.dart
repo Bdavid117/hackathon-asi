@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sard_client_core/sard_client_core.dart';
 
 import 'incidents.dart';
-import 'sos_screen.dart' show kStatusSlotHeight;
+import 'sos_screen.dart' show kStatusSlotHeight, peopleSummary;
 import 'state_labels.dart';
 import 'theme.dart';
 
@@ -118,6 +118,28 @@ class IncidentCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       incident.flagLabels.join(', '),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: SardColors.muted,
+                      ),
+                    ),
+                  ],
+                  if (peopleSummary(incident.people) != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      peopleSummary(incident.people)!,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: SardColors.muted,
+                      ),
+                    ),
+                  ],
+                  if (incident.text != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '«${incident.text}»',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 14,
                         color: SardColors.muted,

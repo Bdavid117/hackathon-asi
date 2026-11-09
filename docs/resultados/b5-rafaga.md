@@ -38,3 +38,21 @@ Una sección por ejecución, para comparar entre etapas. Datos sintéticos; un s
 | Tiempo extra hasta ver todo tras la última trama | 4.9 s |
 | Eventos en el log del nodo | 34549 |
 
+## Ráfaga · Etapa 1 · con personas y evidencia en la cola (n=10 000)
+
+- Fecha: 2026-11-08T22:24:26.477311 · reportes pedidos: 10000 · concurrencia: 16 · semilla: 1 · tope: 900 s
+- Nodo: un proceso real (`dart run`, JIT) con pares ninguno; reportes sintéticos con texto en la rev 0 (más pesados que un SOS real).
+
+- Ráfaga completa en 10.2 s (982 tramas/s).
+
+| Medida | Valor |
+|---|---|
+| Tramas acusadas / fallidas | 10002 / 0 |
+| Latencia del ACK p50 / p95 / máx | 13 ms / 32 ms / 297 ms |
+| Capacidad de respuesta del nodo (`/api/health` durante la ráfaga) p50 / p95 / máx | 16 ms / 36 ms / 209 ms |
+| Un **P1** plantado a mitad de la ráfaga aparece en la cola tras | 2.3 s |
+| Un **P4** plantado a la vez aparece en la cola tras (antigüedad atendida) | 2.3 s |
+| Reportes en la cola al final / acusados | 10002 / 10002 |
+| Tiempo extra hasta ver todo tras la última trama | 4.9 s |
+| Eventos en el log del nodo | 33767 |
+

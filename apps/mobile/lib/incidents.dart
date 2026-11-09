@@ -12,6 +12,8 @@ class Incident {
     required this.latest,
     required this.frame,
     required this.updatePending,
+    this.people = PeopleBucket.unknown,
+    this.text,
   });
 
   final String reportKey;
@@ -24,6 +26,12 @@ class Incident {
 
   /// Contenido de la última revisión (indicadores, ubicación).
   final ReportFrame frame;
+
+  /// Cuántas personas se dijo que hay: la última revisión que lo indicó (como lo funde el nodo).
+  final PeopleBucket people;
+
+  /// La última frase enviada, o `null`. Una revisión posterior sin frase no la borra.
+  final String? text;
 
   /// Hay una actualización posterior (ubicación, detalle) que todavía no salió.
   final bool updatePending;
@@ -54,12 +62,22 @@ List<Incident> groupIncidents(
     group.sort((a, b) => a.rev.compareTo(b.rev));
     final sos = group.first;
     final latest = group.last;
+    final decoded = [for (final e in group) decode(e)];
+    var people = PeopleBucket.unknown;
+    String? text;
+    for (final f in decoded) {
+      final b = PeopleBucket.fromCode(f.peopleBucket);
+      if (b != PeopleBucket.unknown) people = b;
+      if (f.text != null) text = f.text;
+    }
     out.add(
       Incident(
         reportKey: sos.reportKey,
         sos: sos,
         latest: latest,
-        frame: decode(latest),
+        frame: decoded.last,
+        people: people,
+        text: text,
         updatePending: group
             .skip(1)
             .any(

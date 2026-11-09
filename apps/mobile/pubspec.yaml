@@ -33,6 +33,7 @@ dependencies:
     sdk: flutter
   sard_protocol: any
   sard_client_core: any
+  characters: ^1.4.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
