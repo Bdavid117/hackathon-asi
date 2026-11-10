@@ -55,6 +55,9 @@ dart run packages/sim/bin/t14.dart --seeds 401</code></pre>
     <tr><td class="id">T14</td><td>Carga cognitiva del tablero</td><td>Lista de 1 000 reportes y 80 incidentes; revisión con personas.</td><td>Elementos a revisar para cubrir los P1; P1 fuera de la vista inicial</td><td>0 P1 ocultos; P1 a un clic</td></tr>
     <tr><td class="id">T15</td><td>Recorrido completo reproducible</td><td>Los ocho pasos con un solo comando y una semilla fija.</td><td>Huella de las proyecciones entre ejecuciones</td><td>Igual con la misma semilla</td></tr>
     <tr><td class="id">T16</td><td>Canal del despachador</td><td>Informes de radio, teléfono o en persona por <code>POST /api/dispatch</code>, con tres nodos reales, <code>kill -9</code> y réplica.</td><td>Aceptado, conservado y mostrado con su fuente; reintento sin duplicar; el mismo texto de varios orígenes cuenta como una fuente</td><td>Ningún informe aceptado se pierde ni se esconde; el reinicio no mata al nodo; un rumor no se amplifica</td></tr>
+      <tr><td class="id">T17</td><td>Contradicciones entre reportes</td><td>Negación explícita y cantidad de personas incompatible entre reportes distintos, con casos inyectados y señuelos; semillas nuevas 801–805 y criterio fijado antes.</td><td>Recall sobre las inyectadas; falsos positivos sobre grupos naturales y señuelos</td><td>Recall ≥ 95 %; falsos positivos ≤ 1 %</td></tr>
+    <tr><td class="id">T18</td><td>Partición larga real, dos nodos</td><td>Pares configurados y enlace cortado por un proxy con interruptor durante 600 s; modelos falsos que contestan distinto; dos decisiones contradictorias; <code>kill -9</code> a mitad del corte.</td><td>Huellas tras restablecer; reportes acusados perdidos; errores de réplica durante el corte; juicios duplicados (sin criterio)</td><td>Huellas idénticas en ≤ 60 s; 0 pérdidas</td></tr>
+    <tr><td class="id">T19</td><td>Tres nodos, relevo y convergencia</td><td>Malla completa con seis proxies; ráfaga por A y <code>kill -9</code> de C al instante; aislamiento de B; reinicio de C.</td><td>Cobertura del modelo tras matar a C; huellas de los tres; pérdidas; juicios duplicados (sin criterio)</td><td>Ráfaga cubierta en ≤ 60 s; huellas idénticas en ≤ 90 s</td></tr>
   </tbody>
   <caption>Catálogo de pruebas. Cada una produce datos que alimentan el informe del entregable 6.</caption>
 </table>
@@ -141,9 +144,21 @@ dart run packages/sim/bin/t14.dart --seeds 401</code></pre>
 <table class="tight">
   <thead><tr><th style="width:8%">Prueba</th><th>Resultado</th><th>Límite</th></tr></thead>
   <tbody>
-    <tr><td class="id">T16</td><td>Un informe se acepta, pasa por los agentes y aparece como incidente con su fuente (<code>radio</code>), medio, origen y quién lo registró, sin ubicación. Un reintento no escribe nada; el mismo id con otro contenido es 409; lo que no es JSON es 415, lo roto 400 y lo enorme 413, sin escribir nada. <code>kill -9</code> y reinicio: el nodo arranca y lo conserva (un <code>report.received</code> sin <code>frame_seq</code> lo tumbaba antes de esta prueba). La réplica lo lleva a otro nodo. Tres informes con el mismo texto y orígenes distintos son <strong>una</strong> fuente, confianza 0,2.</td><td>No se probó con despachadores ni con radio real. <strong>No resuelve el Reto 4</strong>: otros orígenes con otras palabras no se agrupan. La credibilidad 0,2 es un supuesto. Sin ubicación, el agente 6 no recomienda.</td></tr>
+    <tr><td class="id">T16</td><td>Un informe se acepta, pasa por los agentes y aparece como incidente con su fuente (<code>radio</code>), medio, origen y quién lo registró, con la ubicación que quien registra haya escrito a mano (si no, sin ubicación). Un reintento no escribe nada; el mismo id con otro contenido es 409; lo que no es JSON es 415, lo roto 400 y lo enorme 413, sin escribir nada. <code>kill -9</code> y reinicio: el nodo arranca y lo conserva (un <code>report.received</code> sin <code>frame_seq</code> lo tumbaba antes de esta prueba). La réplica lo lleva a otro nodo. Tres informes con el mismo texto y orígenes distintos son <strong>una</strong> fuente, confianza 0,2.</td><td>No se probó con despachadores ni con radio real. <strong>No resuelve el Reto 4</strong>: otros orígenes con otras palabras no se agrupan. La credibilidad 0,2 es un supuesto. Sin ubicación, el agente 6 no recomienda.</td></tr>
   </tbody>
   <caption>Resultados de T16, con lo que sí y no demuestra.</caption>
+</table>
+
+<h3>Resultados de las contradicciones (T17), la partición larga (T18) y los tres nodos (T19)</h3>
+<p>Los criterios de cada una son <em>propios del diseño</em> (no del enunciado) y se commitearon antes de ejecutar. Informes completos, con su lectura y sus límites, en <code>docs/resultados/t17-contradicciones.md</code>, <code>t18-particion-larga.md</code> y <code>t19-tres-nodos.md</code>.</p>
+<table class="tight">
+  <thead><tr><th style="width:8%">Prueba</th><th>Resultado</th><th>Límite</th></tr></thead>
+  <tbody>
+    <tr><td class="id">T17</td><td>100 % de las 97 negaciones inyectadas; 0 falsos positivos en 500 grupos naturales y 267 señuelos.</td><td>La inyección usa las frases que el léxico ya sabe negar; no se midió la clase «personas»; se usaron los grupos de la verdad de referencia, no los del nodo.</td></tr>
+    <tr><td class="id">T18</td><td>Corte de 600 s con dos nodos: 170 reportes acusados y 170 en la cola de cada nodo; convergencia en 2,5 s; las dos decisiones contradictorias se conservan; 7 reportes con juicios de los dos modelos y de urgencia distinta, con proyecciones idénticas.</td><td>Una máquina, modelos falsos, corte total y simétrico, una sola muerte y una corrida; diez minutos no dicen nada de horas.</td></tr>
+    <tr><td class="id">T19</td><td>Tres nodos: ráfaga de 30 con juicio del modelo en 8,1 s tras matar a C; aislamiento de B de 30 s; los tres convergen en 2,9 s; 17 reportes con cómputo duplicado (7 con urgencia distinta).</td><td>No se midió cuántos de los 30 eran de C; una muerte y un aislamiento de 30 s; el orden de relevo con más de tres nodos no se midió.</td></tr>
+  </tbody>
+  <caption>Resultados de T17–T19, con lo que sí y no demuestran.</caption>
 </table>
 
 <h2 id="s9-4">Informe de resultados (plantilla del entregable 6)</h2>
