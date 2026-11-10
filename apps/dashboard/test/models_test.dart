@@ -224,6 +224,7 @@ void main() {
       expect(actionLabel('rescate'), 'Enviar rescate');
       expect(actionLabel('despejar_via'), 'Despejar la vía');
       expect(pendingLabel('confirmar_segunda_fuente'), 'Confirmar con una segunda fuente');
+      expect(pendingLabel('confirmar_ruta'), 'Confirmar que la ruta esté libre (hay una vía bloqueada cerca)');
       expect(pendingLabel('sin_recurso_disponible:ambulancia'), 'No hay ambulancia disponible');
       expect(missingLabel('ubicacion'), 'la ubicación');
       expect(missingLabel('situacion'), 'qué está pasando (indicadores o un texto)');

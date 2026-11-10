@@ -531,6 +531,53 @@ class IncidentDetail {
   final int ageMs;
 }
 
+// ───────────────────────────── recursos declarados ─────────────────────────────
+
+/// Una unidad (ambulancia, bomberos…) tal como la usa el nodo: la de arranque, o la última declaración vigente. Si dos nodos
+/// aislados declararon cosas distintas hay [conflict] y la unidad NO se ofrece hasta que una persona lo resuelva.
+class ResourceUnit {
+  const ResourceUnit({required this.id, required this.kind, required this.label, required this.lat, required this.lon, required this.available, this.conflict = false, this.declarationIds = const [], this.declaredBy});
+
+  factory ResourceUnit.fromJson(Object? j) {
+    final m = _map(j, 'resource');
+    return ResourceUnit(
+      id: _str(m['id'], 'id'),
+      kind: _str(m['kind'], 'kind'),
+      label: _str(m['label'], 'label'),
+      lat: (m['lat'] is num ? (m['lat']! as num).toDouble() : throw const FormatException('lat debe ser un número')),
+      lon: (m['lon'] is num ? (m['lon']! as num).toDouble() : throw const FormatException('lon debe ser un número')),
+      available: _bool(m['available'], 'available'),
+      // Un nodo anterior no manda conflicto ni declaraciones: sin conflicto, y es la de arranque.
+      conflict: m['conflict'] == true,
+      declarationIds: m['declarationIds'] is List ? [for (final e in m['declarationIds']! as List) if (e is String) e] : const [],
+      declaredBy: m['declaredBy'] is String ? m['declaredBy']! as String : null,
+    );
+  }
+
+  final String id;
+  final String kind;
+  final String label;
+  final double lat;
+  final double lon;
+  final bool available;
+  final bool conflict;
+
+  /// Las declaraciones vigentes: hay que REEMPLAZARLAS todas para cambiar la unidad (o resolver su conflicto).
+  final List<String> declarationIds;
+  final String? declaredBy;
+
+  /// ¿El agente 6 puede proponerla? Un conflicto nunca deja una unidad ofrecida.
+  bool get isOffered => available && !conflict;
+}
+
+String resourceKindLabel(String kind) => switch (kind) {
+  'ambulancia' => 'Ambulancia',
+  'bomberos' => 'Bomberos',
+  'rescate' => 'Rescate',
+  'transito' => 'Tránsito',
+  _ => _humanize(kind)[0].toUpperCase() + _humanize(kind).substring(1),
+};
+
 // ───────────────────────────── nodos ─────────────────────────────
 
 class PeerInfo {
@@ -625,6 +672,7 @@ String actionLabel(String code) => _actions[code] ?? _humanize(code);
 
 const Map<String, String> _pending = {
   'confirmar_segunda_fuente': 'Confirmar con una segunda fuente',
+  'confirmar_ruta': 'Confirmar que la ruta esté libre (hay una vía bloqueada cerca)',
   'confirmar_ubicacion': 'Confirmar la ubicación',
   'confirmar_personas': 'Confirmar cuántas personas hay',
   'confirmar_necesidades_especiales': 'Confirmar necesidades especiales (menores, mayores, medicación)',

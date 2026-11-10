@@ -18,7 +18,7 @@ import 'theme.dart';
 ///  · La precisión no se finge: si la ubicación es menos precisa que el marcador, se dibuja su anillo de
 ///    incertidumbre; si no se sabe, no se dibuja uno inventado.
 class IncidentMap extends StatefulWidget {
-  const IncidentMap({super.key, required this.rows, required this.selected, required this.onSelect, required this.totalIncidents});
+  const IncidentMap({super.key, required this.rows, required this.selected, required this.onSelect, required this.totalIncidents, this.resources = const []});
 
   /// Los incidentes cargados (pueden ser un subconjunto del total: la vista corta, por ejemplo).
   final List<IncidentRow> rows;
@@ -27,6 +27,9 @@ class IncidentMap extends StatefulWidget {
 
   /// Cuántos incidentes hay en el nodo (para decir que el mapa muestra los cargados y no el total).
   final int totalIncidents;
+
+  /// Las unidades (ambulancias, bomberos…): una capa DEBAJO de los incidentes, que no se toca ni cambia el encuadre. Vacía = sin capa.
+  final List<ResourceUnit> resources;
 
   @override
   State<IncidentMap> createState() => _IncidentMapState();
@@ -67,6 +70,11 @@ class _IncidentMapState extends State<IncidentMap> {
     final outside = frame == null ? const <IncidentRow>[] : [for (final r in located) if (!frame.contains(_at(r))) r];
     final inside = frame == null ? const <IncidentRow>[] : [for (final r in located) if (frame.contains(_at(r))) r];
     final more = widget.totalIncidents - widget.rows.length;
+    final unitsInside = frame == null ? const <ResourceUnit>[] : [for (final u in widget.resources) if (frame.contains(GeoPoint(u.lat, u.lon))) u];
+    final unitsOutside = widget.resources.length - unitsInside.length;
+    // Las unidades se cuentan APARTE (un rótulo sobre el lienzo): el estado de los incidentes conserva su cláusula final
+    // «N más en la lista completa» y no se recorta por llevar más texto en pantallas estrechas.
+    final unitsText = widget.resources.isEmpty ? null : 'Unidades: ${unitsInside.length} en el mapa${unitsOutside > 0 ? ' · $unitsOutside fuera de la vista' : ''}';
     final status = '${inside.length} en el mapa · ${unlocated.length} sin ubicación · ${outside.length} fuera de la vista${more > 0 ? ' · $more más en la lista completa' : ''}';
     final byId = {for (final r in widget.rows) r.id: r};
     final open = [for (final id in _openMembers ?? const <String>[]) if (byId[id] != null) byId[id]!];
@@ -87,6 +95,8 @@ class _IncidentMapState extends State<IncidentMap> {
                 : _Canvas(
                     frame: frame,
                     rows: inside,
+                    units: unitsInside,
+                    unitsCaption: unitsText,
                     selected: widget.selected,
                     onTapCluster: _tapCluster,
                     open: open.length > 1 ? open : const [],
@@ -128,10 +138,14 @@ class _IncidentMapState extends State<IncidentMap> {
 // ───────────────────────────── el lienzo ─────────────────────────────
 
 class _Canvas extends StatelessWidget {
-  const _Canvas({required this.frame, required this.rows, required this.selected, required this.onTapCluster, required this.open, required this.onPick, required this.onClose});
+  const _Canvas({required this.frame, required this.rows, required this.units, required this.unitsCaption, required this.selected, required this.onTapCluster, required this.open, required this.onPick, required this.onClose});
 
   final MapFrame frame;
   final List<IncidentRow> rows;
+  final List<ResourceUnit> units;
+
+  /// «Unidades: 3 en el mapa · 1 fuera de la vista»; nulo si no hay capa de recursos.
+  final String? unitsCaption;
   final String? selected;
   final void Function(MarkerCluster cluster) onTapCluster;
 
@@ -178,6 +192,10 @@ class _Canvas extends StatelessWidget {
                         ),
                       ),
                     ),
+                // Las unidades van debajo de los incidentes: un P1 nunca queda tapado por una ambulancia.
+                for (final u in units)
+                  if (frame.project(GeoPoint(u.lat, u.lon), width: w, height: h) case final p)
+                    Positioned(left: p.x - _UnitMark.size / 2, top: p.y - _UnitMark.size / 2, width: _UnitMark.size, height: _UnitMark.size, child: _UnitMark(key: Key('map_unit_${u.id}'), unit: u)),
                 for (final c in paintOrder)
                   Positioned(
                     left: c.at.x - _hitWidth(c) / 2,
@@ -187,6 +205,17 @@ class _Canvas extends StatelessWidget {
                     child: _Marker(key: Key('map_marker_${c.top.id}'), cluster: c, row: byId[c.top.id]!, selectedId: c.members.any((m) => m.id == selected) ? selected : null, onTap: () => onTapCluster(c)),
                   ),
                 if (open.isNotEmpty) _popover(open, clusters, w, h),
+                if (unitsCaption != null)
+                  Positioned(
+                    top: 8,
+                    left: 10,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: DashColors.surface.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(6)),
+                        child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), child: Text(unitsCaption!, key: const Key('map_units_caption'), style: const TextStyle(fontSize: 12, color: DashColors.muted))),
+                      ),
+                    ),
+                  ),
                 const Positioned(top: 8, right: 10, child: _North()),
                 Positioned(left: 12, bottom: 10, child: _ScaleBar(meters: scaleMeters, px: scalePx)),
               ],
@@ -275,6 +304,37 @@ class _Marker extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Una unidad en el mapa: un cuadrado (los incidentes son redondos, no se confunden) con el icono de su tipo. Disponible = verde;
+/// no disponible = gris y hueca; en conflicto = rojo con «!». La forma y el icono dicen lo mismo que el color.
+class _UnitMark extends StatelessWidget {
+  const _UnitMark({super.key, required this.unit});
+
+  final ResourceUnit unit;
+  static const double size = 22;
+
+  @override
+  Widget build(BuildContext context) {
+    final u = unit;
+    final color = u.conflict ? DashColors.danger : (u.available ? DashColors.ok : DashColors.muted);
+    final state = u.conflict ? 'En conflicto: no se ofrece' : (u.available ? 'Disponible' : 'No disponible');
+    return Tooltip(
+      key: Key('map_unit_tip_${u.id}'),
+      message: '${u.label} · $state',
+      child: Container(
+        decoration: BoxDecoration(
+          color: u.available && !u.conflict ? color.withValues(alpha: 0.9) : DashColors.surface,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color, width: 2),
+        ),
+        alignment: Alignment.center,
+        child: u.conflict
+            ? Text('!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color, height: 1))
+            : Icon(Icons.local_shipping_outlined, size: 14, color: u.available ? DashColors.bg : color),
       ),
     );
   }

@@ -92,6 +92,40 @@ class FakeApi implements DashboardApi {
     return d;
   }
 
+  /// Los recursos que devuelve el nodo simulado, y lo que se le declara.
+  List<ResourceUnit> units = [
+    for (final (id, kind, label, lat, lon) in [('AMB-01', 'ambulancia', 'Ambulancia 1 · Base Centro', 5.0689, -75.5174), ('AMB-02', 'ambulancia', 'Ambulancia 2 · Base Chipre', 5.0603, -75.5071), ('BOM-01', 'bomberos', 'Bomberos · Estación Central', 5.0702, -75.5139)])
+      ResourceUnit(id: id, kind: kind, label: label, lat: lat, lon: lon, available: true),
+  ];
+  Object? failResources;
+  Object? failDeclare;
+
+  /// Si es verdadero, la lectura de recursos falla DESPUÉS de haber aceptado una declaración (el nodo la guardó, pero no se pudo releer).
+  bool failResourcesAfterDeclare = false;
+  bool _declared = false;
+
+  @override
+  Future<List<ResourceUnit>> resources() async {
+    calls.add(Call('resources'));
+    _check();
+    if (failResources != null) throw failResources!;
+    if (failResourcesAfterDeclare && _declared) throw Exception('ClientException: sin red');
+    return units;
+  }
+
+  @override
+  Future<void> declareResource({required String id, required String kind, required String label, required double lat, required double lon, required bool available, required String who, List<String> supersedes = const []}) async {
+    calls.add(Call('declareResource', {'id': id, 'kind': kind, 'label': label, 'lat': lat, 'lon': lon, 'available': available, 'who': who, 'supersedes': supersedes}));
+    _check();
+    if (failDeclare != null) throw failDeclare!;
+    _declared = true;
+    units = [
+      for (final u in units)
+        if (u.id != id) u,
+      ResourceUnit(id: id, kind: kind, label: label, lat: lat, lon: lon, available: available, declarationIds: ['decl-${calls.length}'], declaredBy: who),
+    ]..sort((a, b) => a.id.compareTo(b.id));
+  }
+
   @override
   Future<NodesStatus> nodes() async {
     calls.add(Call('nodes'));

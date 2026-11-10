@@ -43,6 +43,21 @@ abstract class DashboardApi {
   Future<IncidentDetail> detail(String id);
   Future<NodesStatus> nodes();
 
+  /// Los recursos que el nodo usa de verdad (los de arranque más lo declarado en vivo).
+  Future<List<ResourceUnit>> resources();
+
+  /// Declara (o redeclara) una unidad. [supersedes] son las declaraciones vigentes que reemplaza; lanza si el nodo no la acepta.
+  Future<void> declareResource({
+    required String id,
+    required String kind,
+    required String label,
+    required double lat,
+    required double lon,
+    required bool available,
+    required String who,
+    List<String> supersedes = const [],
+  });
+
   /// Registra una decisión humana sobre la versión [recommendationId] de la recomendación. Lanza si el
   /// nodo no la acepta o no responde: la decisión **no** se da por registrada.
   Future<void> decide({
@@ -153,6 +168,39 @@ class HttpDashboardApi implements DashboardApi {
     if (r.statusCode == 401) _denied();
     if (r.statusCode != 200) throw ApiException(r.statusCode, r.body);
     return NodesStatus.fromJson(_decode(r));
+  }
+
+  @override
+  Future<List<ResourceUnit>> resources() async {
+    final r = await _client.get(_base.resolve('/api/resources'), headers: _h()).timeout(timeout);
+    if (r.statusCode == 401) _denied();
+    if (r.statusCode != 200) throw ApiException(r.statusCode, r.body);
+    final body = _decode(r);
+    final list = body['resources'];
+    if (list is! List) throw const FormatException('el nodo no devolvió la lista «resources»');
+    return [for (final u in list) ResourceUnit.fromJson(u)];
+  }
+
+  @override
+  Future<void> declareResource({
+    required String id,
+    required String kind,
+    required String label,
+    required double lat,
+    required double lon,
+    required bool available,
+    required String who,
+    List<String> supersedes = const [],
+  }) async {
+    final r = await _client
+        .post(
+          _base.resolve('/api/resources'),
+          headers: _h({'content-type': 'application/json'}),
+          body: jsonEncode({'id': id, 'kind': kind, 'label': label, 'lat': lat, 'lon': lon, 'available': available, 'who': who, if (supersedes.isNotEmpty) 'supersedes': supersedes}),
+        )
+        .timeout(timeout);
+    if (r.statusCode == 401) _denied();
+    if (r.statusCode != 200) throw ApiException(r.statusCode, utf8.decode(r.bodyBytes, allowMalformed: true));
   }
 
   @override

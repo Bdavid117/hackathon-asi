@@ -12,6 +12,7 @@ import 'incident_card.dart';
 import 'incident_filter.dart';
 import 'incident_map.dart';
 import 'models.dart';
+import 'resources_dialog.dart';
 import 'theme.dart';
 
 enum _Mode { short, all, bare, pending }
@@ -53,6 +54,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Se ve el mapa en vez de la lista (la lista es lo que se ve por omisión).
   bool _showMap = false;
+
+  /// Los recursos (unidades) que usa el nodo, para el botón «Recursos» y para el mapa. Si el nodo no los sirve, se sigue sin ellos.
+  List<ResourceUnit> _resources = const [];
 
   /// Filtros y búsqueda sobre lo CARGADO (el nodo es quien cuenta el total), y si su panel está abierto.
   IncidentFilter _filter = const IncidentFilter();
@@ -115,6 +119,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }),
     );
+    unawaited(_loadResources());
     try {
       final loaded = _items.length;
       final limit = mode == _Mode.short ? widget.pageSize : (loaded < widget.pageSize ? widget.pageSize : (loaded > 1000 ? 1000 : loaded));
@@ -157,6 +162,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// Lee los recursos aparte de los incidentes: un nodo que no los sirve (anterior) o un fallo suelto no tumban el tablero.
+  Future<void> _loadResources() async {
+    try {
+      final r = await widget.api.resources();
+      if (mounted) setState(() => _resources = r);
+    } on AccessDenied {
+      _lock();
+    } on Object {
+      // se conserva lo último que se leyó
+    }
+  }
+
+  Future<void> _openResources() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Theme(
+        data: dashTheme(),
+        child: ResourcesDialog(api: widget.api, who: _who, units: _resources, onChanged: (u) => setState(() => _resources = u)),
+      ),
+    );
+  }
+
   /// Se pierde el acceso: se olvida lo leído (no se deja en memoria lo de alguien sin código) y se pide de nuevo.
   void _lock() {
     if (!mounted || _locked) return;
@@ -165,6 +192,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _page = null;
       _items.clear();
       _nodes = null;
+      _resources = const [];
       _selected = null;
       _offline = false;
     });
@@ -288,6 +316,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           title: _title,
           actions: [
             if (!narrowBar) ...[toggle, const SizedBox(width: 4), newsPill],
+            Builder(builder: _resourcesButton),
             Builder(builder: _dispatchButton),
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -340,6 +369,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   /// «Registrar informe»: en pantallas anchas con texto; en estrechas sólo el ícono (no le quita sitio al título).
+  /// «Recursos»: abre el panel. Si hay unidades en conflicto lo dice en una insignia (superpuesta: no cambia el tamaño del botón),
+  /// porque un conflicto sin resolver deja una unidad fuera de las propuestas y no debe pasar desapercibido con el panel cerrado.
+  Widget _resourcesButton(BuildContext context) {
+    final conflicts = _resources.where((u) => u.conflict).length;
+    final icon = conflicts == 0
+        ? const Icon(Icons.local_shipping_outlined)
+        : Badge(key: const Key('resources_conflicts_badge'), label: Text('$conflicts'), backgroundColor: DashColors.danger, child: const Icon(Icons.local_shipping_outlined));
+    final tip = conflicts == 0 ? 'Recursos' : 'Recursos: $conflicts ${conflicts == 1 ? 'unidad en conflicto' : 'unidades en conflicto'}';
+    // Siempre un icono (con su explicación al posarse): con el texto, la barra no cabe a 700 px junto a «Registrar informe».
+    return IconButton(key: const Key('resources_open'), tooltip: tip, onPressed: _openResources, icon: icon);
+  }
+
   Widget _dispatchButton(BuildContext context) {
     final narrow = MediaQuery.sizeOf(context).width < 700;
     return narrow
@@ -444,7 +485,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: _showMap
               // Una instancia nueva por modo/urgencia: al cambiar de vista el mapa se encuadra de nuevo; con los datos que
               // llegan cada 2 s NO (ver IncidentMap).
-              ? IncidentMap(key: ValueKey('map-${_mode.name}-${_urgency ?? ''}'), rows: result.shown, selected: _selected, onSelect: _select, totalIncidents: page.counters.incidents - result.hidden.length)
+              ? IncidentMap(key: ValueKey('map-${_mode.name}-${_urgency ?? ''}'), rows: result.shown, selected: _selected, onSelect: _select, totalIncidents: page.counters.incidents - result.hidden.length, resources: _resources)
               : ListView(key: const Key('incident_list'), children: children),
         ),
       ],
