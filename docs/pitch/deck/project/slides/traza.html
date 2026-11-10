@@ -1,0 +1,20 @@
+<section id="traza" data-transition="fade" style="background:#12161C;color:#EEF1F5;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:row;align-items:center;gap:64px">
+<div style="width:560px;display:flex;flex-direction:column;gap:36px">
+<h2 style="font-family:'Rubik', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1;color:#EEF1F5">Cada agente deja su rastro</h2>
+<div style="display:flex;flex-direction:row;align-items:center;gap:24px">
+<p style="width:240px;font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.1;color:#4CC38A">Evento</p>
+<p style="flex:1;font-size:28px;line-height:1.4;color:#A9B4C2">Lo que respalda un evento dice qué nodo lo escribió y a qué hora.</p>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:24px">
+<p style="width:240px;font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.1;color:#F2B544">Derivado</p>
+<p style="flex:1;font-size:28px;line-height:1.4;color:#A9B4C2">Lo que se calcula al leer se rotula así y no lleva hora: no hay evento al que atribuírsela.</p>
+</div>
+<div style="display:flex;flex-direction:row;align-items:center;gap:24px">
+<p style="width:240px;font-family:'Rubik', Arial, sans-serif;font-size:44px;font-weight:700;line-height:1.1;color:#4FA3D1">Sin fila</p>
+<p style="flex:1;font-size:28px;line-height:1.4;color:#A9B4C2">Los agentes 4 y 5 no dejan eventos por incidente: el panel lo dice en vez de inventarles una.</p>
+</div>
+</div>
+<img src="/_blob/f4d87e2c85ffbc045e717805831b0c08" alt="Detalle de un incidente P2 con el panel «Historia» abierto en la pestaña Agentes: pasos de recepción, triaje y correlación con su nodo y hora, los pasos derivados rotulados sin hora, y las dos decisiones de Ana Gómez y Luis Torres" style="width:1040px;height:658px;object-fit:contain;border-radius:16px;border:2px solid #2C3644">
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#A9B4C2">Captura real del tablero con datos sintéticos (panel «Historia» abierto) · PDF de arquitectura §6.7 · apps/node/lib/src/incident_history.dart</p>
+<aside>Un minuto. Para el Reto 3 (el tejido de agentes): al final del detalle de cada incidente hay un panel «Historia» plegado. En «Agentes» se ve qué hizo cada uno: recepción, triaje (por reglas o por reglas y modelo, con la versión del agente), vínculos auditados, y las decisiones. Cada paso que respalda un evento dice el nodo que lo escribió y la hora. Lo que se calcula al leer —el agrupamiento, las contradicciones, la recomendación— sale rotulado «derivado» y sin hora, porque honestamente no hay un evento que lo respalde. Los agentes 4 (comunicación, en el teléfono) y 5 (resiliencia) no dejan eventos por incidente y no se les inventó una fila. En «Decisiones»: quién, cuándo, estado (vigente, caduca, sustituida) y a quién sustituyó. Límite a decir: el registro sólo guarda el identificador de la versión de la recomendación, así que no se puede ver QUÉ se aprobó, y el panel lo dice. Sólo el detalle lo sirve: la cola y la lista no cambian, y la huella de las proyecciones tampoco.</aside>
+</section>
