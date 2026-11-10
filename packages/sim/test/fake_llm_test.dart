@@ -21,6 +21,15 @@ void main() {
     expect(server.requests, 1);
   });
 
+  test('cautious: aunque el texto diga «encerrados» no sube la urgencia (otro modelo que contesta DISTINTO que ok)', () async {
+    server = await FakeClaudeServer.start(mode: FakeLlmMode.cautious);
+    final t = await ask('quedamos encerrados en el segundo piso');
+    expect(t.mode, 'rules+llm', reason: 'el juicio es válido: sólo que no ve nada que subir');
+    expect(t.signals, isEmpty);
+    expect(t.urgency, isNot(Urgency.p1));
+    expect(server.requests, 1);
+  });
+
   test('ok: un texto sin pistas da P3 sin señales', () async {
     server = await FakeClaudeServer.start();
     final t = await ask('necesitamos ayuda por favor');

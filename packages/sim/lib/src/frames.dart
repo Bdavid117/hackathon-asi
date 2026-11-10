@@ -44,3 +44,24 @@ List<SynthFrame> synthFrames(List<SynthReport> reports, Uint8List key) {
       }(),
   ];
 }
+
+/// Una trama de un SOS con texto, DETERMINISTA por [n] (usada por T12, T18 y T19): las pares dicen «quedamos encerrados» (el modelo
+/// falso `ok` las sube a P1) y las impares no. Cada [n] es un dispositivo distinto, con ubicación a ±50 m y la hora de [n].
+Uint8List textReportFrame(int n, Uint8List key) => encodeReportFrame(
+  ReportFrame(
+    deviceId: deviceIdFromHex(n.toRadixString(16).padLeft(16, '0')),
+    seq: 1,
+    rev: 0,
+    prioHint: 2,
+    incidentType: 1,
+    flags: 0,
+    peopleBucket: 0,
+    locQuality: LocQuality.within50m,
+    lat: 5.0 + (n % 97) * 0.001,
+    lon: -75.5 + (n % 89) * 0.001,
+    capturedAt: 1786370851 + n,
+    batteryQ: 8,
+    text: n.isEven ? 'quedamos encerrados en el piso $n' : 'necesitamos ayuda por favor casa $n',
+  ),
+  key,
+);

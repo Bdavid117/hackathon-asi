@@ -7,6 +7,10 @@ enum FakeLlmMode {
   /// Responde un juicio válido (P1 «atrapado» si el texto dice «encerrados», P3 sin señales si no).
   ok,
 
+  /// Responde un juicio válido pero CAUTO: nunca ve nada que subir (P3 sin señales aunque el texto diga «encerrados»). Sirve para
+  /// que dos modelos contesten DISTINTO (uno `ok` y otro `cautious`) y comprobar que los nodos convergen aunque sus juicios difieran.
+  cautious,
+
   /// Acepta la petición y NUNCA contesta (un modelo colgado).
   hang,
 
@@ -65,6 +69,8 @@ class FakeClaudeServer {
           _ok(req, body);
         case FakeLlmMode.ok:
           _ok(req, body);
+        case FakeLlmMode.cautious:
+          _ok(req, body, trapsAreRaised: false);
       }
     } finally {
       try {
@@ -75,9 +81,9 @@ class FakeClaudeServer {
     }
   }
 
-  void _ok(HttpRequest req, String body) {
+  void _ok(HttpRequest req, String body, {bool trapsAreRaised = true}) {
     final user = (((jsonDecode(body) as Map)['messages'] as List).first as Map)['content'] as String;
-    final trapped = user.contains('encerrados');
+    final trapped = trapsAreRaised && user.contains('encerrados');
     final verdict = {
       'urgency': trapped ? 'P1' : 'P3',
       'signals': [if (trapped) {'code': 'atrapado', 'quote': 'encerrados'}],
