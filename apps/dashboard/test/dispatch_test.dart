@@ -228,7 +228,19 @@ void main() {
         expect(find.byKey(Key(k)), findsOneWidget, reason: k);
       }
       expect(tester.widget<ChoiceChip>(find.byKey(const Key('medium_radio'))).selected, isTrue);
-      expect(find.textContaining('segunda mano'), findsWidgets, reason: 'se dice qué es: información de segunda mano, sin ubicación');
+      expect(find.textContaining('segunda mano'), findsWidgets, reason: 'se dice qué es: información de segunda mano');
+    });
+
+    testWidgets('la introducción NO dice que el informe queda «sin ubicación»: la ubicación es opcional y se escribe a mano (hay campos para ella)', (tester) async {
+      await boot(tester);
+      await abrir(tester);
+      expect(find.byKey(const Key('dispatch_lat')), findsOneWidget, reason: 'el montaje: el formulario admite coordenadas');
+      expect(find.textContaining('queda registrada sin ubicación'), findsNothing);
+      final intro = find.byKey(const Key('dispatch_intro'));
+      expect(intro, findsOneWidget);
+      final text = tester.widget<Text>(intro).data!;
+      expect(text, contains('ubicación es opcional'));
+      expect(text, contains('escrita a mano'));
     });
 
     testWidgets('sin texto no se envía: dice qué falta y NO llama al nodo; sin nombre, tampoco', (tester) async {

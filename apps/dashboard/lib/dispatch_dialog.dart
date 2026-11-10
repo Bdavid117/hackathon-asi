@@ -29,7 +29,7 @@ String _newId() {
 
 /// «Registrar informe»: lo que un despachador oyó por radio, por teléfono o en persona.
 ///
-/// Es información de **segunda mano**: queda registrada sin ubicación (el sistema no la inventa), pasa por el mismo
+/// Es información de **segunda mano**: la ubicación es opcional y la escribe una persona (el sistema no la inventa), pasa por el mismo
 /// triaje que los avisos de la app y no despacha nada. Cierra con `true` cuando el nodo la aceptó; si el nodo no
 /// responde o la rechaza, el cuadro sigue abierto y el informe **no** se da por registrado. Reintentar con lo mismo
 /// reusa el identificador (el nodo no duplica); si se cambia algo, el identificador es otro.
@@ -168,7 +168,8 @@ class _DispatchDialogState extends State<DispatchDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Información de segunda mano: queda registrada sin ubicación y pasa por el mismo triaje que los avisos de la app. No despacha nada. La hora que queda es la de registro, no la de cuando se oyó.',
+                'Información de segunda mano: pasa por el mismo triaje que los avisos de la app. La ubicación es opcional y, si la pones, se toma como escrita a mano (no es un GPS); sin ella el sistema no la inventa. No despacha nada. La hora que queda es la de registro, no la de cuando se oyó.',
+                key: Key('dispatch_intro'),
                 style: TextStyle(fontSize: 13, height: 1.3, color: DashColors.muted),
               ),
               const SizedBox(height: 14),
