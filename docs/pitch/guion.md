@@ -2,13 +2,15 @@
 
 Pensado para **8–10 minutos** (con 5 minutos se omiten los pasos 5 y 7). Cada paso dice qué se ve, qué decir, qué comando lo produce y **qué cifra respalda lo que se dice**. Todo está en el repositorio; nada depende de la red.
 
-> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (15 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
+> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (16 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
 
 > **Regla del guion:** se dice lo que está medido y se dice dónde termina. Cada «sí» lleva su «pero» (hay una lista al final). Un jurado que encuentra solo un límite que usted no mencionó deja de creer el resto.
 
 > **Alcance, con las palabras del enunciado.** El §4.7 dice: «El recorrido puede ejecutarse con datos sintéticos y canales simulados. No se exige desplegar una red de radio real ni contar con acceso a infraestructura gubernamental.» Eso se dice **al principio, como alcance**, no al final como disculpa. Y cuidado con el vocabulario: el enunciado **no fija** metas numéricas ni rúbrica; el 95 %, el 1 % y los 10 minutos son metas **del propio diseño**. Se dice «nuestra meta», nunca «lo que pide el enunciado». (Atribuir al enunciado algo que no dice es justo el tipo de error que hace dudar de lo demás.)
 
 ## Antes de empezar (10 min antes)
+
+> **Para una demostración con dos nodos, historia sembrada y zonas en silencio, siga [`demo-en-vivo.md`](demo-en-vivo.md)** (`bash tool/expo.sh`; incluye tiempos medidos y plan B por escena). Lo de abajo es la versión de un solo nodo.
 
 ```bash
 dart pub get
@@ -26,13 +28,13 @@ Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal
 
 ## Cuánto dura la presentación: elija una ruta
 
-Las **notas del orador de las 15 láminas suman ≈ 16 minutos** si se dicen todas; los pasos de la demostración de abajo suman 8–10 minutos y se pueden alternar con las láminas. Rutas propuestas (los tiempos salen de las notas de cada lámina; ensáyelas con reloj, no son una medición):
+Las **notas del orador de las 16 láminas suman unos 16–17 minutos** si se dicen todas (la lámina «Cada agente deja su rastro» añade ≈ 1 minuto a las 15 anteriores; no se midió con reloj); los pasos de la demostración de abajo suman 8–10 minutos y se pueden alternar con las láminas. Rutas propuestas (los tiempos salen de las notas de cada lámina; ensáyelas con reloj, no son una medición):
 
 | Duración | Láminas, en este orden | Se omite |
 |---|---|---|
 | **5 min** | portada (0:20) · recorrido (0:40) · tablero (1:00) · caída de un nodo (1:30) · lo que no cumplimos (1:00) · reproducir (0:30) | todo lo demás |
 | **10 min** | portada · problema (0:30) · recorrido (0:40) · app (1:00) · tablero (1:30) · caída (1:30) · modelo (1:00) · Reto 4 (1:00) · lo que no cumplimos (1:00) · lo que sigue (0:30) · reproducir (0:20) | agentes, despachador, ráfaga, fallos |
-| **15 min** | las 15 láminas, sin demostración en vivo (o con 2 min de la app) | — |
+| **15 min** | las 16 láminas, sin demostración en vivo (o con 2 min de la app) | — |
 
 La lámina de «lo que no cumplimos» **no se omite nunca**: es la que más crédito da. Si hay demostración en vivo, sustituye a la lámina correspondiente (app, tablero o caída), no se suma.
 
