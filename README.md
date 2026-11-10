@@ -47,6 +47,7 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 | **La planilla de evaluación y la evidencia de cada celda** (con brechas, sin puntajes) | [`docs/evaluacion.md`](docs/evaluacion.md) |
 | Guion de la demostración y del pitch | [`docs/pitch/guion.md`](docs/pitch/guion.md) |
 | Presentación del pitch (18 láminas, con capturas reales; fuentes en `docs/pitch/deck/`, se regenera con `python3 -I docs/pitch/build_pdf.py --pdf docs/pitch/SARD-pitch.pdf`) | [`docs/pitch/SARD-pitch.pdf`](docs/pitch/SARD-pitch.pdf) |
+| **Video de presentación (52 s)** con tomas reales de la app y del tablero, voz del sistema y rótulos; **el `.mp4` no se versiona**: se reconstruye con `docs/pitch/video/build_video.py` | [`docs/pitch/video/README.md`](docs/pitch/video/README.md) |
 | Oráculo del códec (genera los vectores de prueba) | [`docs/src/tools/frame_size.py`](docs/src/tools/frame_size.py) |
 
 ## Los siete entregables

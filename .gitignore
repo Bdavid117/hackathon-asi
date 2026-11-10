@@ -61,3 +61,7 @@ docs/src/_build/
 
 # Estado de la herramienta de navegador usada para revisar el tablero
 .playwright-mcp/
+
+# Video de presentación: sólo se versionan el guion, el compositor, el codificador y las capturas; los cuadros intermedios y el video no.
+docs/pitch/video/work/
+*.m4a
