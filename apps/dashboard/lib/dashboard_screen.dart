@@ -689,6 +689,7 @@ class _CountersBar extends StatelessWidget {
                   // Propuestas que esperan a una persona, sobre el TOTAL del nodo: tocarlas pide sólo esas; dice desde cuándo espera la más antigua.
                   _Stat(const Key('counter_pendingDecision'), 'Pendientes de decisión', counters.pendingDecision, DashColors.warn, onTap: counters.pendingDecision > 0 ? onPending : null, active: pendingActive, suffix: counters.pendingOldestAt == null ? '' : ' · la más antigua ${ageLabel(counters.pendingOldestAt!, now)}'),
                   _Stat(const Key('counter_discrepancies'), 'Decisiones contradictorias', counters.discrepancies, DashColors.danger),
+                  _Stat(const Key('counter_withContradictions'), 'Con contradicciones', counters.withContradictions, DashColors.danger),
                   _Stat(const Key('counter_bareSos'), 'SOS sin detalle', counters.bareSos, DashColors.muted, onTap: counters.bareSos > 0 ? onBare : null, active: bareActive),
                   _Stat(const Key('counter_followUp'), 'En seguimiento fuera de la vista', counters.followUp, DashColors.muted),
                 ].indexed) ...[if (i > 0) const SizedBox(width: 10), stat],

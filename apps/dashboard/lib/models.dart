@@ -37,7 +37,7 @@ const List<String> kUrgencies = ['P1', 'P2', 'P3', 'P4'];
 // ───────────────────────────── contadores y página ─────────────────────────────
 
 class Counters {
-  const Counters({required this.incidents, required this.reports, required this.byUrgency, required this.bareSos, required this.highUncertainty, required this.needsReview, required this.inShortView, required this.followUp, this.pendingDecision = 0, this.pendingOldestAt, this.discrepancies = 0});
+  const Counters({required this.incidents, required this.reports, required this.byUrgency, required this.bareSos, required this.highUncertainty, required this.needsReview, required this.inShortView, required this.followUp, this.pendingDecision = 0, this.pendingOldestAt, this.discrepancies = 0, this.withContradictions = 0});
 
   factory Counters.fromJson(Object? j) {
     final m = _map(j, 'counters');
@@ -55,6 +55,7 @@ class Counters {
       pendingDecision: _nonNegative(m['pendingDecision']),
       pendingOldestAt: m['pendingOldestAt'] is num ? (m['pendingOldestAt']! as num).toInt() : null,
       discrepancies: _nonNegative(m['discrepancies']),
+      withContradictions: _nonNegative(m['withContradictions']),
     );
   }
 
@@ -73,6 +74,9 @@ class Counters {
 
   /// Incidentes con decisiones contradictorias (se cuentan aparte de los pendientes).
   final int discrepancies;
+
+  /// Incidentes con alguna contradicción ENTRE SUS REPORTES (negación explícita o personas incompatibles).
+  final int withContradictions;
 }
 
 int _nonNegative(Object? v) => v is num && v >= 0 ? v.toInt() : 0;
@@ -231,6 +235,7 @@ class IncidentRow {
     this.fromDispatch = 0,
     this.locQuality,
     this.receivedAt,
+    this.contradictionCount = 0,
   });
 
   factory IncidentRow.fromJson(Map<String, Object?> m) {
@@ -254,6 +259,8 @@ class IncidentRow {
       lat: (m['lat'] as num?)?.toDouble(),
       lon: (m['lon'] as num?)?.toDouble(),
       receivedAt: m['receivedAt'] is num ? (m['receivedAt']! as num).toInt() : null,
+      // En el resumen es un entero; en el detalle, la lista (se cuentan las bien formadas); un nodo anterior no lo manda: 0.
+      contradictionCount: m['contradictions'] is List ? ContradictionInfo.parseAll(m['contradictions']! as List).length : _nonNegative(m['contradictions']),
       // Un nodo anterior no lo manda, y un código que este tablero no conoce se lee como desconocido: nunca se inventa una cifra.
       locQuality: m['locQuality'] is String && _locPrecision.containsKey(m['locQuality']) ? m['locQuality']! as String : null,
       firstAt: _int(m['firstAt'], 'firstAt'),
@@ -282,6 +289,9 @@ class IncidentRow {
   final bool bareSos;
   final double? lat;
   final double? lon;
+
+  /// Cuántas contradicciones hay entre los reportes del incidente.
+  final int contradictionCount;
 
   /// Cuándo recibió el NODO lo último del incidente (ms, en el reloj del nodo): sirve para detectar novedades
   /// comparando el nodo consigo mismo, no con el reloj de este navegador. Nulo si el nodo no lo manda.
@@ -467,8 +477,31 @@ class ApprovalDetail {
   final List<Decision> stale;
 }
 
+/// Dos reportes del mismo incidente que dicen cosas incompatibles. Se SEÑALA; no se resuelve sola.
+class ContradictionInfo {
+  const ContradictionInfo({required this.kind, required this.a, required this.b, this.code, this.aValue, this.bValue});
+
+  /// `negacion` (a niega lo que b afirma, sobre la señal [code]) o `personas` (a y b dicen cantidades que no son vecinas).
+  final String kind;
+  final String? code;
+  final String a;
+  final String b;
+  final String? aValue;
+  final String? bValue;
+
+  /// Una contradicción mal formada es nula: se ignora, no rompe el detalle.
+  static ContradictionInfo? tryParse(Object? j) {
+    if (j is! Map) return null;
+    final kind = j['kind'], a = j['a'], b = j['b'];
+    if (kind is! String || kind.isEmpty || a is! String || b is! String) return null;
+    return ContradictionInfo(kind: kind, a: a, b: b, code: j['code'] is String ? j['code']! as String : null, aValue: j['aValue'] is String ? j['aValue']! as String : null, bValue: j['bValue'] is String ? j['bValue']! as String : null);
+  }
+
+  static List<ContradictionInfo> parseAll(List<Object?> raw) => [for (final j in raw) ?tryParse(j)];
+}
+
 class IncidentDetail {
-  const IncidentDetail({required this.row, required this.members, required this.evidence, required this.recommendation, required this.approval, required this.membersTotal, this.stale = false, this.ageMs = 0});
+  const IncidentDetail({required this.row, required this.members, required this.evidence, required this.recommendation, required this.approval, required this.membersTotal, this.contradictions, this.stale = false, this.ageMs = 0});
 
   factory IncidentDetail.fromJson(Map<String, Object?> j, {bool stale = false, int ageMs = 0}) {
     if (j['recommendation'] == null) throw const FormatException('el detalle no trae la recomendación');
@@ -479,6 +512,7 @@ class IncidentDetail {
       recommendation: RecommendationDetail.fromJson(j['recommendation']),
       approval: ApprovalDetail.fromJson(j['approval']),
       membersTotal: _int(j['membersTotal'], 'membersTotal'),
+      contradictions: j['contradictions'] is List ? ContradictionInfo.parseAll(j['contradictions']! as List) : null,
       stale: stale,
       ageMs: ageMs,
     );
@@ -490,6 +524,9 @@ class IncidentDetail {
   final RecommendationDetail recommendation;
   final ApprovalDetail approval;
   final int membersTotal;
+
+  /// Nulo si el nodo no las evalúa (uno anterior); vacío si las evaluó y no hay; si no, cuáles.
+  final List<ContradictionInfo>? contradictions;
   final bool stale;
   final int ageMs;
 }
@@ -571,6 +608,7 @@ const Map<String, String> _uncertainty = {
   'juicios_discrepantes': 'Juicios discrepantes',
   'baja_confianza_modelo': 'Baja confianza del modelo',
   'texto_truncado': 'Texto truncado',
+  'mensaje_cortado': 'Posible mensaje cortado',
   'fuente_no_independiente': 'Fuentes no independientes',
 };
 

@@ -261,6 +261,69 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Las contradicciones entre los reportes del incidente: se SEÑALAN con los dos reportes lado a lado y se conservan a la vista
+/// (no se resuelven solas ni cambian la urgencia). Si no hay ninguna, dice QUÉ se evaluó, para no afirmar que no existen.
+class _Contradictions extends StatelessWidget {
+  const _Contradictions(this.d);
+  final IncidentDetail d;
+
+  static const TextStyle _muted = TextStyle(fontSize: 13, color: DashColors.muted);
+
+  String _quote(String key) {
+    final obs = d.members.where((m) => m.reportKey == key);
+    final text = obs.isEmpty ? null : obs.first.text;
+    return '«${text == null || text.trim().isEmpty ? 'sin texto' : text}» — ${_noun(d, key)}';
+  }
+
+  String _what(ContradictionInfo c) => switch (c.kind) {
+    'negacion' => 'Un reporte niega «${signalLabel(c.code ?? '')}» y otro lo afirma.',
+    'personas' => 'Uno dice ${_people(c.aValue)} y otro ${_people(c.bValue)}.',
+    _ => 'Dos reportes dicen cosas incompatibles.',
+  };
+
+  static String _people(String? v) => v == null ? 'otra cantidad de personas' : (v == '1' ? '1 persona' : '$v personas');
+
+  @override
+  Widget build(BuildContext context) {
+    final list = d.contradictions;
+    if (list == null) return const Text('Contradicciones entre reportes: no evaluadas (este análisis no las detecta).', style: _muted);
+    if (list.isEmpty) {
+      return const Text(
+        'Contradicciones entre reportes: ninguna de las que se evalúan (negación explícita y cantidad de personas). Las de sentido no se evalúan: que no salga ninguna no significa que no las haya.',
+        key: Key('contradictions_none'),
+        style: _muted,
+      );
+    }
+    return Container(
+      key: const Key('contradictions_section'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: DashColors.dangerBg, borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [const Icon(Icons.compare_arrows, size: 18, color: DashColors.danger), const SizedBox(width: 6), Text('Contradicciones entre reportes (${list.length})', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800))]),
+          for (var i = 0; i < list.length; i++) ...[
+            const SizedBox(height: 8),
+            Column(
+              key: Key('contradiction_$i'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_what(list[i]), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text('A: ${_quote(list[i].a)}', style: const TextStyle(fontSize: 13, height: 1.3)),
+                Text('B: ${_quote(list[i].b)}', style: const TextStyle(fontSize: 13, height: 1.3)),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          const Text('Una contradicción no se resuelve sola: se conserva a la vista para que decida una persona. No cambia la urgencia.', style: _muted),
+        ],
+      ),
+    );
+  }
+}
+
 class _Why extends StatelessWidget {
   const _Why(this.d);
   final IncidentDetail d;
@@ -296,7 +359,7 @@ class _Why extends StatelessWidget {
             Wrap(spacing: 6, runSpacing: 6, children: [for (final u in r.uncertainty) Pill(uncertaintyLabel(u), color: DashColors.warn)]),
           ],
           const SizedBox(height: 10),
-          const Text('Contradicciones entre reportes: no evaluadas (este análisis no las detecta).', style: TextStyle(fontSize: 13, color: DashColors.muted)),
+          _Contradictions(d),
         ],
       ),
     );

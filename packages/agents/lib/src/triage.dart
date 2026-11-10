@@ -110,6 +110,8 @@ TriageResult triage(int flags, {String? text, bool hasLocation = true}) {
     confidence -= 0.05;
   }
   if (hasText && utf8.encode(text).length >= kMaxTextBytes - 2) uncertainty.add('texto_truncado');
+  // Un mensaje a medio terminar (típico de un informe por radio) se SEÑALA; ni se completa ni cambia la urgencia.
+  if (hasText && looksCutOff(text)) uncertainty.add('mensaje_cortado');
 
   return TriageResult(
     urgency: urgency,

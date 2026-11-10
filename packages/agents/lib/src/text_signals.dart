@@ -81,3 +81,24 @@ TextAnalysis analyzeText(String text) {
 
 /// Atajo: las señales positivas de [text], cada una con su cita exacta.
 List<Signal> textSignals(String text) => analyzeText(text).signals;
+
+/// Palabras con las que una frase no puede terminar: piden que siga («…atrapada y», «…herido en», «…con la»).
+/// «no» y «si» no están: son respuestas completas.
+const Set<String> _danglingWords = {
+  'y', 'e', 'o', 'u', 'ni', 'que', 'de', 'del', 'en', 'con', 'por', 'para', 'porque', 'pero', 'a', 'al', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+  'mi', 'mis', 'su', 'sus', 'como', 'sobre', 'entre', 'hacia', 'desde', 'sin', 'cuando', 'donde', 'aunque', //
+};
+
+/// ¿El mensaje parece cortado a la mitad («hay una persona atrapada y»)? Es una **pista**, no una afirmación: termina en
+/// puntos suspensivos, coma, guion o dos puntos, o en una palabra que pide continuar. Nunca completa ni corrige el
+/// texto, y quien la usa no debe subir ni bajar la urgencia por ella (sólo avisar de la duda).
+bool looksCutOff(String text) {
+  final t = text.trimRight();
+  if (t.isEmpty) return false;
+  if (t.endsWith('...') || t.endsWith('…')) return true;
+  final last = t[t.length - 1];
+  if (',:;-–—'.contains(last)) return true;
+  if ('.!?'.contains(last)) return false;
+  final words = normalizeText(t).split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+  return words.isNotEmpty && _danglingWords.contains(words.last);
+}

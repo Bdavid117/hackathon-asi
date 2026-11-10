@@ -154,6 +154,9 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
     lat = located.fold<double>(0, (s, m) => s + m.lat!) / located.length;
     lon = located.fold<double>(0, (s, m) => s + m.lon!) / located.length;
   }
+  // Contradicciones entre los reportes del incidente (negación explícita y personas incompatibles): sólo se SEÑALAN;
+  // no cambian la urgencia, «a revisar» ni la incertidumbre, y no fusionan ni separan nada. Un solo reporte no tiene con quién.
+  final contradictions = members.length < 2 ? const <Contradiction>[] : detectContradictions([for (final m in members) ReportFacts(reportKey: m.reportKey, flags: m.flags, people: m.people, text: m.text)]);
   // La PEOR precisión entre los reportes localizados: mostrar la mejor sugeriría una exactitud que el incidente no tiene.
   final qualities = [for (final m in located) if (m.locQuality != LocQuality.none) m.locQuality];
   final locQuality = qualities.isEmpty ? null : qualities.reduce((a, b) => a.index >= b.index ? a : b).name;
@@ -190,6 +193,7 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
     'bareSos': bare,
     'lat': lat,
     'locQuality': locQuality,
+    'contradictions': contradictions.length,
     'lon': lon,
     'firstAt': captured.first,
     'lastAt': captured.last,
@@ -234,6 +238,7 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
     'observations': [for (final m in byTime) m.toJson()],
     'evidence': evidence,
     'membersTotal': members.length,
+    'contradictions': [for (final c in contradictions) c.toJson()],
     'recommendation': recFull,
     'approval': approval.toJson(),
   };

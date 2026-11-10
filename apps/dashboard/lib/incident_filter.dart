@@ -13,7 +13,8 @@ enum FilterFlag {
   secondHand('De segunda mano'),
   highUncertainty('Incertidumbre alta'),
   needsReview('A revisar'),
-  pending('Pendientes de decisión');
+  pending('Pendientes de decisión'),
+  contradictions('Con contradicciones');
 
   const FilterFlag(this.label);
   final String label;
@@ -25,6 +26,7 @@ enum FilterFlag {
     FilterFlag.highUncertainty => r.highUncertainty,
     FilterFlag.needsReview => r.needsReview,
     FilterFlag.pending => r.isPendingDecision,
+    FilterFlag.contradictions => r.contradictionCount > 0,
   };
 }
 

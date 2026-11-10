@@ -127,6 +127,7 @@ class IncidentCard extends StatelessWidget {
                           if (row.isSecondHand) const Pill('De segunda mano', color: DashColors.warn, icon: Icons.record_voice_over_outlined)
                           else if (row.hasDispatch) const Pill('Incluye informe de despachador', color: DashColors.warn, icon: Icons.record_voice_over_outlined),
                           if (!row.hasLocation) const Pill('Sin ubicación', color: DashColors.muted, icon: Icons.location_off_outlined),
+                          if (row.contradictionCount > 0) Pill(row.contradictionCount == 1 ? '1 contradicción' : 'Contradicciones (${row.contradictionCount})', key: Key('contradictions_${row.id}'), color: DashColors.danger, icon: Icons.compare_arrows),
                           if (overdue) Pill('Sin decidir ${ageLabel(row.firstAt, now)}', key: Key('overdue_${row.id}'), color: DashColors.danger, filled: true, icon: Icons.schedule),
                           Pill(recommendationChip(row), color: proposed ? DashColors.text : DashColors.muted),
                           if (showApproval) _approvalPill(approval),

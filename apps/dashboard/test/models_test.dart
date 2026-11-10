@@ -202,6 +202,10 @@ void main() {
   });
 
   group('etiquetas en español (nunca rompen con un código nuevo)', () {
+    test('«mensaje_cortado» se dice como lo que es: una duda, no una afirmación', () {
+      expect(uncertaintyLabel('mensaje_cortado'), 'Posible mensaje cortado');
+    });
+
     test('señales', () {
       expect(signalLabel('atrapado'), 'Atrapado');
       expect(signalLabel('dificultad_respiratoria'), 'Dificultad para respirar');

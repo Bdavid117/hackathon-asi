@@ -2,6 +2,7 @@
 library;
 
 export 'src/correlation.dart';
+export 'src/contradictions.dart';
 export 'src/geo.dart';
 export 'src/llm_port.dart';
 export 'src/grouping.dart';

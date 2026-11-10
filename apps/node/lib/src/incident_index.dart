@@ -77,7 +77,7 @@ class IncidentIndex {
     ];
     final bares = [for (final r in rows) if (r.bare) r];
 
-    var reports = 0, high = 0, review = 0, discrepancies = 0;
+    var reports = 0, high = 0, review = 0, discrepancies = 0, withContradictions = 0;
     final byUrgency = [0, 0, 0, 0];
     for (final r in rows) {
       byUrgency[r.u]++;
@@ -87,6 +87,7 @@ class IncidentIndex {
       if (i.summary['highUncertainty'] == true) high++;
       if (i.summary['needsReview'] == true) review++;
       if ((i.summary['approval'] as Map?)?['discrepancy'] == true) discrepancies++;
+      if (((i.summary['contradictions'] as num?) ?? 0) > 0) withContradictions++;
     }
     final pendingRows = [for (final r in rows) if (r.pending) r];
     final counters = <String, Object?>{
@@ -102,6 +103,8 @@ class IncidentIndex {
       'pendingDecision': pendingRows.length,
       'pendingOldestAt': pendingRows.isEmpty ? null : pendingRows.map((r) => r.firstAt).reduce((a, b) => a < b ? a : b),
       'discrepancies': discrepancies,
+      // Incidentes con alguna contradicción entre sus reportes (negación explícita o personas incompatibles).
+      'withContradictions': withContradictions,
       'followUp': informativeLow.length > kShortViewLowUrgency ? informativeLow.length - kShortViewLowUrgency : 0,
     };
 
