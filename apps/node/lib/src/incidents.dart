@@ -52,6 +52,12 @@ List<IncidentData> buildIncidents(List<QueueItem> items, {required List<Approval
   }
 
   final resourceById = {for (final r in resources) r.id: r};
+  // Restricciones operativas conocidas: las vías bloqueadas que reportan los incidentes (con ubicación). Cada incidente las ve
+  // todas MENOS las suyas (el agente 6 descarta las del mismo incidente). Sólo se avisa («confirmar ruta»); nada se recalcula.
+  final roadBlocks = [
+    for (final i in items)
+      if (i.signals.contains('via_bloqueada') && i.lat != null && i.lon != null) RoadBlock(lat: i.lat!, lon: i.lon!, source: i.group),
+  ];
   final built = <_Built>[];
   for (final entry in byGroup.entries) {
     final members = [...entry.value]..sort((a, b) => a.reportKey.compareTo(b.reportKey));
@@ -76,7 +82,7 @@ List<IncidentData> buildIncidents(List<QueueItem> items, {required List<Approval
       sources: members.first.sources,
       uncertainty: ({for (final m in members) ...m.uncertainty}.toList()..sort()),
     );
-    var outcome = recommend(view, resources);
+    var outcome = recommend(view, resources, blockedRoads: roadBlocks);
     if (outcome is Recommendation) {
       final bad = validateRecommendation(outcome, view, resources);
       if (bad != null) outcome = bad; // defensa en profundidad: nunca se muestra algo que no pase la puerta

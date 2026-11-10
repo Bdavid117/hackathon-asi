@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import 'geo.dart';
 import 'resources.dart';
 import 'triage.dart';
 
@@ -218,8 +219,27 @@ Citation? _citationFor(IncidentMember m, String signal) {
   return null;
 }
 
+/// Una vía bloqueada reportada por OTRO incidente: una restricción operativa conocida, no un hecho confirmado.
+class RoadBlock {
+  const RoadBlock({required this.lat, required this.lon, required this.source});
+
+  final double lat;
+  final double lon;
+
+  /// El incidente que la reportó (no cuenta contra sí mismo).
+  final String source;
+}
+
+/// A cuántos metros del trayecto «unidad → incidente» (o del propio incidente) una vía bloqueada hace pedir que se confirme
+/// la ruta. Es un criterio PROPIO del diseño, no del enunciado.
+const double kRouteBlockRadiusMeters = 500;
+
 /// Propone la movilización de recursos para [v], o pide información si no hay datos mínimos.
-RecommendationOutcome recommend(IncidentView v, List<Resource> resources) {
+///
+/// [blockedRoads] son las restricciones operativas conocidas (vías bloqueadas reportadas por otros incidentes): si una cae
+/// cerca del trayecto, se añade «confirmar_ruta» a lo que falta antes de aprobar. Sólo AVISA: no cambia acciones, recursos
+/// ni el identificador de la recomendación (una aprobación vigente no caduca por esto).
+RecommendationOutcome recommend(IncidentView v, List<Resource> resources, {List<RoadBlock> blockedRoads = const []}) {
   final members = [...v.members]..sort((a, b) => a.reportKey.compareTo(b.reportKey));
   final located = [for (final m in members) if (m.hasLocation) m];
 
@@ -261,10 +281,21 @@ RecommendationOutcome recommend(IncidentView v, List<Resource> resources) {
     }
   }
 
+  final proposed = [for (final id in resourceIds) resources.firstWhere((r) => r.id == id)];
+  var routeAtRisk = false;
+  for (final b in blockedRoads) {
+    if (b.source == v.id) continue; // un bloqueo con coordenadas no finitas no cumple ninguna comparación: no avisa ni rompe
+    if (distanceMeters(lat, lon, b.lat, b.lon) <= kRouteBlockRadiusMeters || proposed.any((r) => distanceToSegmentMeters(b.lat, b.lon, r.lat, r.lon, lat, lon) <= kRouteBlockRadiusMeters)) {
+      routeAtRisk = true;
+      break;
+    }
+  }
+
   final uncertainty = (v.uncertainty.toSet().toList()..sort());
   final pending = <String>[
     if (v.sources <= 1) 'confirmar_segunda_fuente',
     if (uncertainty.contains('ubicacion_imprecisa')) 'confirmar_ubicacion',
+    if (routeAtRisk) 'confirmar_ruta',
     if (members.every((m) => m.people == 0)) 'confirmar_personas',
     if (members.any((m) => m.signals.contains('menores_mayores') || m.signals.contains('medicacion'))) 'confirmar_necesidades_especiales',
     if (uncertainty.contains('juicios_discrepantes')) 'resolver_juicios_discrepantes',
