@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Video de presentación de SARD (≤ 60 s): narración, música y efectos sintetizados, rótulos y tomas REALES de la app y del tablero.
+"""Video de presentación de SARD (≤ 60 s): narración, música con pulso y efectos sintetizados, texto cinético y tomas REALES de la app y del tablero.
 
 No necesita ffmpeg: usa `say`/`afconvert` de macOS, Pillow y el codificador de AVFoundation (`encode.swift`).
 
@@ -26,6 +26,8 @@ FONT_FILE = '/System/Library/Fonts/Avenir Next.ttc'
 STYLE = {'Bold': 0, 'Demi': 2, 'Medium': 5, 'Regular': 7, 'Heavy': 8}
 VOICE, RATE = 'Paulina', '175'
 SR = 44100
+BPM = 100
+BEAT = 60 / BPM
 
 # ───────────────────────────── guion ─────────────────────────────
 LINES = {
@@ -36,7 +38,7 @@ LINES = {
     'l5': 'Y cuando una zona deja de reportar, el mapa lo marca. Porque el silencio no es seguridad.',
     'l6': 'SARD. Reportes que sobreviven. Decisiones que se pueden explicar.',
 }
-SUBS = {  # (texto, fracción de la narración en que entra)
+SUBS = {
     'l1': [('Un sismo. Un apagón.', 0.0), ('Y alguien que necesita que su pedido de ayuda llegue.', 0.36)],
     'l2': [('SARD convierte un toque en un reporte que sobrevive.', 0.0), ('Se guarda sin red, pesa apenas 33 bytes,', 0.34), ('y sale solo cuando vuelve la señal.', 0.72)],
     'l3': [('Cada reporte llega a una red de nodos sin jefe.', 0.0), ('Si uno cae, otro sigue;', 0.40), ('y al reunirse, vuelven a coincidir.', 0.66)],
@@ -45,9 +47,8 @@ SUBS = {  # (texto, fracción de la narración en que entra)
     'l6': [('SARD. Reportes que sobreviven.', 0.0), ('Decisiones que se pueden explicar.', 0.56)],
 }
 SCENES = [('hook', 5.4, 'l1'), ('phone', 11.0, 'l2'), ('red', 9.0, 'l3'), ('tablero', 11.0, 'l4'), ('silencio', 8.0, 'l5'), ('cierre', 7.0, 'l6')]
-LEAD, TAIL, XFADE = 0.6, 0.9, 0.5  # la voz entra LEAD s después de empezar la escena; las escenas se solapan XFADE s (fundido cruzado)
-PHONE_START, PHONE_LEN = 5.6, 11.0  # el toque en SOS cae ≈ 3,4 s después del inicio de la toma
-# Posición de lo que se ve en la pantalla de la app (fracciones del ancho y alto de la captura; medidas sobre la grabación)
+LEAD, TAIL, XFADE = 0.6, 0.9, 0.5
+PHONE_START, PHONE_LEN = 5.6, 11.0
 SOS_BTN = (0.499, 0.229)
 
 _fonts = {}
@@ -61,6 +62,10 @@ def font(size, style='Bold'):
 def clamp(x, a=0.0, b=1.0): return max(a, min(b, x))
 def ease(x): x = clamp(x); return x * x * (3 - 2 * x)
 def ease_out(x): x = clamp(x); return 1 - (1 - x) ** 3
+def ease_in(x): x = clamp(x); return x * x * x
+def back_out(x):
+    x = clamp(x); c1 = 1.70158; c3 = c1 + 1
+    return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2
 def lerp(a, b, t): return a + (b - a) * t
 def seg(t, a, b): return clamp((t - a) / (b - a))
 
@@ -90,7 +95,6 @@ def wav_samples(path):
 
 
 def timeline():
-    """Inicio, fin y voz de cada escena a partir de lo que dura de verdad la narración. Las escenas se solapan XFADE s."""
     t, out = 0.0, []
     for name, minimum, line in SCENES:
         dur = len(wav_samples(WORK / 'voz' / f'{line}.wav')) / SR
@@ -178,15 +182,26 @@ def glow(color, size, strength=0.55):
     return im
 
 
-def background(tg=0.0):
-    """Fondo con viñeta y una cuadrícula casi invisible que se desplaza despacio (movimiento de fondo, como en un video de producto)."""
-    f = sprite('bg', _make_bg).copy()
-    grid = sprite('grid', _make_grid)
-    ox, oy = int(tg * 9) % 120, int(tg * 5) % 120
-    f.alpha_composite(grid.crop((ox, oy, ox + W, oy + H)))
-    return f
+def kinetic(f, text, x, y, size, style, color, t, start, stagger=0.09, dur=0.5, dy=46):
+    """Texto cinético: cada palabra entra por su cuenta, subiendo y apareciendo."""
+    fnt = font(size, style)
+    cx = x
+    for i, w in enumerate(text.split(' ')):
+        p, d = rise(t, start + i * stagger, dur, dy)
+        paste(f, sprite(('kw', w, size, style, color), lambda w=w: text_layer(w, size, style, color)), cx, y + d, p)
+        cx += fnt.getlength(w + ' ')
 
 
+def zoom_frame(img, z, cx=0.5, cy=0.5):
+    """Movimiento de cámara: recorta un encuadre `z` veces más pequeño centrado en (cx, cy) y lo devuelve al tamaño completo."""
+    if z <= 1.0001 and cx == 0.5 and cy == 0.5: return img
+    w, h = img.size
+    cw, ch = w / z, h / z
+    x0, y0 = (w - cw) * cx, (h - ch) * cy
+    return img.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch))).resize((w, h), Image.BILINEAR)
+
+
+# ───────────────────────────── fondo vivo ─────────────────────────────
 def _make_bg():
     im = Image.new('RGB', (W, H), BG)
     v = Image.new('L', (W, H), 0)
@@ -203,6 +218,26 @@ def _make_grid():
     return g
 
 
+PARTICLES = [(random.Random(11 + i).random(), random.Random(23 + i).random(), 2 + (i % 4), 0.12 + 0.25 * random.Random(37 + i).random(), 6 + 14 * random.Random(41 + i).random()) for i in range(64)]
+
+
+def background(tg=0.0, accent=RED, energy=1.0):
+    """Viñeta + cuadrícula que se desplaza + dos auroras de color que respiran + partículas que suben. `energy` escala el movimiento."""
+    f = sprite('bg', _make_bg).copy()
+    grid = sprite('grid', _make_grid)
+    ox, oy = int(tg * 9) % 120, int(tg * 5) % 120
+    f.alpha_composite(grid.crop((ox, oy, ox + W, oy + H)))
+    a1 = sprite(('aur', accent), lambda: glow(accent, 1100, 0.22))
+    a2 = sprite(('aur', BLUE), lambda: glow(BLUE, 900, 0.16))
+    paste(f, a1, 1250 + 160 * math.sin(tg * 0.21) - 550, 300 + 120 * math.cos(tg * 0.17) - 550, 0.9)
+    paste(f, a2, 350 + 140 * math.cos(tg * 0.15) - 450, 700 + 90 * math.sin(tg * 0.19) - 450, 0.9)
+    for px, py, sz, al, speed in PARTICLES:
+        x = (px * W + 25 * math.sin(tg * 0.3 + py * 9)) % W
+        y = (py * H - tg * speed * energy) % H
+        paste(f, sprite(('part', sz), lambda sz=sz: disc(sz * 2, (238, 241, 245, 255))), x, y, al * (0.6 + 0.4 * math.sin(tg * 1.7 + px * 20)))
+    return f
+
+
 def chip(text, color, size=40):
     def make():
         f = font(size, 'Demi')
@@ -211,6 +246,13 @@ def chip(text, color, size=40):
         ImageDraw.Draw(im).text((28, 16), text, font=f, fill=TEXT + (255,))
         return im
     return sprite(('chip', text, color, size), make)
+
+
+def brand(f, a=1.0):
+    """Marca pequeña arriba a la izquierda (en las escenas de producto)."""
+    m = sprite('mark_s', lambda: Image.open(ASSETS / 'sard-mark.png').convert('RGBA').crop((190, 190, 834, 834)).resize((54, 54), Image.LANCZOS))
+    paste(f, m, 120, 58, a)
+    paste(f, sprite('brand_t', lambda: text_layer('SARD', 34, 'Heavy', TEXT)), 186, 62, a)
 
 
 def make_x(size=96, width=14, ss=3):
@@ -235,45 +277,57 @@ def cursor_sprite():
 
 
 def pulse_ring(f, cx, cy, p, color=RED, max_d=220, width=5):
-    """Onda que sale de un punto (clic, llegada de un paquete)."""
     if not 0 < p < 1: return
     d = int(30 + ease_out(p) * max_d)
     paste(f, ring(d, color, width), cx - d // 2, cy - d // 2, (1 - p) ** 1.4 * 0.9)
 
 
+def counter(f, value, suffix, x, y, size, color, a=1.0):
+    lay = text_layer(f'{value:,}'.replace(',', ' ') + suffix, size, 'Heavy', color)
+    paste(f, lay, x, y, a)
+
+
 # ───────────────────────────── escena 0 · gancho ─────────────────────────────
 def seismo_wave(t, x):
-    """Un sismógrafo: se agita con el sismo, se queda plano con el apagón y deja pasar un pulso (el SOS)."""
     env = 0.0
-    if 0.3 <= t < 1.2: env = math.exp(-(t - 0.3) * 0.9) * min(1.0, (t - 0.3) / 0.15)
-    y = env * 95 * (math.sin(x * 0.045 + t * 31) * 0.6 + math.sin(x * 0.11 - t * 47) * 0.3 + math.sin(x * 0.021 + t * 13) * 0.4)
-    if t >= 2.5:  # un pulso que cruza la pantalla
+    if 0.3 <= t < 1.25: env = math.exp(-(t - 0.3) * 0.9) * min(1.0, (t - 0.3) / 0.12)
+    y = env * 110 * (math.sin(x * 0.045 + t * 31) * 0.6 + math.sin(x * 0.11 - t * 47) * 0.3 + math.sin(x * 0.021 + t * 13) * 0.4)
+    if t >= 2.5:
         c = (t - 2.5) * 900
-        y += -170 * math.exp(-((x - c) / 26) ** 2) + 70 * math.exp(-((x - c + 60) / 22) ** 2)
+        y += -180 * math.exp(-((x - c) / 26) ** 2) + 70 * math.exp(-((x - c + 60) / 22) ** 2)
     return y
 
 
 def scene_hook(t, tg):
-    f = background(tg)
+    f = background(tg, RED, 1.6)
     base_y = 930
     pts = [(x, base_y + seismo_wave(t, x)) for x in range(0, W + 8, 8)]
     lay = Image.new('RGBA', (W, 460), (0, 0, 0, 0))
     ImageDraw.Draw(lay).line([(x, y - (base_y - 230)) for x, y in pts], fill=RED + (255,), width=4, joint='curve')
-    gl = lay.filter(ImageFilter.GaussianBlur(10))
-    paste(f, gl, 0, base_y - 230, 0.9 * ease(seg(t, 0.1, 0.5)))
-    paste(f, lay, 0, base_y - 230, 0.95 * ease(seg(t, 0.1, 0.5)))
+    on = ease(seg(t, 0.1, 0.5))
+    paste(f, lay.filter(ImageFilter.GaussianBlur(10)), 0, base_y - 230, 0.9 * on)
+    paste(f, lay, 0, base_y - 230, 0.95 * on)
     cx, cy = 1230, 440
     for k in range(4):
         p = ((t * 0.55) + k / 4) % 1.0
         size = int(80 + p * 900)
         paste(f, ring(size, RED, 5), cx - size // 2, cy - size // 2, (1 - p) ** 1.5 * 0.6)
-    mark = sprite('mark', lambda: Image.open(ASSETS / 'sard-mark.png').convert('RGBA').crop((190, 190, 834, 834)).resize((440, 440), Image.LANCZOS))
-    sc = lerp(0.9, 1.0, ease_out(seg(t, 0.2, 1.2)))
-    m = mark.resize((int(440 * sc), int(440 * sc)), Image.LANCZOS)
-    paste(f, m, cx - m.width // 2, cy - m.height // 2, ease(seg(t, 0.2, 0.9)))
-    for txt, st, color, size, y in [('Sismo.', 0.35, TEXT, 150, 200), ('Apagón.', 1.2, TEXT, 150, 350), ('Un SOS que\ntiene que llegar.', 2.55, RED, 84, 540)]:
-        p, dy = rise(t, st, 0.5)
-        paste(f, sprite(('hook', txt), lambda txt=txt, size=size, color=color: text_layer(txt, size, 'Heavy', color)), 150, y + dy, p)
+    mark = sprite('mark', lambda: Image.open(ASSETS / 'sard-mark.png').convert('RGBA').crop((190, 190, 834, 834)).resize((520, 520), Image.LANCZOS))
+    sc = 0.55 + 0.45 * back_out(seg(t, 0.15, 1.0))
+    m = mark.resize((max(2, int(440 * sc)), max(2, int(440 * sc))), Image.LANCZOS)
+    paste(f, m, cx - m.width // 2, cy - m.height // 2, ease(seg(t, 0.15, 0.6)))
+    kinetic(f, 'Sismo.', 150, 200, 150, 'Heavy', TEXT, t, 0.35, dur=0.45, dy=60)
+    kinetic(f, 'Apagón.', 150, 350, 150, 'Heavy', TEXT, t, 1.2, dur=0.45, dy=60)
+    kinetic(f, 'Un SOS que', 150, 540, 84, 'Heavy', RED, t, 2.55)
+    kinetic(f, 'tiene que llegar.', 150, 635, 84, 'Heavy', RED, t, 2.85)
+    # cámara: sacudida con el sismo, y un «corte de luz» con el apagón
+    if 0.3 <= t < 1.25:
+        amp = 9 * math.exp(-(t - 0.3) * 2.2)
+        rnd = random.Random(int(t * 60))
+        f = zoom_frame(f, 1.03, 0.5 + rnd.uniform(-amp, amp) / 100, 0.5 + rnd.uniform(-amp, amp) / 100)
+    dark = ease(seg(t, 1.2, 1.3)) * (1 - ease(seg(t, 1.38, 1.9)))
+    if dark > 0:
+        f = Image.blend(f, Image.new('RGBA', (W, H), (4, 5, 7, 255)), 0.92 * dark)
     return f
 
 
@@ -290,33 +344,39 @@ def phone_frame_image(i):
 
 
 def scene_phone(t, tg):
-    f = background(tg)
-    py = PY + 7 * math.sin(t * 1.3)  # el teléfono «respira»
-    on = ease(seg(t, 0, 0.6))
-    gl = sprite('pgl', lambda: glow(RED, 900, 0.5))  # resplandor detrás: se enciende al tocar SOS
-    paste(f, gl, PX + PH_W // 2 - 450, py + PH_H // 2 - 450, 0.35 * on + 0.55 * ease_out(seg(t, 3.3, 3.7)) * (1 - ease(seg(t, 3.7, 6.0))))
+    f = background(tg, RED, 1.0)
+    brand(f, ease(seg(t, 0.4, 0.9)))
+    enter = back_out(seg(t, 0.0, 0.9))
+    px = lerp(PX + 420, PX, enter)
+    py = PY + 7 * math.sin(t * 1.3)
+    on = ease(seg(t, 0, 0.5))
+    gl = sprite('pgl', lambda: glow(RED, 900, 0.5))
+    paste(f, gl, px + PH_W // 2 - 450, py + PH_H // 2 - 450, 0.3 * on + 0.6 * ease_out(seg(t, 3.3, 3.7)) * (1 - ease(seg(t, 3.7, 6.0))))
     sh = sprite('shadow', lambda: rounded((PH_W + 40, PH_H + 40), 80, (0, 0, 0, 150)).filter(ImageFilter.GaussianBlur(26)))
-    paste(f, sh, PX - 20, py + 14, on)
-    paste(f, sprite('bezel', lambda: rounded((PH_W, PH_H), 66, (10, 13, 17, 255), (62, 74, 92, 255), 3)), PX, py, on)
+    paste(f, sh, px - 20, py + 14, on)
+    paste(f, sprite('bezel', lambda: rounded((PH_W, PH_H), 66, (10, 13, 17, 255), (62, 74, 92, 255), 3)), px, py, on)
     idx = int(clamp(t, 0, PHONE_LEN - 0.034) * FPS)
     layer = Image.new('RGBA', (SC_W, SC_H), (0, 0, 0, 0))
     layer.paste(phone_frame_image(idx), (0, 0)); layer.putalpha(sprite('smask', lambda: rounded((SC_W, SC_H), 52, (255, 255, 255, 255)).getchannel('A')))
-    sx, sy = PX + (PH_W - SC_W) // 2, py + (PH_H - SC_H) // 2
+    sx, sy = px + (PH_W - SC_W) // 2, py + (PH_H - SC_H) // 2
     paste(f, layer, sx, sy, on)
-    pulse_ring(f, sx + SOS_BTN[0] * SC_W, sy + SOS_BTN[1] * SC_H, seg(t, 3.3, 4.1), RED, 190, 6)  # onda del toque en SOS
-    items = [  # rótulos con una línea guía hasta lo que explican
+    pulse_ring(f, sx + SOS_BTN[0] * SC_W, sy + SOS_BTN[1] * SC_H, seg(t, 3.3, 4.1), RED, 190, 6)
+    items = [
         (3.2, (3.2, 4.0), '1', 'Un toque', RED, 'Se guarda al instante.', (0.30, SOS_BTN[1])),
         (4.0, (4.0, 7.0), '2', 'Sin red, no se pierde', AMBER, 'Queda en el teléfono: «Esperando señal».', (0.04, 0.46)),
         (7.0, (7.0, 11.0), '3', 'Sale sola al volver la señal', GREEN, '«Enviado a un nodo».', (0.04, 0.46)),
     ]
     for k, (a, (lo, hi), num, title, color, sub, target) in enumerate(items):
-        p, dy = rise(t, a, 0.5)
+        p, dy = rise(t, a, 0.5, 40)
         if p <= 0: continue
-        y = 270 + k * 190 + dy
-        paste(f, sprite(('num', num), lambda color=color: disc(86, color + (255,))), 120, y, p)
-        paste(f, sprite(('numt', num), lambda num=num: text_layer(num, 54, 'Heavy', TEXT)), 151, y + 10, p)
-        paste(f, sprite(('tt', title), lambda title=title: text_layer(title, 62, 'Heavy', TEXT)), 240, y - 6, p)
-        paste(f, sprite(('ts', sub), lambda sub=sub: text_layer(sub, 36, 'Medium', MUTED)), 242, y + 68, p)
+        y = 250 + k * 190 + dy
+        scd = 0.6 + 0.4 * back_out(seg(t, a, a + 0.5))
+        dsc = sprite(('num', num), lambda color=color: disc(86, color + (255,)))
+        d2 = dsc.resize((max(2, int(86 * scd)), max(2, int(86 * scd))), Image.LANCZOS)
+        paste(f, d2, 163 - d2.width // 2, y + 43 - d2.height // 2, p)
+        paste(f, sprite(('numt', num), lambda num=num: text_layer(num, 54, 'Heavy', TEXT)), 151, y + 10, p * ease(seg(t, a + 0.2, a + 0.4)))
+        kinetic(f, title, 240, y - 6, 62, 'Heavy', TEXT, t, a + 0.05, stagger=0.06, dur=0.4, dy=24)
+        paste(f, sprite(('ts', sub), lambda sub=sub: text_layer(sub, 36, 'Medium', MUTED)), 242, y + 68, ease(seg(t, a + 0.3, a + 0.6)))
         pl = ease(seg(t, lo + 0.25, lo + 0.75)) * ((1 - ease(seg(t, hi - 0.4, hi))) if k < 2 else 1.0)
         if pl > 0:
             ax, ay = 1130, y + 44
@@ -326,10 +386,13 @@ def scene_phone(t, tg):
             ImageDraw.Draw(ln).line((ax, ay, ex, ey), fill=color + (200,), width=3)
             f.alpha_composite(ln)
             paste(f, sprite(('dot', color), lambda color=color: disc(18, color + (255,))), ex - 9, ey - 9, 1.0)
+    # 239 B (JSON) → 33 B: contador que baja
     p, dy = rise(t, 5.2, 0.5)
     outv = 1 - ease(seg(t, 7.0, 7.4))
-    paste(f, sprite('33b', lambda: text_layer('33 B', 130, 'Heavy', BLUE)), 120, 800 + dy, p * outv)
-    paste(f, sprite('33bs', lambda: text_layer('lo que pesa un SOS', 38, 'Medium', MUTED)), 126, 930 + dy, p * outv)
+    if p * outv > 0:
+        v = int(round(lerp(239, 33, ease(seg(t, 5.3, 6.2)))))
+        counter(f, v, ' B', 120, 790 + dy, 130, BLUE if v == 33 else MUTED, p * outv)
+        paste(f, sprite('33bs', lambda: text_layer('lo que pesa un SOS · en JSON serían 239 B', 36, 'Medium', MUTED)), 126, 930 + dy, p * outv)
     return f
 
 
@@ -353,7 +416,7 @@ def along(p, q, s): return (lerp(p[0], q[0], s), lerp(p[1], q[1], s))
 
 def packet(f, p, q, s, color=AMBER, r=22):
     if not 0 < s < 1: return
-    for k, a in ((3, 0.18), (2, 0.3), (1, 0.5)):  # estela
+    for k, a in ((3, 0.18), (2, 0.3), (1, 0.5)):
         x, y = along(p, q, ease(max(0.0, s - 0.035 * k)))
         paste(f, sprite(('pkt', color, r), lambda: disc(int(r * 1.5), color + (255,))), x - r * 0.75, y - r * 0.75, a)
     x, y = along(p, q, ease(s))
@@ -362,7 +425,8 @@ def packet(f, p, q, s, color=AMBER, r=22):
 
 
 def scene_red(t, tg):
-    f = background(tg)
+    f = background(tg, BLUE, 1.2)
+    brand(f, 1.0)
     dr = ImageDraw.Draw(f)
     fall, back = 3.4, 5.7
     a_alive = not (fall <= t < back)
@@ -388,8 +452,12 @@ def scene_red(t, tg):
     paste(f, sprite('bd_icon', lambda: rounded((250, 170), 22, (27, 34, 43, 255), GREEN + (255,), 5)), BOARD_POS[0] - 125, BOARD_POS[1] - 85, on)
     paste(f, sprite('bd_s', lambda: text_layer('Tablero', 40, 'Heavy', TEXT)), BOARD_POS[0] - 72, BOARD_POS[1] - 28, on)
     colors = {'A': RED if not a_alive else GREEN, 'B': GREEN, 'C': GREEN}
-    for k, (x, y) in NODES.items():
-        paste(f, node_sprite(k, colors[k]), x - 75, y - 75, on)
+    for i, (k, (x, y)) in enumerate(NODES.items()):
+        beat = 1 + 0.04 * max(0.0, math.sin((t - i * 0.2) * 2 * math.pi / BEAT)) ** 6  # latido al compás
+        ns = node_sprite(k, colors[k])
+        if beat > 1.001:
+            ns = ns.resize((int(150 * beat), int(150 * beat)), Image.LANCZOS)
+        paste(f, ns, x - ns.width // 2, y - ns.height // 2, on * (0.6 + 0.4 * back_out(seg(t, 0.1 + i * 0.12, 0.7 + i * 0.12))))
     if not a_alive:
         paste(f, sprite('x', make_x), NODES['A'][0] - 48, NODES['A'][1] - 48, ease(seg(t, fall, fall + 0.2)))
         paste(f, sprite('kill', lambda: text_layer('kill -9', 40, 'Heavy', RED)), NODES['A'][0] - 62, NODES['A'][1] - 140, ease(seg(t, fall, fall + 0.3)))
@@ -402,7 +470,7 @@ def scene_red(t, tg):
     packet(f, NODES['B'], NODES['C'], seg(t, 4.8, 5.4), BLUE)
     packet(f, NODES['C'], BOARD_POS, seg(t, 5.4, 5.9), GREEN)
     for at, pos, col in [(1.3, NODES['A'], BLUE), (2.0, NODES['B'], BLUE), (2.0, NODES['C'], BLUE), (2.6, BOARD_POS, GREEN), (4.8, NODES['B'], BLUE), (5.4, NODES['C'], BLUE), (5.9, BOARD_POS, GREEN)]:
-        pulse_ring(f, pos[0], pos[1], seg(t, at, at + 0.7), col, 190, 4)  # ondas cuando llega algo
+        pulse_ring(f, pos[0], pos[1], seg(t, at, at + 0.7), col, 190, 4)
     if t >= back:
         for src in 'BC': packet(f, NODES[src], NODES['A'], seg(t, back, back + 0.7), BLUE)
         pulse_ring(f, *NODES['A'], seg(t, back + 0.7, back + 1.5), GREEN, 260, 5)
@@ -410,30 +478,30 @@ def scene_red(t, tg):
         for k, (x, y) in NODES.items():
             paste(f, sprite('hash', lambda: rounded((300, 60), 30, (27, 34, 43, 255), GREEN + (255,), 3)), x - 150, y + 92, p)
             paste(f, sprite('hasht', lambda: text_layer('huella fa1404d6', 30, 'Demi', GREEN)), x - 128, y + 100, p)
-    p, dy = rise(t, 0.2)
-    paste(f, sprite('t_red', lambda: text_layer('Sin nodo principal.', 84, 'Heavy', TEXT)), 120, 90 + dy, p)
+    kinetic(f, 'Sin nodo principal.', 120, 130, 84, 'Heavy', TEXT, t, 0.2)
     if t >= fall + 0.3:
         msg = ('Un nodo cae.', RED, fall + 0.3) if t < back else ('Vuelve y coincide.', GREEN, back + 0.5)
-        p, dy = rise(t, msg[2], 0.4)
-        paste(f, sprite(('m', msg[0]), lambda: text_layer(msg[0], 52, 'Demi', msg[1])), 124, 215 + dy, p)
-    return f
+        kinetic(f, msg[0], 124, 250, 52, 'Demi', msg[1], t, msg[2], stagger=0.07, dur=0.35, dy=20)
+    # cámara: zoom lento y, al caer A, un golpe
+    z = 1.0 + 0.04 * ease(seg(t, 0, 9)) + 0.03 * (1 - ease(seg(t, fall, fall + 0.5))) * (t >= fall)
+    return zoom_frame(f, z, 0.55, 0.5)
 
 
 # ───────────────────────────── escena 3 · el tablero ─────────────────────────────
 WIN_X, WIN_Y, BAR = 240, 46, 44
 CLICK_AT = 3.1
-CARD1 = (330, 322)  # el primer P1 de la lista, en píxeles de la captura de 1440 × 900
+CARD1 = (330, 322)
+WHY, REC = (671, 293, 1424, 528), (671, 718, 1424, 900)  # tarjetas del detalle en la captura de 1440 × 900
 
 
 def board_img(name): return sprite(('board', name), lambda: Image.open(ASSETS / name).convert('RGB'))
 
 
 def view(t):
-    """Zoom lento sobre la lista y, tras el clic, sobre el detalle. Devuelve (zoom, x0, y0) para convertir coordenadas de la captura."""
     if t < CLICK_AT + 0.35:
         z, cx, cy = lerp(1.0, 1.14, ease(seg(t, 0, CLICK_AT))), 0.0, 0.5
     else:
-        z, cx, cy = lerp(1.18, 1.28, ease(seg(t, CLICK_AT + 0.35, 11.0))), 1.0, 0.3
+        z, cx, cy = lerp(1.18, 1.3, ease(seg(t, CLICK_AT + 0.35, 11.0))), 1.0, lerp(0.15, 0.55, ease(seg(t, 5.0, 9.0)))
     cw, ch = 1440 / z, 900 / z
     return z, (1440 - cw) * cx, (900 - ch) * cy
 
@@ -441,6 +509,9 @@ def view(t):
 def crop_view(img, z, x0, y0):
     cw, ch = 1440 / z, 900 / z
     return img.crop((int(x0), int(y0), int(x0 + cw), int(y0 + ch))).resize((1440, 900), Image.BILINEAR)
+
+
+def to_screen(px, py, z, x0, y0, wy): return WIN_X + (px - x0) * z, wy + BAR + (py - y0) * z
 
 
 def window_bar():
@@ -455,8 +526,14 @@ def window_bar():
     return sprite('wbar', make)
 
 
+def outline(f, x0, y0, x1, y1, color, a, width=4):
+    if a <= 0 or x1 - x0 < 10 or y1 - y0 < 10: return
+    box = rounded((int(x1 - x0), int(y1 - y0)), 14, (0, 0, 0, 0), color + (255,), width)
+    paste(f, box, x0, y0, a)
+
+
 def scene_tablero(t, tg):
-    f = background(tg)
+    f = background(tg, BLUE, 0.8)
     lista, det = board_img('tablero-lista.png'), board_img('tablero-detalle.png')
     mix = ease(seg(t, CLICK_AT + 0.08, CLICK_AT + 0.33))
     a = crop_view(lista, *view(min(t, CLICK_AT)))
@@ -467,17 +544,28 @@ def scene_tablero(t, tg):
     full.alpha_composite(content, (0, BAR))
     full.putalpha(sprite('wmask', lambda: rounded((1440, 900 + BAR), 18, (255, 255, 255, 255)).getchannel('A')))
     on = ease(seg(t, 0, 0.6))
-    paste(f, sprite('wsh', lambda: rounded((1500, 900 + BAR + 60), 26, (0, 0, 0, 175)).filter(ImageFilter.GaussianBlur(28))), WIN_X - 30, WIN_Y - 10, on)
-    paste(f, full, WIN_X, WIN_Y + (1 - on) * 24, on)
-    # cursor: llega al primer P1, hace clic y se abre su detalle
+    wy = WIN_Y + (1 - back_out(seg(t, 0, 0.8))) * 160
+    paste(f, sprite('wsh', lambda: rounded((1500, 900 + BAR + 60), 26, (0, 0, 0, 175)).filter(ImageFilter.GaussianBlur(28))), WIN_X - 30, wy - 10, on)
+    paste(f, full, WIN_X, wy, on)
+    brand(f, 0.0)
+    # cursor → clic en el primer P1
     zl, xl, yl = view(min(t, CLICK_AT))
-    tx, ty = WIN_X + (CARD1[0] - xl) * zl, WIN_Y + BAR + (CARD1[1] - yl) * zl
-    sx, sy = WIN_X + 1000, WIN_Y + BAR + 640
+    tx, ty = to_screen(CARD1[0], CARD1[1], zl, xl, yl, wy)
+    sx, sy = WIN_X + 1000, wy + BAR + 640
     pc = ease(seg(t, 1.5, CLICK_AT - 0.1))
     cxp, cyp = lerp(sx, tx, pc), lerp(sy, ty, pc) + 40 * math.sin(pc * math.pi)
     if t < CLICK_AT + 1.4:
         paste(f, cursor_sprite(), cxp, cyp, ease(seg(t, 1.2, 1.6)) * (1 - ease(seg(t, CLICK_AT + 0.9, CLICK_AT + 1.4))))
         pulse_ring(f, tx, ty, seg(t, CLICK_AT, CLICK_AT + 0.7), BLUE, 140, 4)
+    # resaltes sobre lo que explican los rótulos
+    if t >= CLICK_AT + 0.35:
+        z, x0, y0 = view(t)
+        for (bx0, by0, bx1, by1), color, a0, a1 in [(WHY, AMBER, 4.0, 7.0), (REC, GREEN, 5.6, 11.0)]:
+            al = ease(seg(t, a0, a0 + 0.5)) * (1 - ease(seg(t, a1 - 0.4, a1))) * (0.75 + 0.25 * math.sin(t * 5))
+            px0, py0 = to_screen(bx0, by0, z, x0, y0, wy)
+            px1, py1 = to_screen(bx1, by1, z, x0, y0, wy)
+            px0, py0, px1, py1 = max(px0, WIN_X + 6), max(py0, wy + BAR + 6), min(px1, WIN_X + 1434), min(py1, wy + 900 + BAR - 6)
+            outline(f, px0, py0, px1, py1, color, al)
     chips = [
         (1.0, 3.0, 'Lo urgente, primero', RED, 120, 850),
         (2.0, 3.0, 'Llegó desde el teléfono', BLUE, 640, 850),
@@ -486,67 +574,81 @@ def scene_tablero(t, tg):
         (7.2, 11.0, 'Aprueba una persona', GREEN, 1250, 850),
     ]
     for a_, b_, text, color, x, y in chips:
-        pp, dy = rise(t, a_, 0.45)
+        pp, dy = rise(t, a_, 0.45, 40)
         out = 1 - ease(seg(t, b_ - 0.35, b_)) if b_ < 10.9 else 1.0
         paste(f, chip(text, color, 40), x, y + dy, pp * out)
     return f
 
 
 # ───────────────────────────── escena 4 · el silencio ─────────────────────────────
-ZONAS = [(448, 110), (380, 249), (239, 357), (490, 406)]  # centros de las zonas rayadas en el recorte de 655×680
+ZONAS = [(448, 110), (380, 249), (239, 357), (490, 406)]
 
 
 def scene_silencio(t, tg):
-    f = background(tg)
+    f = background(tg, VIOLET, 0.6)
+    brand(f, 1.0)
     crop = sprite('mapa', lambda: Image.open(ASSETS / 'expo-mapa-silencio-recorte.png').convert('RGB'))
     s = 1.3
     mw, mh = int(crop.width * s), int(crop.height * s)
-    mx, my = 1030, 70
+    mx, my = 1030 + 10 * math.sin(t * 0.5), 70 + 6 * math.cos(t * 0.4)
     p = ease(seg(t, 0, 0.6))
     img = sprite('mapa_s', lambda: crop.resize((mw, mh), Image.BILINEAR).convert('RGBA'))
     framed = img.copy(); framed.putalpha(sprite('mapa_m', lambda: rounded((mw, mh), 22, (255, 255, 255, 255)).getchannel('A')))
     paste(f, sprite('msh', lambda: rounded((mw + 30, mh + 30), 30, (0, 0, 0, 170)).filter(ImageFilter.GaussianBlur(24))), mx - 15, my + 5, p)
-    paste(f, framed, mx, my, p)
+    paste(f, framed, mx + (1 - back_out(seg(t, 0, 0.8))) * 300, my, p)
+    # un barrido de radar que cruza el mapa y «enciende» las zonas
+    sweep = (t * 0.25) % 1.0
+    sw = Image.new('RGBA', (mw, mh), (0, 0, 0, 0))
+    sx = int(sweep * mw)
+    ImageDraw.Draw(sw).rectangle((sx - 60, 0, sx, mh), fill=VIOLET + (36,))
+    ImageDraw.Draw(sw).line((sx, 0, sx, mh), fill=VIOLET + (150,), width=2)
+    sw.putalpha(ImageChops.multiply(sw.getchannel('A'), sprite('mapa_m', lambda: rounded((mw, mh), 22, (255, 255, 255, 255)).getchannel('A'))))
+    paste(f, sw, mx, my, p * ease(seg(t, 1.0, 1.6)))
     for k, (bx, by) in enumerate(ZONAS):
         on = ease(seg(t, 1.2 + 0.25 * k, 1.8 + 0.25 * k))
         for j in range(2):
             ph = ((t * 0.8) + j * 0.5 + k * 0.17) % 1.0
             size = int(60 + ph * 120)
             paste(f, ring(size, VIOLET, 4), mx + bx * s - size // 2, my + by * s - size // 2, (1 - ph) * 0.9 * on)
-    pt, dy = rise(t, 0.25)
-    paste(f, sprite('t_sil', lambda: text_layer('El silencio\nno es seguridad.', 92, 'Heavy', TEXT, line_gap=1.08)), 110, 150 + dy, pt)
+    kinetic(f, 'El silencio', 110, 150, 92, 'Heavy', TEXT, t, 0.25)
+    kinetic(f, 'no es seguridad.', 110, 252, 92, 'Heavy', TEXT, t, 0.45)
     for k, (text, a) in enumerate([('Zonas que reportaron y callaron.', 2.2), ('Rayadas, bajo los incidentes.', 3.6), ('Una marca, no una conclusión.', 5.0)]):
-        pp, dy = rise(t, a, 0.5)
-        paste(f, sprite(('sl', text), lambda text=text: text_layer(text, 44, 'Medium', MUTED)), 116, 470 + k * 90 + dy, pp)
-    return f
+        kinetic(f, text, 116, 470 + k * 90, 44, 'Medium', MUTED, t, a, stagger=0.05, dur=0.4, dy=20)
+    return zoom_frame(f, 1.0 + 0.035 * ease(seg(t, 0, 8)), 0.6, 0.45)
 
 
 # ───────────────────────────── escena 5 · cierre ─────────────────────────────
 def scene_cierre(t, tg):
-    f = background(tg)
-    mark = sprite('mark_big', lambda: Image.open(ASSETS / 'sard-mark.png').convert('RGBA').crop((190, 190, 834, 834)).resize((420, 420), Image.LANCZOS))
+    f = background(tg, RED, 0.8)
+    mark = sprite('mark_big', lambda: Image.open(ASSETS / 'sard-mark.png').convert('RGBA').crop((190, 190, 834, 834)).resize((520, 520), Image.LANCZOS))
     p = ease_out(seg(t, 0.1, 0.9))
-    for k in range(3):  # el SOS que se propaga, otra vez, tranquilo
+    sc = 0.5 + 0.5 * back_out(seg(t, 0.1, 0.9))
+    m = mark.resize((max(2, int(420 * sc)), max(2, int(420 * sc))), Image.LANCZOS)
+    for k in range(3):
         ph = ((t * 0.4) + k / 3) % 1.0
         size = int(420 + ph * 500)
-        paste(f, ring(size, RED, 4), 250 + 210 - size // 2, 190 + 210 - size // 2, (1 - ph) ** 1.6 * 0.35 * p)
-    paste(f, mark, 250, 190 + (1 - p) * 20, p)
-    paste(f, sprite('sard', lambda: text_layer('SARD', 190, 'Heavy', TEXT)), 760, 190 + (1 - p) * 20, p)
-    paste(f, sprite('sub', lambda: text_layer('Reportes que sobreviven.\nDecisiones que se pueden explicar.', 56, 'Demi', MUTED, line_gap=1.2)), 764, 410 + (1 - p) * 20, ease(seg(t, 0.6, 1.3)))
-    for k, (big, small, color) in enumerate([('33 B', 'por SOS', BLUE), ('0', 'nodos principales', GREEN), ('2 069', 'pruebas automáticas', AMBER)]):
-        pp, dy = rise(t, 1.5 + 0.25 * k, 0.5)
+        paste(f, ring(size, RED, 4), 460 - size // 2, 400 - size // 2, (1 - ph) ** 1.6 * 0.35 * p)
+    pulse_ring(f, 460, 400, seg(t, 0.15, 1.1), RED, 700, 6)
+    paste(f, m, 460 - m.width // 2, 400 - m.height // 2, p)
+    kinetic(f, 'SARD', 760, 190, 190, 'Heavy', TEXT, t, 0.3, dur=0.6, dy=60)
+    kinetic(f, 'Reportes que sobreviven.', 764, 410, 56, 'Demi', MUTED, t, 0.8, stagger=0.06)
+    kinetic(f, 'Decisiones que se pueden explicar.', 764, 478, 56, 'Demi', MUTED, t, 1.1, stagger=0.06)
+    for k, (target, suffix, small, color) in enumerate([(33, ' B', 'por SOS', BLUE), (0, '', 'nodos principales', GREEN), (2069, '', 'pruebas automáticas', AMBER)]):
+        a0 = 1.6 + 0.25 * k
+        pp, dy = rise(t, a0, 0.5, 40)
         x = 190 + k * 540
         paste(f, sprite(('st_c', k), lambda: rounded((500, 190), 28, (27, 34, 43, 255))), x, 640 + dy, pp)
-        paste(f, sprite(('st_b', big), lambda big=big, color=color: text_layer(big, 84, 'Heavy', color)), x + 36, 664 + dy, pp)
+        v = int(round(target * ease_out(seg(t, a0 + 0.2, a0 + 1.3)))) if target else 0
+        counter(f, v, suffix, x + 36, 664 + dy, 84, color, pp)
         paste(f, sprite(('st_s', small), lambda small=small: text_layer(small, 36, 'Medium', MUTED)), x + 40, 770 + dy, pp)
-    paste(f, sprite('credit', lambda: text_layer('Hackathon Expo ASI 2026 · Universidad Nacional de Colombia, Sede Manizales', 36, 'Medium', MUTED)), 190, 900, ease(seg(t, 2.6, 3.2)))
+    paste(f, sprite('credit', lambda: text_layer('Hackathon Expo ASI 2026 · Universidad Nacional de Colombia, Sede Manizales', 36, 'Medium', MUTED)), 190, 900, ease(seg(t, 2.8, 3.4)))
     return f
 
 
 SCENE_FN = {'hook': scene_hook, 'phone': scene_phone, 'red': scene_red, 'tablero': scene_tablero, 'silencio': scene_silencio, 'cierre': scene_cierre}
 
 
-# ───────────────────────────── subtítulos y fotograma ─────────────────────────────
+# ───────────────────────────── subtítulos, progreso y fotograma ─────────────────────────────
 def subtitle_cues(tl):
     cues = []
     for sc in tl:
@@ -568,6 +670,7 @@ def draw_subtitle(f, text, a):
 
 def frame_at(t, tl, cues):
     active = [(i, sc) for i, sc in enumerate(tl) if sc['start'] <= t < sc['end']]
+    total = tl[-1]['end']
     if not active:
         return background(t).convert('RGB')
     n = len(tl)
@@ -575,27 +678,31 @@ def frame_at(t, tl, cues):
     for i, sc in active:
         local = t - sc['start']
         length = sc['end'] - sc['start']
-        fr = SCENE_FN[sc['name']](local, t).convert('RGB')
+        fr = SCENE_FN[sc['name']](local, t)
         win = ease(seg(local, 0, XFADE)) if i > 0 else ease(seg(local, 0, 0.5))
         wout = 1 - ease(seg(local, length - XFADE, length)) if i < n - 1 else 1 - ease(seg(local, length - 0.9, length))
-        frames.append((fr, win, wout))
-    if len(frames) == 2:  # fundido cruzado entre la que sale y la que entra
+        # empuje de cámara en la transición: la que sale se acerca, la que entra llega desde más cerca
+        if i > 0 and local < XFADE: fr = zoom_frame(fr, 1.0 + 0.06 * (1 - ease(seg(local, 0, XFADE))))
+        if i < n - 1 and local > length - XFADE: fr = zoom_frame(fr, 1.0 + 0.06 * ease(seg(local, length - XFADE, length)))
+        frames.append((fr.convert('RGB'), win, wout))
+    if len(frames) == 2:
         out = Image.blend(frames[0][0], frames[1][0], frames[1][1])
     else:
         fr, win, wout = frames[0]
         w = min(win, wout)
         out = Image.blend(background(t).convert('RGB'), fr, w) if w < 1 else fr
+    o = out.convert('RGBA')
     for a, b, text, name in cues:
         if name == 'cierre' or not (a <= t < b): continue
-        alpha = ease(seg(t, a + 0.03, a + 0.18)) * (1 - ease(seg(t, b - 0.12, b)))  # sale antes de que entre el siguiente: nunca dos a la vez
-        if alpha > 0:
-            o = out.convert('RGBA'); draw_subtitle(o, text, alpha); out = o.convert('RGB')
-    return out
+        alpha = ease(seg(t, a + 0.03, a + 0.18)) * (1 - ease(seg(t, b - 0.12, b)))
+        if alpha > 0: draw_subtitle(o, text, alpha)
+    # barra de progreso, fina, abajo
+    ImageDraw.Draw(o).rectangle((0, H - 5, int(W * t / total), H), fill=RED + (230,))
+    return o.convert('RGB')
 
 
 # ───────────────────────────── audio ─────────────────────────────
 def process_voice(raw):
-    """Voz de estudio: filtro de graves (80 Hz), compresión suave y nivel parejo."""
     x = [v / 32768.0 for v in raw]
     n = len(x)
     rc = 1 / (2 * math.pi * 80)
@@ -603,7 +710,7 @@ def process_voice(raw):
     y, px, py = [0.0] * n, 0.0, 0.0
     for i in range(n):
         py = a * (py + x[i] - px); px = x[i]; y[i] = py
-    thr, ratio = 0.10, 3.0  # compresor: umbral −20 dBFS, razón 3:1, ataque 5 ms, relajación 140 ms
+    thr, ratio = 0.10, 3.0
     att, rel = math.exp(-1 / (0.005 * SR)), math.exp(-1 / (0.14 * SR))
     env = 0.0
     out = [0.0] * n
@@ -616,13 +723,100 @@ def process_voice(raw):
 
 
 def noise_sweep(n, lo, hi, rnd):
-    """Ruido con un filtro paso bajo cuya frecuencia sube de `lo` a `hi` (un «whoosh»)."""
     out, y = [0.0] * n, 0.0
     for i in range(n):
         fc = lo + (hi - lo) * (i / n) ** 2
         y += (1 - math.exp(-2 * math.pi * fc / SR)) * (rnd.uniform(-1, 1) - y)
         out[i] = y
     return out
+
+
+def kick(amp=1.0):
+    n = int(0.38 * SR); out = []
+    ph = 0.0
+    for i in range(n):
+        tt = i / SR
+        fr = 42 + 140 * math.exp(-tt * 28)
+        ph += 2 * math.pi * fr / SR
+        out.append(math.sin(ph) * math.exp(-tt * 9) * amp + (0.3 * math.sin(2 * math.pi * 1800 * tt) * math.exp(-tt * 120)) * amp)
+    return out
+
+
+def hat(rnd, amp=0.12, dur=0.05):
+    n = int(dur * SR); out, prev = [], 0.0
+    for i in range(n):
+        v = rnd.uniform(-1, 1)
+        out.append((v - prev) * math.exp(-i / SR * 70) * amp); prev = v
+    return out
+
+
+def snare(rnd, amp=0.5):
+    n = int(0.18 * SR); out, y = [], 0.0
+    for i in range(n):
+        tt = i / SR
+        y += 0.35 * (rnd.uniform(-1, 1) - y)
+        out.append((y * 1.6 + 0.5 * math.sin(2 * math.pi * 190 * tt) * math.exp(-tt * 30)) * math.exp(-tt * 18) * amp)
+    return out
+
+
+def build_music(n, total, tl):
+    """Pista con pulso a 100 ppm: pad, bajo, batería y arpegio; sube y baja según la escena (y calla un instante cuando cae el nodo)."""
+    rnd = random.Random(7)
+    by = {sc['name']: sc for sc in tl}
+    chords = [(220.0, 261.63, 329.63, 392.0), (174.61, 220.0, 261.63, 329.63), (261.63, 329.63, 392.0, 493.88), (196.0, 246.94, 293.66, 392.0)]
+    roots = [55.0, 43.65, 65.41, 49.0]
+    bar = BEAT * 4
+    music = [0.0] * n
+
+    def energy(t):  # cuánta «batería» hay en cada momento (0..1)
+        if t < by['phone']['start'] - 0.4: return 0.0
+        if t < by['red']['start']: return 0.55
+        if by['red']['start'] + 3.4 <= t < by['red']['start'] + 5.7: return 0.1  # cae un nodo: la música se retira
+        if t < by['tablero']['end'] - 0.5: return 1.0
+        if t < by['cierre']['start']: return 0.35
+        return 0.0
+
+    def add(at, samples, amp=1.0):
+        o = int(at * SR)
+        for i, s in enumerate(samples):
+            if 0 <= o + i < n: music[o + i] += s * amp
+
+    # pad + bajo (continuo)
+    for i in range(0, n):
+        t = i / SR
+        k = int(t / bar) % len(chords)
+        tt = (t % bar)
+        envc = min(1.0, tt / 0.6 + 0.3)
+        v = 0.0
+        for j, fr in enumerate(chords[k]):
+            v += math.sin(2 * math.pi * fr * t + 0.25 * math.sin(2 * math.pi * 0.13 * t + j)) / (1 + j * 0.6)
+        music[i] = v * 0.05 * envc * min(1.0, t / 1.5) * (0.5 + 0.5 * (1 - 0.6 * energy(t)))
+    # batería, bajo y arpegio por eventos
+    k_s, hat_s, sn_s = kick(), None, None
+    step = BEAT / 4
+    for s in range(int(total / step) + 1):
+        t0 = s * step
+        e = energy(t0)
+        k = int(t0 / bar) % len(chords)
+        beat_in_bar = (s // 4) % 4
+        sub16 = s % 4
+        if e <= 0.05: continue
+        if sub16 == 0 and beat_in_bar in (0, 2): add(t0, k_s, 0.55 * e)
+        if sub16 == 0 and beat_in_bar == 2 and e >= 0.9: add(t0, snare(rnd, 0.28), 1.0)
+        if sub16 in (0, 2): add(t0, hat(rnd, 0.09 if sub16 == 0 else 0.05, 0.05), e)
+        if sub16 == 0 or (sub16 == 2 and e >= 0.9):  # bajo
+            f0 = roots[k] * (1 if sub16 == 0 else 1.5)
+            add(t0, [(math.sin(2 * math.pi * f0 * (i / SR)) + 0.25 * math.sin(2 * math.pi * 2 * f0 * (i / SR))) * math.exp(-5 * i / SR) * 0.22 for i in range(int(0.35 * SR))], e)
+        if e >= 0.5 and sub16 in (1, 3):  # arpegio en contratiempo
+            f0 = chords[k][(s // 2) % 4] * 2
+            add(t0, [(math.sin(2 * math.pi * f0 * (i / SR)) + 0.3 * math.sin(2 * math.pi * 2 * f0 * (i / SR))) * math.exp(-9 * i / SR) * 0.07 for i in range(int(0.3 * SR))], e)
+    # risers: un ascenso de ruido en el último compás antes de cada escena de producto
+    for name in ('phone', 'red', 'tablero', 'cierre'):
+        st = by[name]['start']
+        w = noise_sweep(int(1.4 * SR), 200, 7000, rnd)
+        add(st - 1.4, [x * (i / len(w)) ** 2 for i, x in enumerate(w)], 0.22)
+        add(st, kick(1.0), 0.8)  # golpe en la entrada
+    return music
 
 
 def build_audio(tl, total):
@@ -633,39 +827,14 @@ def build_audio(tl, total):
         off = int(sc['voice_start'] * SR)
         for i, s in enumerate(v):
             if off + i < n: voice[off + i] += s
-    env, e = [0.0] * n, 0.0  # envolvente de la voz: la música baja cuando se habla
+    env, e = [0.0] * n, 0.0
     ra, rr = math.exp(-1 / (0.02 * SR)), math.exp(-1 / (0.35 * SR))
     for i in range(n):
         v = abs(voice[i])
         e = ra * e + (1 - ra) * v if v > e else rr * e + (1 - rr) * v
         env[i] = e
-    rnd = random.Random(7)
-    music = [0.0] * n
-    chords = [(220.0, 261.63, 329.63, 392.0), (174.61, 220.0, 261.63, 329.63), (261.63, 329.63, 392.0, 493.88), (196.0, 246.94, 293.66, 392.0)]
-    roots = [55.0, 43.65, 65.41, 49.0]
-    seg_len = total / len(chords)
-    for i in range(n):
-        t = i / SR
-        k = min(int(t / seg_len), len(chords) - 1)
-        tt = t - k * seg_len
-        envc = min(1.0, tt / 2.5) * min(1.0, (seg_len - tt) / 2.5 + 0.2)
-        v = 0.0
-        for j, fr in enumerate(chords[k]):
-            v += math.sin(2 * math.pi * fr * t + 0.3 * math.sin(2 * math.pi * 0.17 * t + j)) / (1 + j * 0.6)
-        v *= 0.45 + 0.2 * math.sin(2 * math.pi * 0.11 * t + 1.0)
-        v += 1.1 * math.sin(2 * math.pi * roots[k] * t)  # bajo suave
-        music[i] = v * envc * 0.07
-    beat = 60 / 96 / 2  # arpegio muy suave, corcheas a 96 pulsos por minuto
-    for step in range(int(total / beat)):
-        t0 = step * beat
-        if t0 < 4.0: continue
-        k = min(int(t0 / seg_len), len(chords) - 1)
-        f0 = chords[k][step % 4] * 2
-        o = int(t0 * SR)
-        for i in range(int(0.5 * SR)):
-            if o + i >= n: break
-            tt = i / SR
-            music[o + i] += (math.sin(2 * math.pi * f0 * tt) + 0.3 * math.sin(2 * math.pi * f0 * 2 * tt)) * math.exp(-7 * tt) * 0.012
+    rnd = random.Random(9)
+    music = build_music(n, total, tl)
     fx = [0.0] * n
 
     def add(at, samples, amp=1.0):
@@ -677,24 +846,26 @@ def build_audio(tl, total):
         return [sum(math.sin(2 * math.pi * f * (i / SR)) for f in freqs) / len(freqs) * amp * math.exp(-decay * (i / SR)) for i in range(int(dur * SR))]
 
     by = {sc['name']: sc for sc in tl}
-    rumble = noise_sweep(int(0.9 * SR), 40, 70, rnd)  # temblor, apagón y pulso del SOS
-    add(by['hook']['start'] + 0.3, [r * math.exp(-2.2 * (i / SR)) * min(1.0, i / (0.08 * SR)) for i, r in enumerate(rumble)], 3.2)
+    rumble = noise_sweep(int(1.0 * SR), 40, 70, rnd)
+    add(by['hook']['start'] + 0.3, [r * math.exp(-2.0 * (i / SR)) * min(1.0, i / (0.06 * SR)) for i, r in enumerate(rumble)], 3.6)
+    add(by['hook']['start'] + 1.2, [-(math.sin(2 * math.pi * 60 * (i / SR))) * math.exp(-6 * i / SR) * 0.5 for i in range(int(0.5 * SR))])  # el apagón: un golpe sordo
     add(by['hook']['start'] + 2.5, tone((1200.0, 600.0), 0.5, 9.0, 0.16))
-    for sc in tl[1:]:  # un «whoosh» en cada transición
+    for sc in tl[1:]:
         w = noise_sweep(int(0.7 * SR), 250, 5500, rnd)
-        add(sc['start'] - 0.05, [x * math.sin(math.pi * i / len(w)) ** 2 for i, x in enumerate(w)], 0.28)
-    add(by['phone']['start'] + 3.3, tone((2400.0, 1600.0), 0.12, 38.0, 0.35))      # toque en SOS
-    add(by['phone']['start'] + 7.0, tone((659.25, 987.77, 1318.5), 0.9, 4.0, 0.16))  # «Enviado a un nodo»
-    add(by['red']['start'] + 3.4, tone((82.4, 110.0), 0.9, 5.0, 0.35))              # cae un nodo
-    add(by['red']['start'] + 5.7, tone((523.25, 783.99), 0.8, 5.0, 0.16))           # vuelve
-    add(by['tablero']['start'] + 3.1, tone((2000.0, 1500.0), 0.1, 40.0, 0.3))        # clic
-    add(by['cierre']['start'] + 0.25, tone((261.63, 392.0, 523.25), 1.8, 1.6, 0.14))
+        add(sc['start'] - 0.05, [x * math.sin(math.pi * i / len(w)) ** 2 for i, x in enumerate(w)], 0.26)
+    add(by['phone']['start'] + 3.3, tone((2400.0, 1600.0), 0.12, 38.0, 0.35))
+    add(by['phone']['start'] + 7.0, tone((659.25, 987.77, 1318.5), 0.9, 4.0, 0.16))
+    add(by['red']['start'] + 3.4, kick(1.0), 1.1)
+    add(by['red']['start'] + 3.4, tone((82.4, 110.0), 0.9, 5.0, 0.3))
+    add(by['red']['start'] + 5.7, tone((523.25, 783.99), 0.8, 5.0, 0.16))
+    add(by['tablero']['start'] + 3.1, tone((2000.0, 1500.0), 0.1, 40.0, 0.3))
+    add(by['cierre']['start'] + 0.25, tone((261.63, 392.0, 523.25), 2.2, 1.4, 0.16))
     left, right = [0.0] * n, [0.0] * n
     for i in range(n):
         t = i / SR
-        duck = 1.0 - 0.6 * min(1.0, env[i] / 0.10)
-        fade = min(1.0, t / 0.8) * min(1.0, (total + 0.7 - t) / 1.2)
-        m = (music[i] * duck * 1.4 + fx[i]) * fade
+        duck = 1.0 - 0.55 * min(1.0, env[i] / 0.10)
+        fade = min(1.0, t / 0.8) * min(1.0, (total + 0.7 - t) / 1.4)
+        m = (music[i] * duck * 1.1 + fx[i]) * fade
         v = voice[i]
         left[i] = math.tanh((v + m) * 1.05) * 0.93
         right[i] = math.tanh((v + m * 0.94) * 1.05) * 0.93
