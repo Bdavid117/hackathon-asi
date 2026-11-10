@@ -78,6 +78,10 @@ Con un nodo de verdad y el escenario de ejemplo (8 incidentes), en Chrome: el ma
 - **No se probó con coordinadores.** Lo medido es comportamiento y estabilidad, no si les ahorra tiempo.
 - Capturas con datos sintéticos de Manizales; las coordenadas del escenario de ejemplo ocupan ≈ 8 × 5 km.
 
+## 6 bis. La capa de unidades (B7, añadida después)
+
+El mapa dibuja también las **unidades** (ambulancias, bomberos…) que el nodo usa de verdad: cuadradas (los incidentes son redondas), rellenas si están disponibles, huecas si no, y con «!» si hay un conflicto de declaraciones. Van **debajo** de los incidentes (un P1 nunca queda tapado por una ambulancia) y **no capturan toques**. Su conteo («Unidades: N en el mapa · M fuera de la vista») es un rótulo propio sobre el lienzo, para no mezclarlo con el estado de los incidentes ni recortar su cláusula «más en la lista completa». El encuadre sigue fijado por los incidentes: una unidad que cae fuera no lo mueve, se cuenta como «fuera de la vista». Pruebas en `apps/dashboard/test/resources_map_test.dart` (10) y `resources_ui_test.dart`; las mutaciones de la capa (pintarla encima, dibujar lo que cae fuera, los conteos, el estado visual de la unidad, que el rótulo capture toques) se detectaron al final, tras cerrar tres huecos de mis propias pruebas. Capa y panel «Recursos» se miraron en Chrome contra un nodo real. Ver el informe de recursos en el README (B7) y `tool/resources_check.sh`.
+
 ## 7. Cómo reproducirlo
 
 ```bash
@@ -87,5 +91,5 @@ cd apps/node && dart test test/incident_location_test.dart
 (cd apps/dashboard && flutter build web --no-web-resources-cdn)
 (cd apps/node && dart run bin/sard_node.dart --id A --port 8081 --data /tmp/sard-A --web-root ../dashboard/build/web --resources ../../config/recursos.json)
 dart run packages/sim/bin/seed_scenario.dart --node http://localhost:8081 --now      # y abrir http://localhost:8081/ → icono del mapa
-bash tool/test_all.sh                                                                  # todo (≈ 6 min): 1 527 pruebas
+bash tool/test_all.sh                                                                  # todo (≈ 6 min): 1 886 pruebas con lo que se añadió después (B7 y B8)
 ```

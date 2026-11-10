@@ -9,7 +9,7 @@ El Escenario 2 del enunciado habla de despachadores que «reciben ráfagas de da
 | Pieza | Dónde |
 |---|---|
 | `POST /api/dispatch` (sólo JSON, ≤ 8 KiB), validación estricta y registro idempotente | `apps/node/lib/src/dispatch.dart`, `api.dart` |
-| El informe es un `report.received` con `channel: dispatcher`, `source_class: radio`, `medium`, `origin`, `registered_by`, sin ubicación | `dispatch.dart` |
+| El informe es un `report.received` con `channel: dispatcher`, `source_class: radio`, `medium`, `origin`, `registered_by`; la ubicación es opcional y la escribe una persona (`lat` y `lon`, calidad `manual`) | `dispatch.dart` |
 | La fuente (`app` / `radio`) sale del evento y llega al agente 3 y al JSON de la cola | `merged_reports.dart`, `queue_view.dart` |
 | El texto de este canal **no** se envía al modelo de lenguaje | `pipeline.dart` (`_sinModelo`) |
 | El arranque del nodo ya no depende de que todo `report.received` traiga `frame_seq` | `ingest.dart` |
@@ -29,11 +29,11 @@ El Escenario 2 del enunciado habla de despachadores que «reciben ráfagas de da
 
 1. **Una sola clase de fuente, `radio`**, para los tres medios (radio, teléfono, en persona). Su credibilidad base es la que ya existía (0,2) y **sigue sin calibrarse con datos reales**. El medio sólo es una etiqueta para quien lee.
 2. **La independencia la da el origen declarado, no quien teclea**: `device_id = radio:<origen>` (minúsculas, espacios→guion, sin signos; **no se quitan los acentos**). Dos informes del mismo origen son una fuente; sin origen, todos comparten «sin origen» (se subestima la independencia, no se amplifica un rumor). Límite: «Estación 3» y «E3» son orígenes distintos aunque sean la misma persona.
-3. **Sin ubicación y sin campo para ella.** El agente 1 no la inventa. Consecuencia real, visible en el tablero: un informe P1 por radio muestra «**Todavía no se puede recomendar: falta saber la ubicación**»; el coordinador debe confirmarla por otra vía. No hay geocodificación de «carrera 23 con calle 10».
+3. **La ubicación es opcional y la escribe una persona.** Sin ella, el agente 1 no la inventa: un informe P1 por radio muestra «**Todavía no se puede recomendar: falta saber la ubicación**» y el coordinador debe confirmarla por otra vía. Con ella (`lat` y `lon` van juntas, dentro de rango) entra con calidad `manual`, a la que el sistema le supone unos 3 km de imprecisión —no es un GPS— y queda marcada como imprecisa: el agente 6 ya puede recomendar, pidiendo «confirmar la ubicación» antes de aprobar. No hay geocodificación de «carrera 23 con calle 10»: las coordenadas las pone quien registra.
 4. **La hora es la del nodo al registrar**, no la de cuando se oyó. El tablero lo dice («registrado 15:19»).
 5. **El texto de este canal no va al modelo** aunque se arranque con `--llm on`: por radio es más probable que traiga nombres, teléfonos y direcciones que la frase de 140 B de la app, y hoy no se redacta nada (ver PDF §8). Tampoco ocupa un hueco de consulta: una ráfaga de informes no deja sin hueco a la app.
 6. **Banderas y personas opcionales con el mismo significado que en la app.** Con sólo texto el recall de P1 por reglas es 53,4 % (`b3.md`); con banderas marcadas por quien registra es 100 %. Radio es donde el triaje por texto es más débil.
-7. **Sin límite de tasa propio.** Sin `--coordinator-token` cualquiera que llegue por red puede registrar un informe (igual que una aprobación); con él se exige el código del coordinador. Ese código **no identifica a quien registra**: `who` es declarado.
+7. **Sin límite de tasa propio.** Sin `--coordinator-token` cualquiera que llegue por red puede registrar un informe (igual que una aprobación); con él se exige el código del coordinador. Ese código **no identifica a quien registra**: `who` es declarado. Con `--coordinator-codes` cada código tiene dueño y el informe se registra a nombre de quien presenta el suyo (el de otro no puede firmar como uno: 403 y no se registra nada); es «identificado por código», no «autenticado» (sin TLS, sin límite de intentos).
 
 ## 3. Qué se verificó
 
@@ -55,9 +55,9 @@ Un informe no tiene `frame_seq` ni `device_id` de dispositivo, y el constructor 
 - **No se probó con despachadores ni con radio real.** Un informe lo teclea una persona; no hay captura de audio, ni transcripción, ni integración con una radio.
 - **No agrupa lo que no se parece.** Cinco orígenes que cuentan el mismo suceso con palabras distintas forman cinco incidentes. Sólo el mismo texto (copias) se funde y se cuenta como una fuente.
 - **La credibilidad 0,2 de `radio` es un supuesto**, no un dato.
-- **Sin ubicación no hay recomendación** (agente 6): el informe llega a la cola, con su urgencia, pero el coordinador debe resolver el dónde.
-- **«Mensaje a medio terminar»** no tiene una marca propia: quien registra puede escribirlo en el texto, pero el sistema no lo detecta ni lo señala como incertidumbre.
-- **Quien registra no está autenticado** (`who` es declarado; el código de acceso no es identidad) y no hay límite de tasa ni de tamaño por persona.
+- **Sin ubicación no hay recomendación** (agente 6): el informe llega a la cola, con su urgencia, pero el coordinador debe resolver el dónde. Con una ubicación escrita a mano sí la hay, y siempre pide confirmarla.
+- **«Mensaje a medio terminar»**: el sistema lo marca como «posible mensaje cortado» cuando el texto termina en puntos suspensivos, coma, guion o dos puntos, o en una palabra que pide continuar («y», «de», «sin»…). Es una pista, no una afirmación: no completa el texto, no sube ni baja la urgencia, y puede equivocarse en ambos sentidos.
+- **Quien registra no está autenticado.** Sin `--coordinator-codes`, `who` es declarado y el código compartido no es identidad; con ellos, el nodo que recibe el informe lo ata al dueño del código, pero no hay TLS ni límite de intentos y los nodos pares replican el evento sin volver a comprobar el nombre. Tampoco hay límite de tasa ni de tamaño por persona.
 
 ## 5. Cómo reproducirlo
 
