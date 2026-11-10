@@ -6,6 +6,7 @@ export 'src/fake_llm.dart';
 export 'src/fake_node.dart';
 export 'src/fingerprint.dart';
 export 'src/frames.dart';
+export 'src/partition_proxy.dart';
 export 'src/scenario.dart';
 export 'src/lossy_channel.dart';
 export 'src/node_process.dart';
