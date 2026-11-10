@@ -15,6 +15,7 @@ class QueueItem {
     required this.flags,
     this.lat,
     this.lon,
+    this.locQuality = LocQuality.none,
     this.text,
     this.people = 0,
     this.evidence = const [],
@@ -45,6 +46,9 @@ class QueueItem {
   final int flags;
   final double? lat;
   final double? lon;
+
+  /// Qué tan precisa es la ubicación (`none` si no hay): el mapa del tablero no debe fingir exactitud.
+  final LocQuality locQuality;
   final String? text;
 
   /// Personas afectadas según quien reporta (código de `PeopleBucket`; 0 = no indicado).
@@ -97,6 +101,7 @@ class QueueItem {
     'flags': flags,
     'lat': lat,
     'lon': lon,
+    'locQuality': lat != null && lon != null && locQuality != LocQuality.none ? locQuality.name : null,
     'text': text,
     'people': people,
     'peopleLabel': peopleLabel,
@@ -185,6 +190,7 @@ List<QueueItem> buildQueueFromEvents(List<Event> received, List<Event> triageEve
         flags: m.flags,
         lat: m.lat,
         lon: m.lon,
+        locQuality: m.locQuality,
         text: m.text,
         people: m.people,
         evidence: _evidenceJson(t.evidence),

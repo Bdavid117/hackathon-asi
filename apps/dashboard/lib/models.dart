@@ -216,6 +216,7 @@ class IncidentRow {
     required this.approval,
     required this.shared,
     this.fromDispatch = 0,
+    this.locQuality,
   });
 
   factory IncidentRow.fromJson(Map<String, Object?> m) {
@@ -238,6 +239,8 @@ class IncidentRow {
       bareSos: _bool(m['bareSos'], 'bareSos'),
       lat: (m['lat'] as num?)?.toDouble(),
       lon: (m['lon'] as num?)?.toDouble(),
+      // Un nodo anterior no lo manda, y un código que este tablero no conoce se lee como desconocido: nunca se inventa una cifra.
+      locQuality: m['locQuality'] is String && _locPrecision.containsKey(m['locQuality']) ? m['locQuality']! as String : null,
       firstAt: _int(m['firstAt'], 'firstAt'),
       lastAt: _int(m['lastAt'], 'lastAt'),
       recommendation: RecommendationBrief.fromJson(m['recommendation']),
@@ -264,6 +267,12 @@ class IncidentRow {
   final bool bareSos;
   final double? lat;
   final double? lon;
+
+  /// La PEOR precisión entre los reportes localizados del incidente (`within10m` … `over1km`, `manual`); nula si el nodo no la manda.
+  final String? locQuality;
+
+  /// Radio de incertidumbre de la ubicación en metros; nulo si es «más de 1 km», «a mano» o no se sabe.
+  int? get locRadiusMeters => _locPrecision[locQuality]?.radius;
   final int firstAt;
   final int lastAt;
   final RecommendationBrief recommendation;
@@ -516,6 +525,18 @@ const Map<String, String> _signals = {
   'medicacion': 'Necesita medicación',
   'ubicacion': 'Ubicación',
 };
+
+const Map<String, ({int? radius, String label})> _locPrecision = {
+  'within10m': (radius: 10, label: 'Precisión: unos 10 m'),
+  'within50m': (radius: 50, label: 'Precisión: unos 50 m'),
+  'within200m': (radius: 200, label: 'Precisión: unos 200 m'),
+  'within1km': (radius: 1000, label: 'Precisión: hasta 1 km'),
+  'over1km': (radius: null, label: 'Precisión: más de 1 km'),
+  'manual': (radius: null, label: 'Ubicación escrita a mano'),
+};
+
+/// Qué tan precisa es una ubicación, en español; con un código desconocido o sin dato no se inventa una cifra.
+String locPrecisionLabel(String? code) => _locPrecision[code]?.label ?? 'Precisión desconocida';
 
 String signalLabel(String code) => _signals[code] ?? _humanize(code);
 

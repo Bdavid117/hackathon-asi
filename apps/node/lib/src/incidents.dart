@@ -154,6 +154,9 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
     lat = located.fold<double>(0, (s, m) => s + m.lat!) / located.length;
     lon = located.fold<double>(0, (s, m) => s + m.lon!) / located.length;
   }
+  // La PEOR precisión entre los reportes localizados: mostrar la mejor sugeriría una exactitud que el incidente no tiene.
+  final qualities = [for (final m in located) if (m.locQuality != LocQuality.none) m.locQuality];
+  final locQuality = qualities.isEmpty ? null : qualities.reduce((a, b) => a.index >= b.index ? a : b).name;
   final people = members.fold<int>(0, (m, i) => i.people > m ? i.people : m);
   final urgency = b.view.urgency;
   final captured = [for (final m in members) m.capturedAt]..sort();
@@ -186,6 +189,7 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
     'highUncertainty': highUncertainty,
     'bareSos': bare,
     'lat': lat,
+    'locQuality': locQuality,
     'lon': lon,
     'firstAt': captured.first,
     'lastAt': captured.last,
