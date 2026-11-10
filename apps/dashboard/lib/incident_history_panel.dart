@@ -96,6 +96,15 @@ class _AgentsTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (h.membersRead != null && h.membersTotal != null && h.membersRead! < h.membersTotal!)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Incidente muy grande: se leyeron los eventos de los primeros ${h.membersRead} de ${h.membersTotal} reportes; lo que aportan los demás no está en esta lista.',
+              key: const Key('history_members_note'),
+              style: const TextStyle(fontSize: 12, color: DashColors.warn, height: 1.3),
+            ),
+          ),
         if (h.steps.any((s) => s.derived))
           const Padding(
             padding: EdgeInsets.only(bottom: 8),

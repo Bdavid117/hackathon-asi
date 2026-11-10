@@ -75,6 +75,12 @@ class IncidentHistory {
 }
 
 const int kMaxAuditEntries = 50;
+
+/// A lo sumo los eventos de este número de miembros se consultan para armar la historia (una consulta por miembro, cada vez que se pide el
+/// detalle). MEDIDO en una máquina de desarrollo: 64 ms con 2 000 miembros y 316 ms con 10 000, en el hilo principal del nodo (que también acusa
+/// los reportes) y cada 2 s mientras el tablero tiene el incidente abierto; con el tope, 34 ms tanto con 1 000 como con 10 000. El detalle sigue trayendo todos los
+/// miembros, y la historia dice cuántos leyó (`membersRead` de `membersTotal`).
+const int kHistoryMemberCap = 1000;
 const String _a1 = '1 · Recepción', _a2 = '2 · Triaje', _a3 = '3 · Correlación', _a6 = '6 · Coordinación', _human = 'Persona';
 const List<String> _agentOrder = [_a1, _a2, _a3, _a6, _human];
 const Set<String> _memberTypes = {'report.received', 'report.normalized', 'triage.assessed', 'incident.linked'};

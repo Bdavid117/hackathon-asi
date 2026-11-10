@@ -566,7 +566,7 @@ class AuditEntryInfo {
 }
 
 class HistoryInfo {
-  const HistoryInfo({required this.steps, required this.stepsTotal, required this.audit, required this.auditTotal});
+  const HistoryInfo({required this.steps, required this.stepsTotal, required this.audit, required this.auditTotal, this.membersRead, this.membersTotal});
 
   /// `null` si no hay historia (un nodo anterior) o si vino mal formada: no se inventa ni se declara inválido el detalle por ella.
   static HistoryInfo? fromJson(Object? j) {
@@ -574,6 +574,8 @@ class HistoryInfo {
     try {
       final steps = j['steps'], audit = j['audit'], stepsTotal = j['stepsTotal'], auditTotal = j['auditTotal'];
       if (steps is! List || audit is! List || stepsTotal is! int || auditTotal is! int) return null;
+      final read = j['membersRead'], total = j['membersTotal'];
+      final coherent = read is int && total is int && read >= 0 && read <= total;
       return HistoryInfo(
         steps: [
           for (final s in steps)
@@ -600,6 +602,9 @@ class HistoryInfo {
             ),
         ],
         auditTotal: auditTotal,
+        // El nodo topa los miembros cuyos eventos lee: si lo dice, se muestra; un nodo anterior o un dato incoherente no dicen nada.
+        membersRead: coherent ? read : null,
+        membersTotal: coherent ? total : null,
       );
     } on Object {
       return null;
@@ -610,6 +615,10 @@ class HistoryInfo {
   final int stepsTotal;
   final List<AuditEntryInfo> audit;
   final int auditTotal;
+
+  /// De cuántos reportes del incidente se leyeron los eventos para armar la historia, y cuántos tiene (`null` si el nodo no lo dice).
+  final int? membersRead;
+  final int? membersTotal;
 }
 
 // ───────────────────────────── zonas en silencio ─────────────────────────────

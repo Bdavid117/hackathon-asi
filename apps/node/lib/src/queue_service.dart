@@ -160,8 +160,9 @@ class QueueService {
     final detail = (jsonDecode(base) as Map).cast<String, Object?>();
     final members = [for (final m in (detail['members'] as List? ?? const [])) if (m is String) m];
     const types = {'report.received', 'report.normalized', 'triage.assessed', 'incident.linked'};
+    final read = members.take(kHistoryMemberCap).toList();
     final memberEvents = [
-      for (final key in members)
+      for (final key in read)
         for (final e in _log.eventsFor(key))
           if (types.contains(e.type)) e,
     ];
@@ -171,7 +172,10 @@ class QueueService {
       approvalEvents: [..._log.allOfType('approval.granted'), ..._log.allOfType('approval.denied')],
       resourceEvents: _log.allOfType('resource.declared'),
     );
-    return jsonEncode({...detail, 'history': history.toJson()});
+    return jsonEncode({
+      ...detail,
+      'history': {...history.toJson(), 'membersRead': read.length, 'membersTotal': members.length},
+    });
   }
 
   Future<QueueRead> read() async {

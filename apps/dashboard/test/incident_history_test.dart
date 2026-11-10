@@ -13,7 +13,7 @@ Map<String, Object?> step(String agent, String kind, String summary, {String? no
 Map<String, Object?> audit(String who, {String decision = 'granted', String status = 'vigente', int at = 1786371200000, List<String> supersedes = const [], String? note, String id = 'A:000010'}) =>
     {'eventId': id, 'who': who, 'decision': decision, 'atMs': at, 'status': status, 'supersedes': supersedes, 'note': note};
 
-Map<String, Object?> history({List<Map<String, Object?>>? steps, int? total, List<Map<String, Object?>> audits = const [], int? auditTotal}) {
+Map<String, Object?> history({List<Map<String, Object?>>? steps, int? total, List<Map<String, Object?>> audits = const [], int? auditTotal, Object? membersRead, Object? membersTotal}) {
   final s = steps ??
       [
         step('1 · Recepción', 'recibido', 'Reporte aa-1 · revisión 0 · canal app', node: 'B', at: 1786371100000, ids: ['B:000007']),
@@ -21,7 +21,7 @@ Map<String, Object?> history({List<Map<String, Object?>>? steps, int? total, Lis
         step('3 · Correlación', 'agrupamiento', 'Grupo de 1 reporte · 1 fuente', derived: true),
         step('6 · Coordinación', 'recomendacion', 'Recomendación (propuesta): 2 acciones, 1 requisitos pendientes', derived: true),
       ];
-  return {'steps': s, 'stepsTotal': total ?? s.length, 'audit': audits, 'auditTotal': auditTotal ?? audits.length};
+  return {'steps': s, 'stepsTotal': total ?? s.length, 'audit': audits, 'auditTotal': auditTotal ?? audits.length, 'membersRead': ?membersRead, 'membersTotal': ?membersTotal};
 }
 
 String hhmmss(int ms) {
@@ -46,6 +46,46 @@ Future<void> open(WidgetTester t) async {
 }
 
 void main() {
+  group('el nodo topa los miembros que lee para la historia: el tablero lo dice', () {
+    test('HistoryInfo lee cuántos miembros se leyeron de cuántos; un nodo anterior no lo manda y no pasa nada', () {
+      final h = HistoryInfo.fromJson(history(membersRead: 1000, membersTotal: 1500))!;
+      expect((h.membersRead, h.membersTotal), (1000, 1500));
+      final old = HistoryInfo.fromJson(history())!;
+      expect((old.membersRead, old.membersTotal), (null, null));
+    });
+
+    test('datos incoherentes (no enteros, negativos, más leídos que hay) se descartan sin invalidar la historia', () {
+      for (final bad in [(-1, 5), (6, 5), ('x', 5), (5, 'x'), (5, null), (null, 5)]) {
+        final h = HistoryInfo.fromJson(history(membersRead: bad.$1, membersTotal: bad.$2));
+        expect(h, isNotNull, reason: '$bad: la historia sigue valiendo');
+        expect((h!.membersRead, h.membersTotal), (null, null), reason: '$bad');
+      }
+    });
+
+    testWidgets('recortada: la pestaña de agentes dice «primeros 1000 de 1500»', (t) async {
+      await pumpPanel(t, history(membersRead: 1000, membersTotal: 1500));
+      await open(t);
+      expect(t.widget<Text>(find.byKey(const Key('history_members_note'))).data, allOf(contains('1000'), contains('1500')));
+    });
+
+    testWidgets('completa, o de un nodo anterior: no hay nota', (t) async {
+      await pumpPanel(t, history(membersRead: 25, membersTotal: 25));
+      await open(t);
+      expect(find.byKey(const Key('history_members_note')), findsNothing);
+      await pumpPanel(t, history());
+      await open(t);
+      expect(find.byKey(const Key('history_members_note')), findsNothing);
+    });
+
+    testWidgets('la nota está en la pestaña de agentes, no en la de decisiones', (t) async {
+      await pumpPanel(t, history(membersRead: 1000, membersTotal: 1500));
+      await open(t);
+      await t.tap(find.byKey(const Key('history_tab_audit')));
+      await t.pumpAndSettle();
+      expect(find.byKey(const Key('history_members_note')), findsNothing);
+    });
+  });
+
   group('HistoryInfo.fromJson', () {
     test('lee los pasos y la auditoría', () {
       final h = HistoryInfo.fromJson(history(audits: [audit('Ana Gómez', supersedes: ['A:000003'], note: 'Visto')]))!;
