@@ -43,7 +43,7 @@ void main() {
     final gate = _GateChannel(HttpChannel(Uri.parse(_node), http.Client()));
     final scheduler = SendScheduler(outbox: outbox, channel: gate, key: key);
     await tester.pumpWidget(SardApp(outbox: outbox, scheduler: scheduler, refreshEvery: const Duration(milliseconds: 250)));
-    await hold(tester, 3000); // la pantalla de inicio
+    await hold(tester, 2500); // la pantalla de inicio
 
     await tester.tap(find.byKey(const Key('flag_atrapado')));
     await hold(tester, 900);
@@ -59,6 +59,13 @@ void main() {
     }
     await hold(tester, 3000); // «Enviado a un nodo»
 
+    final people = find.byKey(const Key('people_2'));
+    if (people.evaluate().isNotEmpty) {
+      await tester.ensureVisible(people);
+      await hold(tester, 800);
+      await tester.tap(people);
+      await hold(tester, 1800); // «2–5 personas» enviado como revisión del mismo reporte
+    }
     final phrase = find.byKey(const Key('phrase_field'));
     if (phrase.evaluate().isNotEmpty) {
       await tester.ensureVisible(phrase);

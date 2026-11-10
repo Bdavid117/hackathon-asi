@@ -19,41 +19,41 @@ Se guarda sin red, pesa apenas 33 bytes,
 y sale solo cuando vuelve la señal.
 
 6
-00:00:17,400 --> 00:00:20,498
+00:00:18,600 --> 00:00:21,698
 Cada reporte llega a una red de nodos sin jefe.
 
 7
-00:00:20,498 --> 00:00:22,511
+00:00:21,698 --> 00:00:23,711
 Si uno cae, otro sigue;
 
 8
-00:00:22,511 --> 00:00:25,395
+00:00:23,711 --> 00:00:26,595
 y al reunirse, vuelven a coincidir.
 
 9
-00:00:26,400 --> 00:00:29,300
+00:00:27,600 --> 00:00:30,500
 El tablero ordena lo urgente, explica por qué,
 
 10
-00:00:29,300 --> 00:00:30,830
+00:00:30,500 --> 00:00:32,030
 y propone la acción.
 
 11
-00:00:30,830 --> 00:00:34,705
+00:00:32,030 --> 00:00:35,905
 Nada se ejecuta sin la aprobación de una persona.
 
 12
-00:00:36,000 --> 00:00:39,813
+00:00:37,200 --> 00:00:41,013
 Y cuando una zona deja de reportar, el mapa lo marca.
 
 13
-00:00:39,813 --> 00:00:42,400
+00:00:41,013 --> 00:00:43,600
 Porque el silencio no es seguridad.
 
 14
-00:00:43,200 --> 00:00:45,948
+00:00:45,000 --> 00:00:47,748
 SARD. Reportes que sobreviven.
 
 15
-00:00:45,948 --> 00:00:48,358
+00:00:47,748 --> 00:00:50,158
 Decisiones que se pueden explicar.
