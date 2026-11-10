@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:sard_agents/sard_agents.dart';
 import 'package:sard_node/sard_node.dart';
 import 'package:sard_protocol/sard_protocol.dart';
 import 'package:test/test.dart';
