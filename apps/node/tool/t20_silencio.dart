@@ -12,6 +12,7 @@
 //   H5. Subir la ventana de silencio (15 → 30 → 60 → 120 min) sube la precisión y baja la exhaustividad: la ventana es un COMPROMISO, no una
 //       verdad (por eso los 30 min son una elección).
 // Si una hipótesis no se cumple, el informe lo dice. Una sola familia de semillas; sin ajustar nada tras ver los resultados.
+// DESPUÉS de ver que H4 NO se cumplía se añadió el «Diagnóstico de H4» (rotulado así en el informe): no cambia ninguna hipótesis ni ningún número.
 import 'dart:io';
 import 'dart:math';
 
@@ -137,6 +138,20 @@ void main(List<String> args) {
     '| H3 | Exhaustividad ≥ 80 % en apagones de ≥ 60 min con λ ≥ 4/h | ${h3 ? '✓ se cumple' : '✗ NO se cumple'} (${pct(loud.recall)}) |',
     '| H4 | Los apagones de < 30 min casi no se marcan (< 10 %) | ${h4 ? '✓ se cumple' : '✗ NO se cumple'} (${pct(fresh.recall)}) |',
     '| H5 | Más ventana ⇒ más precisión y menos exhaustividad (monótono) | ${h5 ? '✓ se cumple' : '✗ NO se cumple'} |',
+    '',
+    '## Diagnóstico de H4 (añadido DESPUÉS de ver que no se cumplía)',
+    '',
+    'H4 esperaba que un apagón de menos de 30 min casi no se marcara. Se marcó el ${pct(fresh.recall)}: no porque el detector «vea» el apagón, sino porque esas zonas **ya estaban calladas** (su último reporte era anterior). Según cuánto hablaba la zona antes de apagarse:',
+    '',
+    '| Apagón de menos de 30 min en una zona con… | Visibles | Marcadas | % marcadas |',
+    '|---|---|---|---|',
+    for (final e in buckets.entries)
+      () {
+        final c = over((z) => z.blackout && z.darkForMinutes! < 30 && e.value(z), 30);
+        return '| ${e.key} | ${c.blackouts} | ${c.tp} | ${pct(c.recall)} |';
+      }(),
+    '',
+    'Es decir: la «detección» de un apagón reciente es en buena parte **coincidencia con una zona que ya callaba**, no un aviso del apagón; y la capa necesita al menos lo que dura su ventana para poder decir algo de un apagón nuevo. **Muestra pequeña** (${fresh.blackouts} apagones recientes visibles en total): léase como indicio, no como cifra.',
     '',
     '## Qué dice esto del producto',
     '',
