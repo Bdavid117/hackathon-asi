@@ -16,7 +16,6 @@ import 'package:sard_agents/sard_agents.dart';
 import 'package:sard_sim/sard_sim.dart';
 
 const List<int> calibrationSeeds = [1, 2, 3, 4, 5];
-const List<int> firstSeeds = [101, 102, 103, 104, 105]; // primera medición (diseño v1)
 const List<int> tuneSeeds = [201, 202, 203, 204, 205]; // usadas mientras se afinaba (ya vistas)
 const List<int> reportSeeds = [301, 302, 303, 304, 305]; // nunca vistas: generadas con el código congelado
 const List<double> hiGrid = [0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95];

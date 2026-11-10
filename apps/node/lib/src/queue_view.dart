@@ -293,8 +293,3 @@ List<Map<String, String>> _evidenceJson(List<Signal> evidence) {
   });
   return [for (final r in rows) r.$4];
 }
-
-/// La cola ya codificada como JSON, calculada sólo a partir de listas de eventos: es lo que se
-/// ejecuta en otro isolate para no bloquear el hilo que atiende los ACK.
-String queueJsonFromEvents(List<Event> received, List<Event> triageEvents) =>
-    jsonEncode([for (final i in buildQueueFromEvents(received, triageEvents)) i.toJson()]);

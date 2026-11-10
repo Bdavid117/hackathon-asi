@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
-import 'geo.dart';
 import 'resources.dart';
 import 'triage.dart';
 
@@ -281,18 +280,6 @@ RecommendationOutcome recommend(IncidentView v, List<Resource> resources) {
     pending: pending,
     uncertainty: uncertainty,
   );
-}
-
-/// Distancia en metros entre el centro de los miembros localizados y un recurso (para mostrarla).
-double distanceToIncident(IncidentView v, Resource r) {
-  final located = [for (final m in v.members) if (m.hasLocation) m]..sort((a, b) => a.reportKey.compareTo(b.reportKey));
-  if (located.isEmpty) return double.infinity;
-  var lat = 0.0, lon = 0.0;
-  for (final m in located) {
-    lat += m.lat!;
-    lon += m.lon!;
-  }
-  return distanceMeters(lat / located.length, lon / located.length, r.lat, r.lon);
 }
 
 final RegExp _codePattern = RegExp(r'^[a-z0-9_:]{1,64}$');
