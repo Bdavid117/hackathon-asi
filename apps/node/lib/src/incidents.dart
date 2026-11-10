@@ -4,6 +4,7 @@ import 'package:sard_agents/sard_agents.dart';
 import 'package:sard_protocol/sard_protocol.dart';
 
 import 'approvals.dart';
+import 'coverage.dart';
 import 'event_log.dart';
 import 'incident_index.dart';
 import 'queue_view.dart';
@@ -255,7 +256,7 @@ IncidentData _assemble(_Built b, ApprovalState approval, List<Map<String, Object
 /// contadores y páginas) y el detalle de cada incidente ya codificado. Se calcula en el mismo isolate
 /// que la cola, sobre los mismos grupos, sin volver a agrupar.
 class Projection {
-  const Projection({required this.queueJson, this.incidents, this.details = const {}});
+  const Projection({required this.queueJson, this.incidents, this.details = const {}, this.coverage = const [], this.unlocatedAtMs = const []});
 
   final String queueJson;
 
@@ -264,6 +265,10 @@ class Projection {
 
   /// Detalle JSON de cada incidente, por identificador.
   final Map<String, String> details;
+
+  /// Los reportes con ubicación utilizable (y su hora de recepción) para la capa de silencio; y la hora de recepción de los que no la tienen.
+  final List<CoverageReport> coverage;
+  final List<int> unlocatedAtMs;
 }
 
 /// La proyección completa a partir de listas de eventos (lo único que puede viajar a otro isolate).
@@ -274,5 +279,13 @@ Projection projectionFromEvents(List<Event> received, List<Event> triageEvents, 
     queueJson: jsonEncode([for (final i in items) i.toJson()]),
     incidents: IncidentIndex.build(incidents),
     details: {for (final i in incidents) i.id: jsonEncode(i.detail)},
+    coverage: [
+      for (final i in items)
+        if (i.lat != null && i.lon != null && hasUsableCoordinates(i.locQuality)) CoverageReport(lat: i.lat!, lon: i.lon!, receivedAtMs: i.receivedAtMs, urgent: i.urgency == Urgency.p1 || i.urgency == Urgency.p2),
+    ],
+    unlocatedAtMs: [
+      for (final i in items)
+        if (!(i.lat != null && i.lon != null && hasUsableCoordinates(i.locQuality))) i.receivedAtMs,
+    ],
   );
 }

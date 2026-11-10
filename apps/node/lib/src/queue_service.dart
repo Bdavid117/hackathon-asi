@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:sard_agents/sard_agents.dart';
 
+import 'coverage.dart';
 import 'event_log.dart';
 import 'incident_history.dart';
 import 'incident_index.dart';
@@ -13,7 +14,7 @@ import 'incidents.dart';
 
 /// Una lectura de la cola: el JSON, si es de una versión anterior del log y qué antigüedad tiene.
 class QueueRead {
-  const QueueRead(this.json, {this.incidents, this.details = const {}, this.version = 0, this.epoch = '', required this.stale, required this.ageMs});
+  const QueueRead(this.json, {this.incidents, this.details = const {}, this.coverage = const [], this.unlocatedAtMs = const [], this.version = 0, this.epoch = '', required this.stale, required this.ageMs});
   final String json;
 
   /// Índice de incidentes (vista corta, contadores y páginas) calculado en la misma pasada que la cola.
@@ -25,6 +26,10 @@ class QueueRead {
 
   /// Detalle ya codificado de cada incidente, por identificador.
   final Map<String, String> details;
+
+  /// Lo que la capa de silencio necesita (ver [buildCoverage]): reportes con ubicación y hora de recepción de los que no la tienen.
+  final List<CoverageReport> coverage;
+  final List<int> unlocatedAtMs;
 
   /// Número de la versión calculada (crece con cada cálculo nuevo): sirve para el `ETag`.
   final int version;
@@ -118,7 +123,7 @@ class QueueService {
   }
 
   QueueRead _read(_Snap s, {required bool stale}) =>
-      QueueRead(s.projection.queueJson, incidents: s.projection.incidents, details: s.projection.details, version: s.version, epoch: epoch, stale: stale, ageMs: _clock().difference(s.computedAt).inMilliseconds);
+      QueueRead(s.projection.queueJson, incidents: s.projection.incidents, details: s.projection.details, coverage: s.projection.coverage, unlocatedAtMs: s.projection.unlocatedAtMs, version: s.version, epoch: epoch, stale: stale, ageMs: _clock().difference(s.computedAt).inMilliseconds);
 
   Future<_Snap> _start(int count) {
     final start = _clock();
@@ -138,6 +143,12 @@ class QueueService {
     f.then<void>((_) {}, onError: (Object _) {}); // si nadie espera, que el error no quede sin manejar
     return f;
   }
+
+  /// La hora del nodo en milisegundos (la misma que usa para decir cuánto hace de una lectura): base de las ventanas de la cobertura.
+  int get nowMs => _clock().millisecondsSinceEpoch;
+
+  /// Las zonas en silencio a esta hora (ver [buildCoverage]).
+  Map<String, Object?> coverageOf(QueueRead r) => buildCoverage(r.coverage, nowMs: nowMs, withoutLocation: countInWindow(r.unlocatedAtMs, nowMs: nowMs));
 
   /// El detalle del incidente [id] de la lectura [r] CON su historia (traza de agentes y auditoría), o `null` si no existe.
   ///

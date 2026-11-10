@@ -2,6 +2,7 @@
 library;
 
 export 'src/access.dart' show parseCoordinatorCodes, identifyBearer, bindIdentity, kWhoContext;
+export 'src/coverage.dart';
 export 'src/event_log.dart';
 export 'src/incident_index.dart';
 export 'src/incident_history.dart';

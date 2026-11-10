@@ -272,6 +272,8 @@ Handler buildHandler({
       if (detail == null) return Response(404, body: 'incidente desconocido (puede haberse fusionado o dividido: vuelve a pedir la lista)');
       return _projectionResponse(req, r, cors, detail, stamp: '+${log.count()}');
     })
+    // Zonas que reportaron y callaron (la ausencia de reportes NO es seguridad). Aparte de la cola y del resumen: no entra en la huella.
+    ..get('/api/coverage', (Request req) async => _json(queueService.coverageOf(await queueService.read()), cors: cors))
     ..get('/api/nodes', (Request req) => _json(health?.snapshot(log) ?? NodeHealth(nodeId: log.nodeId, peers: const []).snapshot(log), cors: cors))
     ..get('/api/events', (Request req) {
       final q = req.url.queryParameters;
