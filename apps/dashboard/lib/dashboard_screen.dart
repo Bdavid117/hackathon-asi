@@ -8,6 +8,7 @@ import 'dispatch_dialog.dart';
 import 'brand.dart';
 import 'detail_panel.dart';
 import 'incident_card.dart';
+import 'incident_map.dart';
 import 'models.dart';
 import 'theme.dart';
 
@@ -47,6 +48,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _failure;
   String? _selected;
   bool _loading = false;
+
+  /// Se ve el mapa en vez de la lista (la lista es lo que se ve por omisión).
+  bool _showMap = false;
 
   /// El nodo exige código y no se tiene (o ya no vale): sólo se ve la pantalla de acceso, sin datos.
   bool _locked = false;
@@ -231,6 +235,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     final page = _page;
     final wide = MediaQuery.sizeOf(context).width >= _wide;
+    // Con poco ancho la barra no tiene sitio para el selector (ya hay que recortar el título): va encima del contenido.
+    final narrowBar = MediaQuery.sizeOf(context).width < 700;
+    final toggle = _ViewToggle(map: _showMap, onChanged: (m) => setState(() => _showMap = m));
     final list = _buildList(context, page);
     return Theme(
       data: dashTheme(),
@@ -238,6 +245,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         appBar: AppBar(
           title: _title,
           actions: [
+            if (!narrowBar) ...[toggle, const SizedBox(width: 4)],
             Builder(builder: _dispatchButton),
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -253,6 +261,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const _Banner(key: Key('invalid_banner'), color: DashColors.danger, bg: DashColors.dangerBg, icon: Icons.error_outline, text: 'El nodo mandó una respuesta que el tablero no puede interpretar. Se conserva la última vista válida: no te fíes de ella hasta que se resuelva.'),
             if (page != null && page.stale)
               _Banner(key: const Key('stale_banner'), color: DashColors.warn, bg: DashColors.warnBg, icon: Icons.history_toggle_off, text: 'Vista de hace ${(page.ageMs / 1000).round()} s: el nodo está recalculando y puede faltar algún reporte reciente.'),
+            if (narrowBar) Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 0), child: Align(alignment: Alignment.centerLeft, child: toggle)),
             _NodesBar(nodes: _nodes, unknown: _nodesUnknown, now: _now),
             if (page != null) _CountersBar(counters: page.counters, urgency: _mode == _Mode.all ? _urgency : null, bareActive: _mode == _Mode.bare, onUrgency: (u) => _switch(_Mode.all, urgency: u), onBare: () => _switch(_Mode.bare)),
             Expanded(
@@ -364,11 +373,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
-    return Column(children: [header, Expanded(child: ListView(key: const Key('incident_list'), children: children))]);
+    return Column(
+      children: [
+        header,
+        Expanded(
+          child: _showMap
+              // Una instancia nueva por modo/urgencia: al cambiar de vista el mapa se encuadra de nuevo; con los datos que
+              // llegan cada 2 s NO (ver IncidentMap).
+              ? IncidentMap(key: ValueKey('map-${_mode.name}-${_urgency ?? ''}'), rows: _items, selected: _selected, onSelect: _select, totalIncidents: page.counters.incidents)
+              : ListView(key: const Key('incident_list'), children: children),
+        ),
+      ],
+    );
   }
 }
 
 // ───────────────────────────── piezas ─────────────────────────────
+
+/// Lista | Mapa: dos formas de ver los MISMOS incidentes cargados. Va en la barra superior, de iconos, para no
+/// quitarle altura a la lista (es lo que se lee durante horas).
+class _ViewToggle extends StatelessWidget {
+  const _ViewToggle({required this.map, required this.onChanged});
+
+  final bool map;
+  final void Function(bool map) onChanged;
+
+  @override
+  Widget build(BuildContext context) => SegmentedButton<bool>(
+    showSelectedIcon: false,
+    style: const ButtonStyle(visualDensity: VisualDensity.compact, padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10))),
+    segments: const [
+      ButtonSegment(value: false, icon: Icon(Icons.view_list, key: Key('view_list')), tooltip: 'Ver la lista'),
+      ButtonSegment(value: true, icon: Icon(Icons.map_outlined, key: Key('view_map')), tooltip: 'Ver el mapa'),
+    ],
+    selected: {map},
+    onSelectionChanged: (s) => onChanged(s.first),
+  );
+}
 
 class _Freshness extends StatelessWidget {
   const _Freshness({required this.page, required this.offline});

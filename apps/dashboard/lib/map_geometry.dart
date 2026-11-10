@@ -68,15 +68,9 @@ class MapFrame {
     return MapFrame(south: cLat - spanLat / 2 - padLat, north: cLat + spanLat / 2 + padLat, west: cLon - spanLon / 2 - padLon, east: cLon + spanLon / 2 + padLon);
   }
 
-  factory MapFrame.around(Iterable<GeoPoint> points, {double minSpanMeters = 1000, double margin = 0.15}) =>
-      aroundOrNull(points, minSpanMeters: minSpanMeters, margin: margin) ?? (throw ArgumentError('no se puede encuadrar sin ningún punto'));
-
   GeoPoint get center => GeoPoint((south + north) / 2, (west + east) / 2);
 
   bool contains(GeoPoint p) => p.lat >= south && p.lat <= north && p.lon >= west && p.lon <= east;
-
-  /// Los puntos que quedan FUERA del encuadre (para avisar «hay N fuera de la vista» sin moverlo).
-  List<GeoPoint> outside(Iterable<GeoPoint> points) => [for (final p in points) if (!contains(p)) p];
 
   /// Dónde cae [p] en un lienzo de [width] × [height]: proyección equirectangular local (la escala es la misma
   /// en los dos ejes, corrigiendo la longitud por el coseno de la latitud), con todo el encuadre a la vista y centrado.
@@ -165,19 +159,4 @@ List<MarkerCluster> clusterMarkers(List<MapMarker> markers, {double radiusPx = 1
     }
   }
   return [for (final g in groups) MarkerCluster._(g)];
-}
-
-/// El grupo más cercano a [p] dentro de [radiusPx] (a igual distancia, el más urgente), o nulo.
-MarkerCluster? hitTest(List<MarkerCluster> clusters, Px p, {double radiusPx = 18}) {
-  MarkerCluster? best;
-  var bestDistance = double.infinity;
-  for (final c in clusters) {
-    final d = c.at.distanceTo(p);
-    if (d > radiusPx) continue;
-    if (d < bestDistance || (d == bestDistance && best != null && _rank(c.urgency) < _rank(best.urgency))) {
-      best = c;
-      bestDistance = d;
-    }
-  }
-  return best;
 }

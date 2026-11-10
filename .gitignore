@@ -58,3 +58,6 @@ docs/src/_build/
 # Video de respaldo de la demostración (pesa; se aloja aparte, ver docs/pitch/video-respaldo.md)
 *.mp4
 *.mov
+
+# Estado de la herramienta de navegador usada para revisar el tablero
+.playwright-mcp/
