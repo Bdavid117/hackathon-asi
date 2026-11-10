@@ -64,4 +64,5 @@ docs/src/_build/
 
 # Video de presentación: sólo se versionan el guion, el compositor, el codificador y las capturas; los cuadros intermedios y el video no.
 docs/pitch/video/work/
+docs/pitch/video/SARD-video*
 *.m4a
