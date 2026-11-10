@@ -162,7 +162,7 @@ IncidentHistory buildIncidentHistory({
       HistoryStep(
         agent: _a6,
         kind: 'recomendacion',
-        summary: 'Recomendación (${rec['state'] ?? 'sin estado'}): ${(rec['actions'] as List? ?? const []).length} acciones, ${(rec['pending'] as List? ?? const []).length} requisitos pendientes',
+        summary: 'Recomendación (${rec['state'] ?? 'sin estado'}): ${_plural((rec['actions'] as List? ?? const []).length, 'acción', 'acciones')}, ${_plural((rec['pending'] as List? ?? const []).length, 'requisito pendiente', 'requisitos pendientes')}',
         derived: true,
       ),
   ];
@@ -172,6 +172,8 @@ IncidentHistory buildIncidentHistory({
   final auditShown = audit.length <= kMaxAuditEntries ? audit : audit.sublist(audit.length - kMaxAuditEntries);
   return IncidentHistory(steps: [...shown, ...derived], stepsTotal: timed.length + derived.length, audit: auditShown, auditTotal: audit.length);
 }
+
+String _plural(int n, String one, String many) => '$n ${n == 1 ? one : many}';
 
 int _count(Object? v) => v is int ? v : (v is List ? v.length : 0);
 

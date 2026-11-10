@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'api.dart';
 import 'incident_card.dart';
+import 'incident_history_panel.dart';
 import 'models.dart';
 import 'theme.dart';
 
@@ -182,6 +183,8 @@ class _IncidentDetailViewState extends State<IncidentDetailView> {
               _Observations(d, _now),
               const SizedBox(height: 16),
               _Recommendation(d: d, onApprove: () => _decide(true), onReject: () => _decide(false), now: _now),
+              // Al FINAL y plegada: es lo que se consulta, no lo que se decide; así no baja la recomendación ni el botón de aprobar.
+              if (d.history != null) ...[const SizedBox(height: 16), IncidentHistoryPanel(history: d.history!)],
             ],
           ),
         ),

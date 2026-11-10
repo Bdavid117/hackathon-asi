@@ -501,7 +501,7 @@ class ContradictionInfo {
 }
 
 class IncidentDetail {
-  const IncidentDetail({required this.row, required this.members, required this.evidence, required this.recommendation, required this.approval, required this.membersTotal, this.contradictions, this.stale = false, this.ageMs = 0});
+  const IncidentDetail({this.history, required this.row, required this.members, required this.evidence, required this.recommendation, required this.approval, required this.membersTotal, this.contradictions, this.stale = false, this.ageMs = 0});
 
   factory IncidentDetail.fromJson(Map<String, Object?> j, {bool stale = false, int ageMs = 0}) {
     if (j['recommendation'] == null) throw const FormatException('el detalle no trae la recomendación');
@@ -513,6 +513,7 @@ class IncidentDetail {
       approval: ApprovalDetail.fromJson(j['approval']),
       membersTotal: _int(j['membersTotal'], 'membersTotal'),
       contradictions: j['contradictions'] is List ? ContradictionInfo.parseAll(j['contradictions']! as List) : null,
+      history: HistoryInfo.fromJson(j['history']),
       stale: stale,
       ageMs: ageMs,
     );
@@ -527,8 +528,88 @@ class IncidentDetail {
 
   /// Nulo si el nodo no las evalúa (uno anterior); vacío si las evaluó y no hay; si no, cuáles.
   final List<ContradictionInfo>? contradictions;
+
+  /// La historia del incidente (traza de agentes y decisiones). Nula si el nodo es anterior o si vino mal formada: es información
+  /// secundaria y nunca debe impedir ver ni decidir el incidente.
+  final HistoryInfo? history;
   final bool stale;
   final int ageMs;
+}
+
+// ───────────────────────────── historia del incidente ─────────────────────────────
+
+/// Un paso de la traza de agentes. Los respaldados por un evento traen nodo y hora; los DERIVADOS (se calculan al leer) no.
+class HistoryStepInfo {
+  const HistoryStepInfo({required this.agent, required this.kind, required this.summary, this.nodeId, this.atMs, required this.derived});
+
+  final String agent;
+  final String kind;
+  final String summary;
+  final String? nodeId;
+  final int? atMs;
+  final bool derived;
+}
+
+/// Una decisión humana de la línea de tiempo de la auditoría.
+class AuditEntryInfo {
+  const AuditEntryInfo({required this.eventId, required this.who, required this.granted, required this.atMs, required this.status, required this.supersedes, this.note});
+
+  final String eventId;
+  final String who;
+  final bool granted;
+  final int atMs;
+
+  /// `vigente`, `caduca` o `sustituida`.
+  final String status;
+  final List<String> supersedes;
+  final String? note;
+}
+
+class HistoryInfo {
+  const HistoryInfo({required this.steps, required this.stepsTotal, required this.audit, required this.auditTotal});
+
+  /// `null` si no hay historia (un nodo anterior) o si vino mal formada: no se inventa ni se declara inválido el detalle por ella.
+  static HistoryInfo? fromJson(Object? j) {
+    if (j is! Map) return null;
+    try {
+      final steps = j['steps'], audit = j['audit'], stepsTotal = j['stepsTotal'], auditTotal = j['auditTotal'];
+      if (steps is! List || audit is! List || stepsTotal is! int || auditTotal is! int) return null;
+      return HistoryInfo(
+        steps: [
+          for (final s in steps)
+            HistoryStepInfo(
+              agent: _str((s as Map)['agent'], 'agent'),
+              kind: _str(s['kind'], 'kind'),
+              summary: _str(s['summary'], 'summary'),
+              nodeId: s['nodeId'] is String ? s['nodeId']! as String : null,
+              atMs: s['atMs'] is int ? s['atMs']! as int : null,
+              derived: s['derived'] == true,
+            ),
+        ],
+        stepsTotal: stepsTotal,
+        audit: [
+          for (final a in audit)
+            AuditEntryInfo(
+              eventId: _str((a as Map)['eventId'], 'eventId'),
+              who: _str(a['who'], 'who'),
+              granted: a['decision'] == 'granted',
+              atMs: a['atMs'] is int ? a['atMs']! as int : 0,
+              status: _str(a['status'], 'status'),
+              supersedes: a['supersedes'] is List ? [for (final e in a['supersedes']! as List) if (e is String) e] : const [],
+              note: a['note'] is String ? a['note']! as String : null,
+            ),
+        ],
+        auditTotal: auditTotal,
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  final List<HistoryStepInfo> steps;
+  final int stepsTotal;
+  final List<AuditEntryInfo> audit;
+  final int auditTotal;
 }
 
 // ───────────────────────────── recursos declarados ─────────────────────────────

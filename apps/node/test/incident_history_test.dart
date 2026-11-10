@@ -45,6 +45,15 @@ IncidentHistory build(Map<String, Object?> detail, {List<Event> member = const [
 
 void main() {
   group('buildIncidentHistory (función pura)', () {
+    test('la recomendación derivada concuerda en singular y en plural', () {
+      String summary(Map<String, Object?> d) => build(d).steps.firstWhere((s) => s.kind == 'recomendacion').summary;
+      expect(summary(detailOf()), 'Recomendación (propuesta): 1 acción, 1 requisito pendiente');
+      final many = detailOf();
+      (many['recommendation']! as Map)['actions'] = ['a', 'b'];
+      (many['recommendation']! as Map)['pending'] = <String>[];
+      expect(summary(many), 'Recomendación (propuesta): 2 acciones, 0 requisitos pendientes');
+    });
+
     test('un paso respaldado por un evento lleva su nodo y su hora; uno derivado no lleva hora', () {
       final h = build(detailOf(), member: [recv('aa-1', origin: 'B', seq: 7, ms: 4242), triage('aa-1')]);
       final r = h.steps.firstWhere((s) => s.kind == 'recibido');
