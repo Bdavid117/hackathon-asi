@@ -3,26 +3,28 @@
 <p>El plan está pensado para una restricción que el enunciado no resuelve: no sabemos cuánto tiempo hay. Por eso se expresa en <strong>bloques con criterio de terminado</strong> y porcentajes del tiempo disponible, y está ordenado para que siempre exista un recorrido completo funcionando desde el primer tercio del tiempo, aunque sea con piezas simples.</p>
 
 <h2 id="s10-1">Estructura del repositorio</h2>
-<p>Un monorepo con <em>pub workspaces</em> de Dart. Los paquetes compartidos son Dart puro, sin Flutter. Los bloques B0, B1 y B2 ya están implementados (planes en <code>docs/superpowers/plans/</code>, resultados en <code>docs/resultados/</code>). Las dos apuestas de la pila se validaron antes de construir: SQLite durable ante <code>kill -9</code> en el nodo, y el espacio de trabajo con la app Flutter, el paquete puro y Flutter Web.</p>
+<p>Un monorepo con <em>pub workspaces</em> de Dart. Los paquetes compartidos son Dart puro, sin Flutter. Los bloques B0 a B5 ya están implementados y medidos (resultados en <code>docs/resultados/</code>). Las dos apuestas de la pila se validaron antes de construir: SQLite durable ante <code>kill -9</code> en el nodo, y el espacio de trabajo con la app Flutter, el paquete puro y Flutter Web.</p>
 <pre><code>hackathon-asi/
 ├── HackathonExpoASI2026.pdf     enunciado oficial (no se modifica)
-├── README.md
-├── pubspec.yaml                 <span class="c">workspace de Dart (se crea en B0)</span>
+├── README.md                    estado, comandos y mapa de los documentos
+├── pubspec.yaml                 <span class="c">workspace de Dart</span>
 ├── apps/
 │   ├── mobile/                  app ciudadana (Flutter)
 │   ├── node/                    nodo superviviente en Dart: API, log, sincronización, agentes
 │   └── dashboard/               tablero del coordinador (Flutter Web)
 ├── packages/
 │   ├── protocol/                códec binario, esquemas y vectores de prueba
-│   ├── agents/                  seis agentes, validadores, puerto LLM y respaldos
-│   └── sim/                     generador sintético, simulador de canal, inyector de fallos, métricas
-├── scenarios/                   escenarios YAML reproducibles (semilla fija)
+│   ├── client_core/             bandeja durable, planificador de envío, modos de energía
+│   ├── agents/                  los agentes, validadores, puerto del modelo y respaldos
+│   └── sim/                     generador sintético, simulador de canal, escenarios y mediciones
+├── config/recursos.json         recursos declarados (sintéticos) que el agente 6 puede nombrar
+├── spikes/sqlite_kill/          prueba técnica: SQLite ante kill -9 (evidencia, no se despliega)
+├── tool/                        scripts: pruebas, demostración, APK, comprobaciones con nodos reales
 └── docs/
-    ├── SARD-arquitectura-app-movil.pdf   este documento
+    ├── SARD-arquitectura-app-movil.pdf   este documento (fichas: cap. 6; protocolo: cap. 7)
     ├── adr/                     decisiones de arquitectura, una por archivo
-    ├── agentes/                 fichas de agentes (entregable 4)
-    ├── protocolo.md             especificación SARD-WIRE (entregable 5)
     ├── resultados/              informes de pruebas (entregable 6)
+    ├── pitch/                   guion, láminas y su exportación (entregable 7)
     └── src/                     fuentes y generador de este PDF</code></pre>
 
 <h2 id="s10-2">Hoja de ruta por bloques</h2>
@@ -81,7 +83,7 @@
     <tr><td>Móvil y transporte</td><td>App, planificador de envío, códec en el dispositivo, pruebas de energía en el emulador (un teléfono real es opcional).</td><td>B1, B2</td></tr>
     <tr><td>Nodo y resiliencia</td><td>Log, sincronización, agentes 4 y 5, despliegue de nodos, inyector de fallos.</td><td>B1, B4</td></tr>
     <tr><td>Agentes y datos</td><td>Agentes 1, 2, 3 y 6, puerto LLM, generador sintético, métricas de calidad.</td><td>B3, B5</td></tr>
-    <tr><td>Tablero, pruebas y relato</td><td>Tablero, orquestador de escenarios, informe de resultados, pitch y documentación.</td><td>B5, B6</td></tr>
+    <tr><td>Tablero, pruebas y relato</td><td>Tablero, scripts de escenarios, informe de resultados, pitch y documentación.</td><td>B5, B6</td></tr>
   </tbody>
   <caption>Reparto sugerido. El contrato entre frentes es el paquete de protocolo y los esquemas de evento.</caption>
 </table>

@@ -51,7 +51,7 @@
     <tr><td>Sincronización</td><td>Log append-only + vectores de versiones</td><td>CRDT (Automerge, Yjs)</td><td>Sólo si se necesitan estados editables concurrentes; aquí los eventos son inmutables.</td></tr>
     <tr><td>Tablero</td><td>Flutter Web servido por el nodo</td><td>Panel nativo de tableta</td><td>Si hay requisito de instalación en una tableta sin navegador moderno.</td></tr>
     <tr><td>Modelo de lenguaje</td><td>API de Claude tras un puerto intercambiable (HTTP directo); entra en B3</td><td>Modelo local (p. ej. vía Ollama); sólo reglas</td><td>Si no hay Internet ni credenciales en la demo; el puerto ya lo permite.</td></tr>
-    <tr><td>Pruebas</td><td><code>dart test</code> (en VM y en Chrome) + escenarios en YAML con semilla</td><td>—</td><td>—</td></tr>
+    <tr><td>Pruebas</td><td><code>dart test</code> (en VM y en Chrome) + escenarios reproducibles con semilla (programas de Dart y <code>tool/demo.sh</code>)</td><td>—</td><td>—</td></tr>
     <tr><td>Monorepo</td><td><em>Pub workspaces</em> de Dart</td><td>Melos</td><td>Si el espacio de trabajo nativo se queda corto.</td></tr>
   </tbody>
   <caption>Decisiones técnicas por defecto, alternativas y criterio para cambiarlas.</caption>

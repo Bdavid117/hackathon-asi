@@ -20,32 +20,18 @@
     <ul>
       <li>Pérdida (independiente o en ráfagas), duplicación, reorden, retardo con variación, tope de ancho de banda y <strong>ventanas que se abren y cierran</strong>.</li>
       <li><code>kill -9</code> de un nodo, partición de red, reinicio y relojes desfasados.</li>
-      <li>Un orquestador de escenarios lee un archivo YAML y lo ejecuta de forma reproducible.</li>
+      <li>Cada escenario es un programa con semilla (<code>packages/sim/bin/</code> y <code>tool/demo.sh</code>) que arranca nodos reales, inyecta los fallos y escribe su informe: el mismo comando con la misma semilla da lo mismo.</li>
     </ul></div>
 </div>
-<pre><code><span class="c"># scenarios/s2-kill-node-a.yaml (ejemplo de escenario reproducible)</span>
-<span class="k">id</span>: s2-kill-node-a
-<span class="k">seed</span>: 42
-<span class="k">topology</span>: { nodes: [A, B, C], sync_interval: 5s }
-<span class="k">channel</span>:
-  loss: 0.40            <span class="c"># pérdida; alternativa: modelo de ráfagas</span>
-  duplicate: 0.05
-  reorder: 0.10
-  delay_ms: [200, 3000]
-  window: { open: 3s, closed: 57s }
-<span class="k">load</span>:
-  generator: synthetic-v1
-  incidents: 80
-  reports: 1000
-  noise: { location_m: 40, truncated_text: 0.10, copies: 0.20, adversarial_pairs: 20 }
-<span class="k">faults</span>:
-  - { at: 120s, action: kill9,   target: A }
-  - { at: 300s, action: restart, target: A }
-<span class="k">assert</span>:
-  - acked_reports_lost == 0
-  - p1_recall &gt;= 0.95
-  - false_merge_rate &lt;= 0.01
-  - convergence_time &lt;= 60s</code></pre>
+<pre><code><span class="c"># Escenarios reproducibles (cada uno es un programa de Dart con semilla)</span>
+<span class="c"># recorrido de 8 pasos con pérdida de canal:</span>
+dart run packages/sim/bin/e2e_skeleton.dart --seed 42 --reports 60 --loss 0.3
+<span class="c"># partición + kill -9 + reconexión; misma semilla ⇒ misma huella:</span>
+PART=4 bash tool/demo.sh 42
+<span class="c"># ráfaga de 10 000 reportes (T11):</span>
+dart run packages/sim/bin/burst.dart --reports 10000
+<span class="c"># ningún P1 fuera de la vista inicial (T14):</span>
+dart run packages/sim/bin/t14.dart --seeds 401</code></pre>
 <p><strong>El modelo de lenguaje y la reproducibilidad.</strong> Como el modelo no es determinista, las pruebas tienen dos modos: <em>reglas</em> (totalmente reproducible) y <em>modelo con respuestas grabadas</em> (se graba una ejecución real y se reproduce). La calidad con modelo real se mide aparte y se reporta como una diferencia respecto al modo de reglas (T12).</p>
 
 <h2 id="s9-2">Catálogo de pruebas</h2>
@@ -162,7 +148,7 @@
 
 <h2 id="s9-4">Informe de resultados (plantilla del entregable 6)</h2>
 <ol>
-  <li><strong>Escenarios ejecutados:</strong> archivos YAML con su semilla, versión del código y entorno.</li>
+  <li><strong>Escenarios ejecutados:</strong> cada escenario es un programa con semilla (<code>packages/sim/bin/</code> y <code>tool/demo.sh</code>); su informe en <code>docs/resultados/</code> da el comando exacto y la versión del código.</li>
   <li><strong>Resultados:</strong> tablas y curvas de las métricas anteriores, con la comparación de modo reglas y modo modelo.</li>
   <li><strong>Errores observados:</strong> fallas reales encontradas durante las pruebas y cómo se resolvieron.</li>
   <li><strong>Limitaciones:</strong> qué no se probó (canales reales, que el §4.7 no exige; escala real; dispositivos iOS reales) y qué se simplificó.</li>

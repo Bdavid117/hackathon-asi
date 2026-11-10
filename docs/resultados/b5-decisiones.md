@@ -1,12 +1,12 @@
 # B4 + B5 · decisiones, mutaciones y límites (libro de registro)
 
-Copia versionada del libro de trabajo de la ejecución del plan `docs/superpowers/plans/2026-11-09-sard-b4-b5-captura-tablero.md`. Cada línea `Ruling:` es una decisión que tomé por mi cuenta, con lo que cuesta si me equivoqué. Las líneas «MUTACIONES» dicen qué pruebas resultaron débiles y cómo se reforzaron; «LÍMITES» y «HALLAZGO», lo que no se logró o lo que cambió el diseño.
+Copia versionada del libro de trabajo de la ejecución del plan de B4+B5 (el plan ya no está en el árbol; sigue en el historial de git, commit `7cb07b4`). Cada línea `Ruling:` es una decisión que tomé por mi cuenta, con lo que cuesta si me equivoqué. Las líneas «MUTACIONES» dicen qué pruebas resultaron débiles y cómo se reforzaron; «LÍMITES» y «HALLAZGO», lo que no se logró o lo que cambió el diseño.
 
 Está en el orden en que ocurrió; las etapas son las del plan (0 ráfaga y demostración mínima, 1 captura en la app, 2 agente 6 y aprobación, 3 incidentes y nodos, 4 tablero, 5 resiliencia, 6 cierre).
 
 ---
 
-# SDD ledger — plan: docs/superpowers/plans/2026-11-09-sard-b4-b5-captura-tablero.md
+# SDD ledger — plan: B4+B5 (historial de git, commit 7cb07b4)
 Pre-flight: Etapa1 (people/evidence en QueueItem)→Etapa3 (buildIncidents lo consume)→Etapa4 (tablero); Etapa2 (recomendación+aprobación)→Etapa3→Etapa4; Etapa0 (banco de ráfaga) se re-ejecuta al final de CADA etapa. Conflictos detectados por el asesor y resueltos en el plan: heartbeats como eventos invalidarían la caché; 429 por dispositivo = bloquear SOS ajeno (clave compartida); 409 al aprobar frágil con datos viejos; CORS * + POST simple = CSRF; T15 imposible con ids/horas aleatorios.
 Ruling: aprobaciones SIEMPRE como evento (sin 409), vigente/caduca derivado al leer; sustitución explícita por `inputs`; entre no sustituidas manda la denegación — si me equivoco: se pueden registrar decisiones sobre versiones caducadas (se ven como tales)
 Ruling: presupuesto por dispositivo DEGRADA (omite modelo y auditoría), nunca rechaza ni toca la rev 0 — si me equivoco: un dispositivo abusivo sigue ocupando disco

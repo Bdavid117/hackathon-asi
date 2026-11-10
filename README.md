@@ -20,7 +20,6 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 |---|---|
 | Diseño: análisis del enunciado, arquitectura, protocolo, agentes, pruebas y plan (v0.2) | [`docs/SARD-arquitectura-app-movil.pdf`](docs/SARD-arquitectura-app-movil.pdf) |
 | Decisión: desarrollo individual, Dart de punta a punta y corte de alcance | [`docs/adr/0001-desarrollo-individual-dart.md`](docs/adr/0001-desarrollo-individual-dart.md) |
-| Planes de implementación: B0/B1, B2, B3 y B4+B5 | [`docs/superpowers/plans/`](docs/superpowers/plans/) |
 | Resultados: H1 (recorrido de punta a punta) | [`docs/resultados/h1.md`](docs/resultados/h1.md) |
 | Resultados: transporte T02–T04 en tiempo virtual | [`docs/resultados/b2.md`](docs/resultados/b2.md) |
 | Resultados: verificación en dispositivo | [`docs/resultados/b2-dispositivo.md`](docs/resultados/b2-dispositivo.md) |
@@ -114,7 +113,7 @@ Fuentes del documento: `docs/src/parts/*.html` (contenido), `docs/src/diagrams.p
 
 ## Pendiente
 
-- **Mapa de los 7 entregables en este README** (qué archivo, qué sección, qué comando). Hoy el árbol del cap. 10 del PDF de arquitectura promete `docs/agentes/`, `docs/protocolo.md` y `scenarios/`, que no existen: las fichas de agentes (8 campos, entregable 4) y el protocolo (entregable 5) están completos pero dentro del PDF (caps. 6 y 7). Falta el índice y corregir ese árbol, sin duplicar contenido.
+- **Mapa de los 7 entregables en este README** (qué archivo, qué sección, qué comando). Las fichas de agentes (8 campos, entregable 4) y el protocolo (entregable 5) están completos pero dentro del PDF de arquitectura (caps. 6 y 7); falta el índice que lo diga en un solo sitio.
 - **Justificar el riesgo de aplazar un mensaje (enunciado §3.1: «qué riesgo existe al aplazar un mensaje»).** Cómo se decide qué sale primero está justificado (prioridad + envejecimiento + 1 de cada 5 posiciones para el más antiguo); falta el párrafo explícito sobre el riesgo, con las cifras que ya existen: T03 en [`b2.md`](docs/resultados/b2.md) (con 60 % de pérdida, P1 p95 = 32,7 s frente a P4 p95 = 7,5 min) y T11 en [`b5-rafaga.md`](docs/resultados/b5-rafaga.md).
 - **Video de respaldo de la demostración — decidido; se graba cuando los retos estén cumplidos** (con el código congelado y tras el último cambio de la interfaz, para no enseñar un defecto ya corregido). Todavía no existe y **no se versiona** (los `*.mp4`/`*.mov` están en `.gitignore`). Respalda a `tool/demo.sh`, no lo sustituye: el entregable 7 pide una demostración *reproducible*.
 - **T12 intermitente:** falló una de tres corridas completas de `test_all.sh` (A=24, B=0) y no se conoce la causa ([`t12.md`](docs/resultados/t12.md)). El jurado reproducirá con ese script.
