@@ -73,6 +73,17 @@ class NodeProbe {
     return projectionFingerprint(q, incidents: i);
   }
 
+  /// Quita los eventos repetidos (mismo `id`) conservando el orden de la primera aparición. Al consultar a VARIOS nodos que ya
+  /// convergieron cada evento llega una vez por nodo: sin esto cualquier conteo queda multiplicado por el número de nodos. Un evento
+  /// sin `id` no se puede identificar y se conserva siempre.
+  static List<Map<String, Object?>> uniqueById(Iterable<Map<String, Object?>> events) {
+    final seen = <Object?>{};
+    return [
+      for (final e in events)
+        if (e['id'] == null || seen.add(e['id'])) e,
+    ];
+  }
+
   /// Los eventos `triage.assessed` DEL MODELO (`mode: rules+llm`) que [node] tiene de los orígenes dados.
   Future<List<Map<String, Object?>>> modelJudgments(Uri node, List<String> origins) async {
     final out = <Map<String, Object?>>[];

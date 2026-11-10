@@ -120,7 +120,8 @@ Future<void> main(List<String> args) async {
         // ese nodo no contesta
       }
     }
-    return out;
+    // Cada evento llega una vez por nodo consultado: sin deduplicar, el reparto salía multiplicado por el número de nodos.
+    return NodeProbe.uniqueById(out);
   }
 
   var converged = false, killedC = false, aliveAllButC = true;
