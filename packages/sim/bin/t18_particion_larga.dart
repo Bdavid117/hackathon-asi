@@ -65,7 +65,7 @@ Future<void> main(List<String> args) async {
   final outPath = _opt(args, 'out', 'docs/resultados/t18-particion-larga.md');
   final repo = File.fromUri(Platform.script).parent.parent.parent.parent.path;
   final commit = await _git(['rev-parse', '--short', 'HEAD']);
-  final dirty = (await _git(['status', '--porcelain'])).isNotEmpty;
+  final dirty = (await _git(['status', '--porcelain', '--untracked-files=no'])).isNotEmpty; // sólo lo rastreado: un archivo local sin versionar no cuenta
 
   final client = http.Client();
   final probe = NodeProbe(client);
