@@ -136,6 +136,21 @@ void main() {
     expect(status(t), contains('en el mapa'));
   });
 
+  testWidgets('el rótulo explica qué son las zonas rayadas y con qué ventana se calculan', (t) async {
+    await pump(t, rows: rows, silence: SilenceLayer(on: true, info: info([zone('z1')]), onToggle: () {}));
+    expect(caption(t), contains('rayadas'));
+    expect(caption(t), contains('reportaron'));
+    expect(caption(t), contains('30 min o más'), reason: 'la ventana sale del nodo, no está escrita a fuego en el tablero');
+  });
+
+  testWidgets('la ventana del rótulo es la que manda el nodo (45 min, 2 h): no está escrita en el tablero', (t) async {
+    CoverageInfo withSilence(Duration d) => CoverageInfo(cells: [zone('z1')], silentTotal: 1, activeCells: 0, reportsInWindow: 3, withoutLocation: 0, nowMs: nowMs, cellDeg: 0.005, activity: const Duration(hours: 6), silence: d);
+    await pump(t, rows: rows, silence: SilenceLayer(on: true, info: withSilence(const Duration(minutes: 45)), onToggle: () {}));
+    expect(caption(t), contains('45 min o más'));
+    await pump(t, rows: rows, silence: SilenceLayer(on: true, info: withSilence(const Duration(hours: 2)), onToggle: () {}));
+    expect(caption(t), contains('2 h o más'));
+  });
+
   testWidgets('el rótulo empieza por el aviso (si se recorta se pierde un detalle, no la advertencia)', (t) async {
     await pump(t, rows: rows, silence: SilenceLayer(on: true, info: info([zone('z1')], silentTotal: 430, withoutLocation: 12), onToggle: () {}));
     expect(caption(t), startsWith('El silencio no es seguridad.'));

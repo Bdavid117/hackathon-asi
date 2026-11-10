@@ -13,6 +13,7 @@ import 'incident_filter.dart';
 import 'incident_map.dart';
 import 'models.dart';
 import 'resources_dialog.dart';
+import 'situation_panel.dart';
 import 'theme.dart';
 
 enum _Mode { short, all, bare, pending }
@@ -431,7 +432,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Expanded(
                           flex: 6,
                           child: _selected == null
-                              ? const Center(key: Key('detail_empty'), child: Text('Elige un incidente para ver por qué tiene esa prioridad y qué se recomienda.', textAlign: TextAlign.center, style: TextStyle(color: DashColors.muted)))
+                              ? SituationPanel(key: const Key('detail_empty'), nodes: _nodes, nodesUnknown: _nodesUnknown, resources: _resources)
                               : IncidentDetailView(
                                   key: ValueKey(_selected),
                                   api: widget.api,
@@ -746,7 +747,7 @@ class _NodesBar extends StatelessWidget {
                   children: [
                     Icon(Icons.circle, size: 9, color: stateColor(n.peers[i].state)),
                     const SizedBox(width: 5),
-                    Text('${Uri.tryParse(n.peers[i].url)?.host ?? n.peers[i].url}: ${peerStateLabel(n.peers[i].state)}${ago(n.peers[i].lastSeenAgoMs)}', style: const TextStyle(fontSize: 13)),
+                    Text('${peerName(n.peers[i].url)}: ${peerStateLabel(n.peers[i].state)}${ago(n.peers[i].lastSeenAgoMs)}', style: const TextStyle(fontSize: 13)),
                   ],
                 ),
             ],

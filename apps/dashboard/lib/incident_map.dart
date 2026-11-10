@@ -587,7 +587,7 @@ String _silenceCaption(CoverageInfo? c, String? note, int inside) {
   final lines = <String>[];
   if (c != null) {
     final n = c.silentTotal;
-    var head = '$n ${n == 1 ? 'zona' : 'zonas'} en silencio';
+    var head = '$n ${n == 1 ? 'zona' : 'zonas'} en silencio (rayadas: reportaron y llevan ${_windowLabel(c.silence)} o más sin reportar)';
     if (c.cells.length < n) head += ' (se dibujan las ${c.cells.length} más urgentes)';
     final outside = c.cells.length - inside;
     if (outside > 0) head += ' · $outside fuera de la vista';

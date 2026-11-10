@@ -882,6 +882,13 @@ String approvalLabel(String status) => switch (status) {
   _ => _humanize(status),
 };
 
+/// Cómo se nombra un par en pantalla: host y puerto («localhost:8082»), para que dos nodos en la misma máquina no se confundan.
+String peerName(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || u.host.isEmpty) return url;
+  return u.hasPort ? '${u.host}:${u.port}' : u.host;
+}
+
 String peerStateLabel(String state) => switch (state) {
   'sincronizado' => 'Sincronizado',
   'atrasado' => 'Atrasado',
