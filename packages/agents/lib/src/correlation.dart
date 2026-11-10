@@ -34,7 +34,7 @@ class Observation {
   final String sourceClass;
 
   /// Hay ubicación utilizable sólo si la calidad lleva coordenadas **y** las trae.
-  bool get hasLocation => lat != null && lon != null && locQuality.hasCoordinates;
+  bool get hasLocation => lat != null && lon != null && hasUsableCoordinates(locQuality);
   double? get sigma => hasLocation ? sigmaMeters(locQuality) : null;
 }
 

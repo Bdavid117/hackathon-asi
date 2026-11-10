@@ -15,6 +15,11 @@ double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
 ///
 /// Los valores son los de la calidad de la trama: ±10, ±50, ±200 m, ±1 km y «más de 1 km». Una
 /// ubicación manual (texto) no tiene coordenadas fiables y cuenta como la peor.
+/// ¿Esta calidad de ubicación sirve para situar un reporte? Las de la trama (1–5) llevan coordenadas; una ubicación
+/// «manual» —la que escribe una persona, p. ej. un despachador— las trae aparte, en el evento, aunque la TRAMA no las lleve
+/// (por eso `LocQuality.hasCoordinates` del protocolo no cambia: el códec depende de él).
+bool hasUsableCoordinates(LocQuality q) => q.hasCoordinates || q == LocQuality.manual;
+
 double? sigmaMeters(LocQuality q) => switch (q) {
   LocQuality.none => null,
   LocQuality.within10m => 10,

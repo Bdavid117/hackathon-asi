@@ -147,6 +147,8 @@ void main() {
         origin: origin,
         flags: ['atrapado', 'herido'],
         people: 2,
+        lat: literal['lat']! as double,
+        lon: literal['lon']! as double,
       );
       return seen;
     }

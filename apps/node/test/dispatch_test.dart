@@ -119,7 +119,8 @@ void main() {
       expect(r.flags, SituationFlags.atrapado | SituationFlags.herido);
       expect(r.people, PeopleBucket.twoToFive.code);
       // Y sólo trae campos que el nodo conoce: si el tablero añade uno, esto y el nodo deben cambiar juntos.
-      expect((literal as Map).keys.toSet(), {'id', 'text', 'medium', 'origin', 'who', 'flags', 'people'});
+      expect((r.lat, r.lon), (5.0689, -75.5174));
+      expect((literal as Map).keys.toSet(), {'id', 'text', 'medium', 'origin', 'who', 'flags', 'people', 'lat', 'lon'});
     });
 
     test('el mensaje de un rechazo dice qué campo está mal (no «error»)', () {

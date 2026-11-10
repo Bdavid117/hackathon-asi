@@ -48,6 +48,8 @@ class DispatchDialog extends StatefulWidget {
 class _DispatchDialogState extends State<DispatchDialog> {
   final TextEditingController _text = TextEditingController();
   final TextEditingController _origin = TextEditingController();
+  final TextEditingController _lat = TextEditingController();
+  final TextEditingController _lon = TextEditingController();
   late final TextEditingController _who = TextEditingController(text: widget.who.value);
   String _medium = 'radio';
   final Set<String> _flags = {};
@@ -55,6 +57,7 @@ class _DispatchDialogState extends State<DispatchDialog> {
   bool _sending = false;
   bool _textMissing = false;
   bool _whoMissing = false;
+  String? _locError;
   String? _error;
 
   /// El identificador del intento en curso y la «firma» del contenido con que se generó.
@@ -65,6 +68,8 @@ class _DispatchDialogState extends State<DispatchDialog> {
   void dispose() {
     _text.dispose();
     _origin.dispose();
+    _lat.dispose();
+    _lon.dispose();
     _who.dispose();
     super.dispose();
   }
@@ -76,17 +81,34 @@ class _DispatchDialogState extends State<DispatchDialog> {
     final origin = _origin.text.trim();
     final textMissing = text.isEmpty;
     final whoMissing = who.isEmpty || who.length > _maxWho;
-    if (textMissing || whoMissing) {
+    // Ubicación opcional: las dos o ninguna, numérica y en rango (se acepta la coma decimal de quien escribe en español).
+    final latText = _lat.text.trim(), lonText = _lon.text.trim();
+    double? lat, lon;
+    String? locError;
+    if (latText.isNotEmpty || lonText.isNotEmpty) {
+      if (latText.isEmpty || lonText.isEmpty) {
+        locError = 'Escribe las dos (latitud y longitud) o ninguna: una ubicación a medias no se completa.';
+      } else {
+        lat = double.tryParse(latText.replaceAll(',', '.'));
+        lon = double.tryParse(lonText.replaceAll(',', '.'));
+        if (lat == null || lon == null || !lat.isFinite || !lon.isFinite || lat.abs() > 90 || lon.abs() > 180) {
+          locError = 'La latitud va de -90 a 90 y la longitud de -180 a 180 (p. ej. 5.0689 y -75.5174).';
+          lat = lon = null;
+        }
+      }
+    }
+    if (textMissing || whoMissing || locError != null) {
       setState(() {
         _textMissing = textMissing;
         _whoMissing = whoMissing;
+        _locError = locError;
       });
       return;
     }
     widget.who.value = who; // se recuerda aunque el informe no llegue a registrarse
     final flags = _flags.toList()..sort();
     // Mismo contenido = mismo id (un reintento no duplica); contenido distinto = id nuevo (no choca con un 409).
-    final signature = jsonEncode([text, _medium, origin, who, flags, _peopleCode]);
+    final signature = jsonEncode([text, _medium, origin, who, flags, _peopleCode, lat, lon]);
     if (_id == null || _signature != signature) {
       _id = _newId();
       _signature = signature;
@@ -95,10 +117,11 @@ class _DispatchDialogState extends State<DispatchDialog> {
       _sending = true;
       _textMissing = false;
       _whoMissing = false;
+      _locError = null;
       _error = null;
     });
     try {
-      await widget.api.dispatch(id: _id!, text: text, medium: _medium, who: who, origin: origin.isEmpty ? null : origin, flags: flags, people: _peopleCode);
+      await widget.api.dispatch(id: _id!, text: text, medium: _medium, who: who, origin: origin.isEmpty ? null : origin, flags: flags, people: _peopleCode, lat: lat, lon: lon);
       if (mounted) Navigator.of(context).pop<bool>(true);
     } on ApiException catch (e) {
       if (e.status == 409) _id = null; // el id ya se usó con otro contenido: el próximo intento lleva uno nuevo
@@ -175,6 +198,19 @@ class _DispatchDialogState extends State<DispatchDialog> {
                 maxLength: 80,
                 decoration: const InputDecoration(labelText: '¿De quién viene? (opcional)', hintText: 'Estación, radioaficionado, vecino…'),
               ),
+              const SizedBox(height: 12),
+              // La ubicación es opcional y escrita a mano: con ella el agente 6 ya puede recomendar, pero sigue pidiendo
+              // una segunda fuente y aprobación humana. Sin ella, el informe se registra igual y dice que falta el dónde.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: TextField(key: const Key('dispatch_lat'), controller: _lat, enabled: !_sending, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: const InputDecoration(labelText: 'Latitud (opcional)', hintText: '5.0689'))),
+                  const SizedBox(width: 12),
+                  Expanded(child: TextField(key: const Key('dispatch_lon'), controller: _lon, enabled: !_sending, keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true), decoration: const InputDecoration(labelText: 'Longitud (opcional)', hintText: '-75.5174'))),
+                ],
+              ),
+              const Padding(padding: EdgeInsets.only(top: 4), child: Text('Si la sabes. Se registra como ubicación escrita a mano (±3 km de incertidumbre): no es un GPS.', style: TextStyle(fontSize: 12, color: DashColors.muted))),
+              if (_locError != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_locError!, key: const Key('dispatch_loc_error'), style: const TextStyle(color: DashColors.danger, fontSize: 13))),
               const SizedBox(height: 6),
               const Text('Qué indica (opcional)', style: TextStyle(fontSize: 13, color: DashColors.muted)),
               const SizedBox(height: 6),

@@ -109,8 +109,8 @@ class FakeApi implements DashboardApi {
   }
 
   @override
-  Future<void> dispatch({required String id, required String text, required String medium, required String who, String? origin, List<String> flags = const [], int people = 0}) async {
-    calls.add(Call('dispatch', {'id': id, 'text': text, 'medium': medium, 'who': who, 'origin': origin, 'flags': flags, 'people': people}));
+  Future<void> dispatch({required String id, required String text, required String medium, required String who, String? origin, List<String> flags = const [], int people = 0, double? lat, double? lon}) async {
+    calls.add(Call('dispatch', {'id': id, 'text': text, 'medium': medium, 'who': who, 'origin': origin, 'flags': flags, 'people': people, 'lat': lat, 'lon': lon}));
     final gate = holdDispatch;
     if (gate != null) await gate.future;
     _check();

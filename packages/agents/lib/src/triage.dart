@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:sard_protocol/sard_protocol.dart';
 
+import 'geo.dart';
 import 'text_signals.dart';
 
 enum Urgency { p1, p2, p3, p4 }
@@ -61,7 +62,7 @@ const List<(int, String)> _signalCodes = [
 /// Sin datos no se baja la urgencia: un SOS sin banderas ni texto, o con un texto que no se
 /// entiende, queda en P3 con `escalateToHuman`. La única excepción es un texto que niega
 /// explícitamente el peligro («sin heridos») sin ninguna señal positiva: P4, informativo.
-TriageResult triage(int flags, {String? text, bool hasLocation = true}) {
+TriageResult triage(int flags, {String? text, bool hasLocation = true, LocQuality? locQuality}) {
   final hasText = text != null && text.trim().isNotEmpty;
   final analysis = hasText ? analyzeText(text) : const TextAnalysis([], {});
 
@@ -108,6 +109,9 @@ TriageResult triage(int flags, {String? text, bool hasLocation = true}) {
   if (!hasLocation) {
     uncertainty.add('ubicacion_ausente');
     confidence -= 0.05;
+  } else if (locQuality != null && (sigmaMeters(locQuality) ?? 0) >= 1000) {
+    // La imprecisión de UN reporte (±1 km o peor, o escrita a mano) se SEÑALA; no cambia la urgencia ni la confianza.
+    uncertainty.add('ubicacion_imprecisa');
   }
   if (hasText && utf8.encode(text).length >= kMaxTextBytes - 2) uncertainty.add('texto_truncado');
   // Un mensaje a medio terminar (típico de un informe por radio) se SEÑALA; ni se completa ni cambia la urgencia.

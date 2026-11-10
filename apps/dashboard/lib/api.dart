@@ -66,6 +66,8 @@ abstract class DashboardApi {
     String? origin,
     List<String> flags = const [],
     int people = 0,
+    double? lat,
+    double? lon,
   });
 }
 
@@ -191,6 +193,8 @@ class HttpDashboardApi implements DashboardApi {
     String? origin,
     List<String> flags = const [],
     int people = 0,
+    double? lat,
+    double? lon,
   }) async {
     final cleanOrigin = origin?.trim();
     final r = await _client
@@ -205,6 +209,8 @@ class HttpDashboardApi implements DashboardApi {
             'who': who,
             'flags': flags,
             'people': people,
+            // La ubicación escrita a mano, si la hay: van las dos o ninguna (el nodo rechaza una a medias).
+            if (lat != null && lon != null) ...{'lat': lat, 'lon': lon},
           }),
         )
         .timeout(timeout);

@@ -153,7 +153,7 @@ List<QueueItem> buildQueueFromEvents(List<Event> received, List<Event> triageEve
   final triaged = {
     for (final m in merged)
       m.reportKey: _effective(
-        triage(m.flags, text: m.text, hasLocation: m.hasLocation && m.locQuality.hasCoordinates),
+        triage(m.flags, text: m.text, hasLocation: m.hasLocation && hasUsableCoordinates(m.locQuality), locQuality: m.locQuality),
         [for (final e in modelEvents[m.reportKey] ?? const <Event>[]) if (m.text != null && e.body['analyzed_text'] == m.text) e],
         m.text,
       ),

@@ -48,6 +48,8 @@ class DispatchRequest {
     this.origin,
     this.flags = 0,
     this.people = 0,
+    this.lat,
+    this.lon,
   });
 
   /// Lo genera el cliente: un reintento con el mismo id no duplica el informe.
@@ -67,12 +69,17 @@ class DispatchRequest {
 
   /// Código de `PeopleBucket` (0 = no indicado).
   final int people;
+
+  /// Dónde está, si quien registra lo sabe. Van las dos o ninguna: una ubicación a medias no se completa. Se escribe con
+  /// la calidad «manual» (la tecleó una persona; no es un GPS) y sin inventar nada más.
+  final double? lat;
+  final double? lon;
 }
 
 /// Validación **estricta** del cuerpo. Lanza [FormatException] diciendo qué campo está mal.
 DispatchRequest parseDispatchRequest(Object? json) {
   if (json is! Map) throw const FormatException('el cuerpo debe ser un objeto JSON');
-  const allowed = {'id', 'text', 'medium', 'origin', 'who', 'flags', 'people'};
+  const allowed = {'id', 'text', 'medium', 'origin', 'who', 'flags', 'people', 'lat', 'lon'};
   final extra = json.keys.where((k) => !allowed.contains(k)).toList();
   if (extra.isNotEmpty) throw FormatException('campos desconocidos: ${extra.join(', ')}');
 
@@ -118,7 +125,20 @@ DispatchRequest parseDispatchRequest(Object? json) {
     throw FormatException('people debe ser un entero de 0 a ${PeopleBucket.values.length - 1}');
   }
 
-  return DispatchRequest(id: id, text: text, medium: medium, who: who.trim(), origin: origin, flags: flags, people: people);
+  double? lat, lon;
+  final hasLat = json.containsKey('lat'), hasLon = json.containsKey('lon');
+  if (hasLat != hasLon) throw FormatException('lat y lon van juntas: falta ${hasLat ? 'lon' : 'lat'}');
+  if (hasLat) {
+    lat = _coordinate(json['lat'], 'lat', 90);
+    lon = _coordinate(json['lon'], 'lon', 180);
+  }
+
+  return DispatchRequest(id: id, text: text, medium: medium, who: who.trim(), origin: origin, flags: flags, people: people, lat: lat, lon: lon);
+}
+
+double _coordinate(Object? v, String name, int limit) {
+  if (v is! num || !v.isFinite || v < -limit || v > limit) throw FormatException('$name debe ser un número entre -$limit y $limit');
+  return v.toDouble();
 }
 
 /// El mismo `id` ya se usó con OTRO contenido. No se descarta en silencio: el cliente debe generar un id nuevo.
@@ -139,7 +159,7 @@ class DispatchResult {
 }
 
 /// Registra informes de despachador como `report.received`: pasan por los mismos agentes que los de la app, se
-/// replican como cualquier evento y no llevan ubicación (el agente 1 no la inventa).
+/// replican como cualquier evento y sólo llevan ubicación si quien los registra la dio (el agente 1 no la inventa).
 class Dispatch {
   Dispatch(this._log, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
 
@@ -167,9 +187,10 @@ class Dispatch {
         'incident_type': 1, // SOS genérico, como la app
         'flags': r.flags,
         'people_bucket': r.people,
-        'loc_quality': 0,
-        'lat': null,
-        'lon': null,
+        // Con ubicación: la escribió una persona («manual»), no un GPS. Sin ella, nada: el agente 1 no la inventa.
+        'loc_quality': r.lat == null ? 0 : LocQuality.manual.index,
+        'lat': r.lat,
+        'lon': r.lon,
         'captured_at': nowMs ~/ 1000, // la hora del NODO al registrar, no la de cuando se oyó
         'battery_q': null,
         'text': r.text,
@@ -207,5 +228,7 @@ class Dispatch {
       b['origin'] == r.origin &&
       b['registered_by'] == r.who &&
       b['flags'] == r.flags &&
-      b['people_bucket'] == r.people;
+      b['people_bucket'] == r.people &&
+      b['lat'] == r.lat &&
+      b['lon'] == r.lon;
 }
