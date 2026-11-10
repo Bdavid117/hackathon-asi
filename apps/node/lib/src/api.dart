@@ -204,18 +204,19 @@ Handler buildHandler({
     ..get('/api/incidents', (Request req) async {
       final q = req.url.queryParameters;
       final int offset, limit;
-      final bool? bare;
+      final bool? bare, pending;
       try {
         offset = q.containsKey('offset') ? int.parse(q['offset']!) : 0;
         limit = q.containsKey('limit') ? int.parse(q['limit']!) : 200;
         bare = switch (q['bare']) { null => null, 'true' => true, 'false' => false, _ => throw const FormatException('bare debe ser true o false') };
+        pending = switch (q['pending']) { null => null, 'true' => true, 'false' => false, _ => throw const FormatException('pending debe ser true o false') };
       } on FormatException catch (e) {
         return Response(400, body: 'parámetros inválidos: ${e.message}');
       }
       final r = await queueService.read();
       final String body;
       try {
-        body = r.incidentsPage(view: q['view'] ?? 'short', urgency: q['urgency'], bare: bare, offset: offset, limit: limit);
+        body = r.incidentsPage(view: q['view'] ?? 'short', urgency: q['urgency'], bare: bare, pending: pending, offset: offset, limit: limit);
       } on ArgumentError catch (e) {
         return Response(400, body: 'parámetros inválidos: ${e.message}');
       }

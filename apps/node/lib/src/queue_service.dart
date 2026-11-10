@@ -17,8 +17,8 @@ class QueueRead {
   final IncidentIndex? incidents;
 
   /// Una página de incidentes (ver [IncidentIndex.page]). Lanza [ArgumentError] ante parámetros inválidos.
-  String incidentsPage({String view = 'short', String? urgency, bool? bare, int offset = 0, int limit = 200}) =>
-      (incidents ?? IncidentIndex.empty).page(view: view, urgency: urgency, bare: bare, offset: offset, limit: limit);
+  String incidentsPage({String view = 'short', String? urgency, bool? bare, bool? pending, int offset = 0, int limit = 200}) =>
+      (incidents ?? IncidentIndex.empty).page(view: view, urgency: urgency, bare: bare, pending: pending, offset: offset, limit: limit);
 
   /// Detalle ya codificado de cada incidente, por identificador.
   final Map<String, String> details;

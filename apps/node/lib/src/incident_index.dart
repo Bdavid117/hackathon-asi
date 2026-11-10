@@ -9,10 +9,13 @@ const int kShortViewLowUrgency = 20;
 const int kMaxIncidentPage = 1000;
 
 class _Row {
-  const _Row(this.id, this.u, this.bare, this.firstAt, this.lastAt, this.json);
+  const _Row(this.id, this.u, this.bare, this.firstAt, this.lastAt, this.json, {this.pending = false});
   final String id;
   final int u;
   final bool bare;
+
+  /// Una propuesta que todavía espera a una persona (ver [IncidentIndex.isPending]).
+  final bool pending;
   final int firstAt;
   final int lastAt;
   final String json;
@@ -51,6 +54,7 @@ class IncidentIndex {
           (i.summary['firstAt'] as num?)?.toInt() ?? 0,
           (i.summary['lastAt'] as num?)?.toInt() ?? 0,
           jsonEncode(i.summary),
+          pending: isPending(i.summary),
         ),
     ];
     // Se vuelve a ordenar aquí: quien llama puede no haberlo hecho, y el orden es parte del contrato.
@@ -73,7 +77,7 @@ class IncidentIndex {
     ];
     final bares = [for (final r in rows) if (r.bare) r];
 
-    var reports = 0, high = 0, review = 0;
+    var reports = 0, high = 0, review = 0, discrepancies = 0;
     final byUrgency = [0, 0, 0, 0];
     for (final r in rows) {
       byUrgency[r.u]++;
@@ -82,7 +86,9 @@ class IncidentIndex {
       reports += (i.summary['size'] as num?)?.toInt() ?? 1;
       if (i.summary['highUncertainty'] == true) high++;
       if (i.summary['needsReview'] == true) review++;
+      if ((i.summary['approval'] as Map?)?['discrepancy'] == true) discrepancies++;
     }
+    final pendingRows = [for (final r in rows) if (r.pending) r];
     final counters = <String, Object?>{
       'incidents': rows.length,
       'reports': reports,
@@ -91,6 +97,11 @@ class IncidentIndex {
       'highUncertainty': high,
       'needsReview': review,
       'inShortView': shortRows.length,
+      // Propuestas que esperan a una persona (sobre el TOTAL, no sobre la vista corta) y desde cuándo espera la más antigua:
+      // la HORA, no la edad (la edad la calcula quien lee, con su reloj). Las decisiones contradictorias van aparte.
+      'pendingDecision': pendingRows.length,
+      'pendingOldestAt': pendingRows.isEmpty ? null : pendingRows.map((r) => r.firstAt).reduce((a, b) => a < b ? a : b),
+      'discrepancies': discrepancies,
       'followUp': informativeLow.length > kShortViewLowUrgency ? informativeLow.length - kShortViewLowUrgency : 0,
     };
 
@@ -108,6 +119,15 @@ class IncidentIndex {
     return IncidentIndex._(rows, shortBody, counters);
   }
 
+  /// Una **propuesta** de recomendación cuya decisión está pendiente o caducada. No cuentan las ya aprobadas o rechazadas,
+  /// lo que no es una propuesta (falta información, descartada) ni las decisiones contradictorias (van en `discrepancies`).
+  static bool isPending(Map<String, Object?> summary) {
+    final recommendation = summary['recommendation'];
+    final approval = summary['approval'];
+    if (recommendation is! Map || approval is! Map || recommendation['state'] != 'propuesta' || approval['discrepancy'] == true) return false;
+    return approval['status'] == 'pendiente' || approval['status'] == 'caduca';
+  }
+
   static String _envelope({required String view, required Map<String, Object?> counters, required List<_Row> items, required int total, required int offset, required int limit, required String? bareAggregate}) =>
       '{"view":"$view","counters":${jsonEncode(counters)},"total":$total,"offset":$offset,"limit":$limit,'
       '"bareSos":${bareAggregate ?? 'null'},"items":[${items.map((r) => r.json).join(',')}]}';
@@ -120,15 +140,16 @@ class IncidentIndex {
   ///  · `view: 'short'` (por omisión): la vista corta; **ignora** offset y limit (si no, un P1 podría
   ///    quedar fuera) y no admite filtros.
   ///  · `view: 'all'`: todos los incidentes, paginados por [offset] y [limit] (máx. [kMaxIncidentPage]),
-  ///    con filtros opcionales por [urgency] (`P1`…`P4`) y por [bare] (sólo / sin los SOS sin detalle).
+  ///    con filtros opcionales por [urgency] (`P1`…`P4`), por [bare] (sólo / sin los SOS sin detalle) y por [pending]
+  ///    (sólo / sin las propuestas que esperan una decisión).
   ///
   /// Lanza [ArgumentError] ante parámetros inválidos.
-  String page({String view = 'short', String? urgency, bool? bare, int offset = 0, int limit = 200}) {
+  String page({String view = 'short', String? urgency, bool? bare, bool? pending, int offset = 0, int limit = 200}) {
     if (view != 'short' && view != 'all') throw ArgumentError.value(view, 'view', 'debe ser «short» o «all»');
     final u = urgency == null ? null : const {'P1': 0, 'P2': 1, 'P3': 2, 'P4': 3}[urgency];
     if (urgency != null && u == null) throw ArgumentError.value(urgency, 'urgency', 'debe ser P1, P2, P3 o P4');
     if (view == 'short') {
-      if (urgency != null || bare != null) throw ArgumentError('los filtros sólo valen con view=all');
+      if (urgency != null || bare != null || pending != null) throw ArgumentError('los filtros sólo valen con view=all');
       return _shortBody;
     }
     if (offset < 0) throw ArgumentError.value(offset, 'offset', 'no puede ser negativo');
@@ -136,7 +157,7 @@ class IncidentIndex {
     final cap = limit > kMaxIncidentPage ? kMaxIncidentPage : limit;
     final filtered = [
       for (final r in _rows)
-        if ((u == null || r.u == u) && (bare == null || r.bare == bare)) r,
+        if ((u == null || r.u == u) && (bare == null || r.bare == bare) && (pending == null || r.pending == pending)) r,
     ];
     final slice = filtered.skip(offset).take(cap).toList();
     return _envelope(view: 'all', counters: _counters, items: slice, total: filtered.length, offset: offset, limit: cap, bareAggregate: null);
