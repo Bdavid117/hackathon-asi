@@ -20,7 +20,8 @@
 //   (3) 0 reportes acusados se pierden: todos están en la cola de los tres nodos al final;
 //   (4) las dos decisiones contradictorias se conservan y los TRES nodos muestran «denegada» con la discrepancia marcada;
 //   (5) ningún proceso muere por su cuenta (sólo el kill -9 deliberado de C).
-// SE MIDEN Y SE INFORMAN, SIN CRITERIO: tiempo hasta cubrir la ráfaga, juicios duplicados (reportes juzgados por más de un nodo) y
+// SE MIDEN Y SE INFORMAN, SIN CRITERIO: cuántos reportes de la ráfaga eran de C por rendezvous (los que dependían del relevo; se añadió tras
+// la primera corrida, que lo daba por inferido del tiempo) y quién los juzgó (A o B = relevo; sólo C antes de morir = no es relevo), tiempo hasta cubrir la ráfaga, juicios duplicados (reportes juzgados por más de un nodo) y
 // cuántos de ellos difieren en la urgencia, reparto del trabajo entre los nodos y tiempo real hasta converger.
 //
 // Límites que el informe debe decir, pase o no pase: nodos y modelos locales y sintéticos; el relevo se mide con una sola muerte; el
@@ -31,6 +32,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:sard_agents/sard_agents.dart' show rendezvousOwner;
 import 'package:sard_sim/sard_sim.dart';
 
 final Uint8List key = Uint8List.fromList(utf8.encode('clave-de-ejemplo'));
@@ -127,6 +129,7 @@ Future<void> main(List<String> args) async {
   var converged = false, killedC = false, aliveAllButC = true;
   Duration? convergence, coverageTime;
   var covered = 0, dupReports = 0, dupDiffer = 0;
+  var ownedByC = <String>{}, relayedByAB = <String>{}, judgedOnlyByC = <String>{};
   final share = <Object?, int>{};
   var decisionsKept = false, lostFree = false;
 
@@ -176,6 +179,12 @@ Future<void> main(List<String> args) async {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
     say('   · ráfaga cubierta por el modelo: $covered de $burst${coverageTime == null ? '' : ' en ${_s(coverageTime)}'}');
+    // Medición DIRECTA del relevo: «cubierta» cuenta también lo que C juzgó y replicó antes de morir, que NO es relevo.
+    ownedByC = {for (final k in burstKeys) if (rendezvousOwner(k, ids) == 'C') k};
+    final after = await judgments(['A', 'B']);
+    relayedByAB = {for (final e in after) if (ownedByC.contains(e['reportKey'])) if (e['origin'] != 'C') e['reportKey']! as String};
+    judgedOnlyByC = {for (final e in after) if (ownedByC.contains(e['reportKey']) && e['origin'] == 'C') e['reportKey']! as String}..removeAll(relayedByAB);
+    say('   · de la ráfaga, ${ownedByC.length} eran de C por rendezvous: ${relayedByAB.length} los juzgó A o B (relevo), ${judgedOnlyByC.length} sólo C antes de morir, ${ownedByC.length - relayedByAB.length - judgedOnlyByC.length} sin juicio');
 
     say('Fase 3 · se AÍSLA B (vivo): cada lado recibe reportes y dos coordinadores se contradicen');
     for (final to in ['A', 'C']) {
@@ -315,6 +324,7 @@ Future<void> main(List<String> args) async {
     ..writeln()
     ..writeln('## Lo que se mide sin criterio')
     ..writeln()
+    ..writeln('- De los $burst reportes de la ráfaga, **${ownedByC.length}** eran de C por rendezvous (los que dependían del relevo). De ésos: **${relayedByAB.length}** los juzgó A o B (relevo de verdad), **${judgedOnlyByC.length}** sólo los juzgó C antes de morir (replicado, no es relevo) y **${ownedByC.length - relayedByAB.length - judgedOnlyByC.length}** no tienen juicio de ningún nodo.${ownedByC.isEmpty ? ' **Ninguno era de C: el relevo no se ejerció y el criterio 2 no lo demuestra.**' : ''}')
     ..writeln('- Tiempo hasta cubrir la ráfaga tras matar a C: **${coverageTime == null ? 'no se cubrió ($covered de $burst)' : _s(coverageTime)}**.')
     ..writeln('- Tiempo real hasta converger los tres: **${convergence == null ? 'n/d' : _s(convergence)}**.')
     ..writeln('- Juicios del modelo por nodo de origen: ${share.entries.map((e) => '${e.key}=${e.value}').join(', ')}. Reportes juzgados por MÁS DE UN nodo (cómputo duplicado): **$dupReports**; de ellos, con urgencia distinta: **$dupDiffer**.')
