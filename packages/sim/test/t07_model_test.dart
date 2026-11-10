@@ -49,13 +49,14 @@ List<SynthReport> fixture() => [
   rep('n1-1', inc: 0, text: null, minutes: 5), // sin texto: nunca se juzga
 ];
 
-T07ModelConfig cfg({double budget = 100, int concurrency = 3, double minConfidence = 0.8}) => T07ModelConfig(
+T07ModelConfig cfg({double budget = 100, int concurrency = 3, double minConfidence = 0.8, int criterion = 1}) => T07ModelConfig(
   seeds: const [1],
   model: 'claude-sonnet-5-5',
   effort: 'low',
   concurrency: concurrency,
   budgetUsd: budget,
   minConfidence: minConfidence,
+  criterion: criterion,
 );
 
 /// Contesta por la verdad (`truth`), o a todo «same» / «different»; cuenta las llamadas y mide tokens (1 000 + 500).
@@ -428,6 +429,153 @@ void main() {
     });
   });
 
+  group('decideT07V2: el criterio de la ronda 2 (escrito y commiteado antes de gastar)', () {
+    final fx = fixture();
+    final corro = generateCorroboration(sources: 5, seed: 1);
+    final rumor = generateRumor(copies: 6, sources: 2, seed: 1);
+    final data = [T07Dataset('s1', 'synth', fx), T07Dataset('corroboracion-1', 'corroboracion', corro), T07Dataset('rumor-1', 'rumor', rumor)];
+    final truth = {...textToIncident(fx), ...textToIncident(corro), ...textToIncident(rumor)};
+
+    JudgeRecord rec({String? reason, int latencyMs = 100}) => JudgeRecord(
+      dataset: 's1', targetKey: 't', candidateKeys: const [], judgments: const [], reason: reason, latencyMs: latencyMs, inputTokens: 1, outputTokens: 1, costUsd: 0, requestId: null,
+    );
+
+    /// Una evaluación que CUMPLE todo en v2 (se rompe una condición a la vez): reglas 1 % de recall y 0 % de falsa fusión, modelo +2 puntos
+    /// y 0 %, 120 uniones todas buenas, y el rumor sin ganancia indebida.
+    Future<(List<JudgeRecord>, T07Eval)> passing() async {
+      final res = await runT07Model(cfg(), _Oracle(truth), datasets: data);
+      final ev = evalT07(data, res.records, minConfidence: 0.85);
+      ev.rules = PairMetrics(100, 0, 9900, 1, 0);
+      ev.withModel = PairMetrics(300, 0, 9700, 1, 0);
+      ev.unions
+        ..total = 120
+        ..correct = 120;
+      ev.scenarios
+        ..clear()
+        ..add(T08Row(label: 'r', kind: 'rumor', reports: 12, rulesGroups: 1, modelGroups: 1, rulesIndependentSources: 1, modelIndependentSources: 1, rulesConfidence: 0.2, modelConfidence: 0.2));
+      return ([for (var i = 0; i < 20; i++) rec()], ev);
+    }
+
+    bool met(T07VerdictV2 v, String id) => v.lines.singleWhere((l) => l.id == id).met;
+
+    test('todo cumplido: se adopta (como opción apagada por omisión) y no hay veto', () async {
+      final (recs, ev) = await passing();
+      final v = decideT07V2(ev, recs, cfg());
+      for (final l in v.lines) {
+        expect(l.met, isTrue, reason: '${l.id}: ${l.description} → ${l.value}');
+      }
+      expect((v.adopt, v.inconclusive), (true, false));
+      expect(v.conclusion, contains('Se adopta'));
+    });
+
+    test('falla si la falsa fusión supera 1 % aunque el recall suba mucho', () async {
+      final (recs, ev) = await passing();
+      ev.rules = PairMetrics(100, 0, 9900, 1, 0);
+      ev.withModel = PairMetrics(980, 20, 9020, 1, 0); // 2 % de falsa fusión y +9 puntos de recall
+      final v = decideT07V2(ev, recs, cfg());
+      expect((v.adopt, met(v, '1'), met(v, '3')), (false, false, true));
+      expect(v.conclusion, contains('NO se adopta'));
+      expect(v.conclusion, contains('no se hace una tercera ronda'));
+      // el tope de 1 % es absoluto: unas reglas que ya fusionan mal (1,8 %) no dan permiso para 1,9 % aunque estén dentro de +0,5 puntos
+      ev.rules = PairMetrics(982, 18, 9000, 1, 0);
+      ev.withModel = PairMetrics(981, 19, 9000, 1, 0);
+      expect(met(decideT07V2(ev, recs, cfg()), '1'), isFalse);
+      // y una falsa fusión que falla NO se disfraza de «no concluyente» aunque haya pocas uniones
+      ev.rules = PairMetrics(100, 0, 9900, 1, 0);
+      ev.withModel = PairMetrics(980, 20, 9020, 1, 0);
+      ev.unions
+        ..total = 99
+        ..correct = 99;
+      final few = decideT07V2(ev, recs, cfg());
+      expect((few.inconclusive, few.adopt), (false, false));
+    });
+
+    test('falla si supera a las reglas en más de 0,5 puntos aunque quede bajo 1 %', () async {
+      final (recs, ev) = await passing();
+      ev.rules = PairMetrics(1000, 4, 9000, 1, 0); // 0,4 %
+      ev.withModel = PairMetrics(1986, 14, 8000, 1, 0); // 0,7 %: ≤ 1 % pero 0,3 puntos sobre las reglas: pasa
+      expect(met(decideT07V2(ev, recs, cfg()), '1'), isTrue);
+      ev.withModel = PairMetrics(1982, 18, 8000, 1, 0); // 0,9 %: ≤ 1 % pero 0,5 puntos justos y medio: no pasa
+      expect(met(decideT07V2(ev, recs, cfg()), '1'), isFalse);
+    });
+
+    test('no concluyente con menos de 100 uniones (aunque todas sean buenas); con 100 ya cuenta', () async {
+      final (recs, ev) = await passing();
+      ev.unions
+        ..total = 99
+        ..correct = 99;
+      var v = decideT07V2(ev, recs, cfg());
+      expect((v.adopt, v.inconclusive, met(v, '2')), (false, true, false));
+      expect(v.conclusion, contains('No concluyente'));
+      ev.unions
+        ..total = 100
+        ..correct = 100;
+      v = decideT07V2(ev, recs, cfg());
+      expect((v.adopt, v.inconclusive), (true, false));
+    });
+
+    test('la precisión de las uniones sigue exigiendo ≥ 95 %: con 100 uniones, 95 pasan y 94 no (y entonces NO es «no concluyente»)', () async {
+      final (recs, ev) = await passing();
+      ev.unions
+        ..total = 100
+        ..correct = 95;
+      expect(met(decideT07V2(ev, recs, cfg()), '2'), isTrue);
+      ev.unions.correct = 94;
+      final v = decideT07V2(ev, recs, cfg());
+      expect((met(v, '2'), v.inconclusive, v.adopt), (false, false, false));
+    });
+
+    test('el recall exige +1,5 puntos sobre las reglas (ya no «+5 y el doble»)', () async {
+      final (recs, ev) = await passing();
+      ev.rules = PairMetrics(100, 0, 9900, 1, 0); // 1 %
+      ev.withModel = PairMetrics(250, 0, 9750, 1, 0); // 2,5 %: +1,5 puntos justos
+      expect((met(decideT07V2(ev, recs, cfg()), '3'), decideT07V2(ev, recs, cfg()).adopt), (true, true));
+      ev.withModel = PairMetrics(249, 0, 9751, 1, 0); // 2,49 %
+      expect((met(decideT07V2(ev, recs, cfg()), '3'), decideT07V2(ev, recs, cfg()).adopt), (false, false), reason: 'con SÓLO el recall roto no se adopta');
+      ev.rules = PairMetrics(1000, 0, 9000, 1, 0); // 10 %
+      ev.withModel = PairMetrics(1150, 0, 8850, 1, 0); // 11,5 %: +1,5 puntos aunque sólo ×1,15 (no hay «el doble»)
+      expect(met(decideT07V2(ev, recs, cfg()), '3'), isTrue);
+    });
+
+    test('un rumor que gana fuentes independientes o pasa de 0,8 de confianza impide la adopción', () async {
+      final (recs, ev) = await passing();
+      T08Row rumorRow({int sources = 1, double conf = 0.2}) => T08Row(
+        label: 'r', kind: 'rumor', reports: 12, rulesGroups: 1, modelGroups: 1, rulesIndependentSources: 1, modelIndependentSources: sources, rulesConfidence: 0.2, modelConfidence: conf,
+      );
+      ev.scenarios
+        ..clear()
+        ..add(rumorRow(sources: cfg().rumorSources + 1));
+      expect((decideT07V2(ev, recs, cfg()).adopt, met(decideT07V2(ev, recs, cfg()), '6')), (false, false));
+      ev.scenarios
+        ..clear()
+        ..add(rumorRow(conf: 0.81));
+      expect(met(decideT07V2(ev, recs, cfg()), '6'), isFalse);
+    });
+
+    test('el criterio de las 5 fuentes YA NO cuenta: no formar el grupo de 5 no impide adoptar, y no figura entre los criterios', () async {
+      final (recs, ev) = await passing();
+      ev.scenarios.add(T08Row(
+        label: 'c', kind: 'corroboracion', reports: 5, rulesGroups: 5, modelGroups: 3, rulesIndependentSources: 1, modelIndependentSources: 2, rulesConfidence: 0.6, modelConfidence: 0.6,
+      ));
+      final v = decideT07V2(ev, recs, cfg());
+      expect(v.adopt, isTrue);
+      expect(v.lines.map((l) => l.id), ['1', '2', '4', '3', '6'], reason: 'el 5 se retiró');
+    });
+
+    test('la fiabilidad (4) se mantiene: más de un 5 % de fallos impide adoptar', () async {
+      final (_, ev) = await passing();
+      final bad = [for (var i = 0; i < 20; i++) rec(reason: i < 2 ? 'plazo_agotado' : null)];
+      expect((decideT07V2(ev, bad, cfg()).adopt, met(decideT07V2(ev, bad, cfg()), '4')), (false, false));
+    });
+
+    test('el texto de la regla v2 dice que se reescribió tras ver la ronda 1', () {
+      final rule = kT07DecisionRuleV2.toLowerCase();
+      expect(rule, contains('reescrito'));
+      expect(rule, contains('ronda 1'));
+      expect(rule, contains('evidencia más débil'));
+    });
+  });
+
   group('decideT07: el criterio se aplica mecánicamente', () {
     final fx = fixture();
     final corro = generateCorroboration(sources: 5, seed: 1);
@@ -693,6 +841,24 @@ void main() {
           if ((r.text ?? '').length > 12) expect(md, isNot(contains(r.text!)), reason: 'el informe no incluye el texto de los reportes');
         }
       }
+    });
+
+    test('con --criterion 2 el informe lleva la regla v2 (declarada como reescrita), el veredicto de decideT07V2 y la nota de las 5 fuentes retirada, y NO la regla v1', () {
+      final c = cfg(criterion: 2, minConfidence: 0.85);
+      final md = renderT07Model(c, res, data);
+      expect(md, contains(kT07DecisionRuleV2));
+      expect(md, isNot(contains(kT07DecisionRule)));
+      expect(md, contains('### Criterio de adopción de la ronda 2 (REESCRITO tras ver la ronda 1: evidencia más débil)'), reason: 'el encabezado ya lo dice, no sólo el texto de la regla');
+      expect(md, contains('criterio retirado'));
+      final ev = evalT07(data, res.records, minConfidence: 0.85);
+      expect(md, contains(decideT07V2(ev, res.records, c).conclusion));
+      expect(md, isNot(contains('| 5. corroboración')), reason: 'el criterio 5 ya no figura en la tabla de criterios');
+    });
+
+    test('por omisión (criterio 1) el informe sigue siendo el de la ronda 1, sin mención al v2', () {
+      final md = renderT07Model(cfg(), res, data);
+      expect(md, contains(kT07DecisionRule));
+      expect(md, isNot(contains(kT07DecisionRuleV2)));
     });
 
     test('el informe trae el veredicto del criterio, la evidencia disponible, la versión del código y NO llama «duro» al tope', () {

@@ -1,6 +1,7 @@
 /// Banco de pruebas SARD: canales con fallos, tiempo virtual y escenarios (Dart puro).
 library;
 
+export 'src/api_ledger.dart';
 export 'src/b3_metrics.dart';
 export 'src/fake_llm.dart';
 export 'src/fake_node.dart';

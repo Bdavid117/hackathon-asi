@@ -68,6 +68,7 @@ class T07ModelConfig {
     this.timeout = const Duration(seconds: 90),
     this.inPerMTok,
     this.outPerMTok,
+    this.criterion = 1,
   });
 
   /// Semillas del generador; deben ser **nuevas** (ver `docs/resultados/b3.md`).
@@ -87,6 +88,9 @@ class T07ModelConfig {
   final int corroborationSources;
   final int rumorCopies;
   final int rumorSources;
+
+  /// Qué criterio de adopción aplica el informe: 1 (ronda 1, [kT07DecisionRule]) o 2 (ronda 2, [kT07DecisionRuleV2]).
+  final int criterion;
 
   /// Candidatos por reporte y confianza mínima del modelo para que un juicio cuente.
   final int k;
@@ -554,6 +558,86 @@ T07Verdict decideT07(T07Eval ev, List<JudgeRecord> records, T07ModelConfig cfg) 
   return T07Verdict(lines, safe, recommend, allowVeto, '$conclusion $vetoText');
 }
 
+/// El criterio de la RONDA 2 del juez (semillas 706–713, `--min-confidence 0.85`), **escrito y commiteado antes de gastar** y REESCRITO
+/// tras ver los datos de la ronda 1: con una confianza mínima de 0,85 la ronda 1 habría dado 143 uniones buenas y 0 malas de las 257
+/// y 5 que dio con 0,80 (análisis gratuito de `t07-modelo-datos.csv`: una hipótesis deducida de los MISMOS datos, no un resultado). Eso
+/// hace inalcanzable por aritmética el «+5 puntos y el doble de recall» (≈ 56 % de la ganancia: ≈ +2 puntos), y el criterio de las 5
+/// fuentes depende de un texto que el juez calificó `possible` (0,6): subir el umbral no lo arregla.
+///
+/// Como se reescribió tras ver la ronda 1, **es evidencia más débil que la de la primera vez** y el informe tiene que decirlo.
+const String kT07DecisionRuleV2 =
+    'Criterio de la ronda 2, REESCRITO tras ver los datos de la ronda 1 (evidencia más débil que la de la primera vez), escrito y commiteado antes de gastar. '
+    'Semillas nuevas 706–713, mismo tamaño por semilla que la ronda 1, `--min-confidence 0.85`, mismo modelo, mismo esfuerzo y mismo mensaje (no se toca), '
+    'comparación pareada contra reglas solas sobre los mismos reportes. **Se adopta la unión por modelo como opción apagada por omisión** sólo si se cumplen TODOS: '
+    '(1) la falsa fusión de pares es ≤ 1 % y no supera en más de 0,5 puntos a la de sólo reglas; '
+    '(2) la precisión de las uniones del modelo es ≥ 95 % con al menos 100 uniones hechas (con menos, el resultado es «no concluyente», no «cumple»); '
+    '(3) el recall de pares sube al menos 1,5 puntos sobre el de sólo reglas (sustituye a «+5 puntos y el doble»); '
+    '(4) los fallos del modelo son ≤ 5 % de las llamadas y las llamadas de más de 8 s ≤ 5 % de las útiles; '
+    '(6) el rumor repetido no gana fuentes independientes por encima de las que tiene ni pasa de 0,8 de confianza. '
+    'Se RETIRA el criterio de las 5 fuentes (5): se informa como observación, no como criterio. El veto sigue apagado. '
+    'Si el criterio (1) vuelve a fallar, o el resultado es no concluyente, la pregunta se cierra: no se hace una tercera ronda.';
+
+/// Número mínimo de uniones del modelo para poder juzgar su precisión en la ronda 2.
+const int kT07MinUnionsV2 = 100;
+
+/// Ganancia mínima de recall de pares (en puntos porcentuales, como fracción) de la ronda 2.
+const double kT07MinRecallGainV2 = 0.015;
+
+class T07VerdictV2 {
+  const T07VerdictV2(this.lines, this.adopt, this.inconclusive, this.conclusion);
+  final List<CriterionLine> lines;
+
+  /// Cumple TODOS los criterios: se ofrece como opción apagada por omisión.
+  final bool adopt;
+
+  /// Hubo menos de [kT07MinUnionsV2] uniones y nada falló de forma definitiva: no se puede concluir ni en un sentido ni en otro.
+  final bool inconclusive;
+  final String conclusion;
+}
+
+/// Aplica [kT07DecisionRuleV2] a los resultados, sin margen para interpretarlos. Los ids de los criterios son los de v1 (el 5 se retiró).
+T07VerdictV2 decideT07V2(T07Eval ev, List<JudgeRecord> records, T07ModelConfig cfg) {
+  String pct(double x, [int d = 2]) => _pct(x, d: d);
+  final fmM = ev.withModel.falseMergeRate, fmR = ev.rules.falseMergeRate;
+  final u = ev.unions;
+  final calls = records.length;
+  final failures = records.where((r) => r.reason != null).length;
+  final okCalls = calls - failures;
+  final over8 = records.where((r) => r.reason == null && r.latencyMs > 8000).length;
+  final gain = ev.withModel.recall - ev.rules.recall;
+  final rumor = ev.scenarios.where((s) => s.kind == 'rumor').toList();
+
+  final l1 = CriterionLine('1', 'falsa fusión ≤ 1 % y ≤ la de las reglas + 0,5 puntos', '${pct(fmM)} con el modelo, ${pct(fmR)} con las reglas', fmM <= 0.01 + _eps && fmM <= fmR + 0.005 + _eps);
+  final enoughUnions = u.total >= kT07MinUnionsV2;
+  final l2 = CriterionLine(
+    '2',
+    'precisión de las uniones del modelo ≥ 95 % con al menos $kT07MinUnionsV2 uniones',
+    u.total == 0 ? 'sin uniones' : '${pct(u.correct / u.total, 1)} (${u.correct} de ${u.total}${enoughUnions ? '' : ': insuficientes'})',
+    enoughUnions && u.correct / u.total >= 0.95 - _eps,
+  );
+  final l4 = CriterionLine('4', 'fallos ≤ 5 % de las llamadas y llamadas de más de 8 s ≤ 5 % de las útiles',
+      calls == 0 ? 'sin llamadas' : '$failures fallos de $calls; $over8 de $okCalls útiles pasan de 8 s',
+      calls > 0 && failures / calls <= 0.05 + _eps && okCalls > 0 && over8 / okCalls <= 0.05 + _eps);
+  final l3 = CriterionLine('3', 'recall de pares: al menos +1,5 puntos sobre las reglas', '${pct(ev.rules.recall)} → ${pct(ev.withModel.recall)} (+${(100 * gain).toStringAsFixed(2)} puntos)', gain >= kT07MinRecallGainV2 - _eps);
+  final rumorBad = rumor.where((s) => !(s.modelIndependentSources <= cfg.rumorSources && s.modelConfidence < 0.8)).length;
+  final l6 = CriterionLine('6', 'rumor: no gana fuentes independientes ni pasa de 0,8 de confianza', rumor.isEmpty ? 'sin escenarios' : '${rumor.length - rumorBad} de ${rumor.length} sin ganancia indebida', rumor.isNotEmpty && rumorBad == 0);
+
+  final lines = [l1, l2, l4, l3, l6];
+  final adopt = lines.every((l) => l.met);
+  // «No concluyente»: faltan uniones para juzgar y NADA de lo demás falló de forma definitiva.
+  final inconclusive = !adopt && !enoughUnions && l1.met && l4.met && l6.met;
+  String ids(Iterable<CriterionLine> ls) => ls.map((l) => l.id).join(', ');
+  final String conclusion;
+  if (adopt) {
+    conclusion = 'Se adopta la unión por modelo como opción apagada por omisión: cumple todos los criterios de la ronda 2 (reescritos tras ver la ronda 1: evidencia más débil).';
+  } else if (inconclusive) {
+    conclusion = 'No concluyente: hubo menos de $kT07MinUnionsV2 uniones (${u.total}); no se puede juzgar su precisión ni su beneficio. La pregunta se cierra: no se hace una tercera ronda.';
+  } else {
+    conclusion = 'NO se adopta la unión por modelo: criterios sin cumplir: ${ids(lines.where((l) => !l.met))}. La pregunta se cierra: no se hace una tercera ronda.';
+  }
+  return T07VerdictV2(lines, adopt, inconclusive, conclusion);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Informes
 // ---------------------------------------------------------------------------------------------
@@ -589,9 +673,9 @@ String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> d
   b.writeln('- El tope de gasto se comprueba antes de cada llamada contando lo que cuestan las que están en vuelo; **no es estrictamente duro** (un piloto lo pasó por 0,0001 USD).');
   if (codeVersion != null) b.writeln('- Código: `$codeVersion`.');
   b.writeln();
-  b.writeln('### Criterio de adopción (fijado antes de ver los datos)');
+  b.writeln(cfg.criterion == 2 ? '### Criterio de adopción de la ronda 2 (REESCRITO tras ver la ronda 1: evidencia más débil)' : '### Criterio de adopción (fijado antes de ver los datos)');
   b.writeln();
-  b.writeln(kT07DecisionRule);
+  b.writeln(cfg.criterion == 2 ? kT07DecisionRuleV2 : kT07DecisionRule);
   b.writeln();
 
   b.writeln('## Resultado de pares (T07)');
@@ -655,16 +739,30 @@ String renderT07Model(T07ModelConfig cfg, T07ModelResult res, List<T07Dataset> d
   }
   b.writeln();
 
-  final verdict = decideT07(ev, res.records, cfg);
+  final List<CriterionLine> verdictLines;
+  final String verdictConclusion;
+  if (cfg.criterion == 2) {
+    final v2 = decideT07V2(ev, res.records, cfg);
+    verdictLines = v2.lines;
+    verdictConclusion = v2.conclusion;
+  } else {
+    final v1 = decideT07(ev, res.records, cfg);
+    verdictLines = v1.lines;
+    verdictConclusion = v1.conclusion;
+  }
   b.writeln('## Veredicto del criterio (aplicado mecánicamente)');
   b.writeln();
   b.writeln('| Criterio | Valor | ¿Cumple? |');
   b.writeln('|---|---|---|');
-  for (final l in verdict.lines) {
+  for (final l in verdictLines) {
     b.writeln('| ${l.id}. ${l.description} | ${l.value} | ${l.met ? 'sí' : '**no**'} |');
   }
   b.writeln();
-  b.writeln('**${verdict.conclusion}**');
+  b.writeln('**$verdictConclusion**');
+  if (cfg.criterion == 2) {
+    b.writeln();
+    b.writeln('La corroboración de 5 fuentes (T08) se informa arriba como observación: su criterio se retiró (criterio retirado en la ronda 2).');
+  }
   b.writeln();
 
   b.writeln('## Latencia, coste y fallos');

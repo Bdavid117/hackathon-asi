@@ -7,6 +7,9 @@
 //
 // Opciones: --model (claude-sonnet-5-5) · --effort (low; vacío = el de la API) · --concurrency (4) · --timeout (segundos, 90) ·
 //           --incidents (24) · --reports (300) · --adversarial (6) · --k (candidatos por reporte, 6) · --min-confidence (0.8) ·
+//           --criterion (1: el de la ronda 1; 2: el de la ronda 2, reescrito tras ver la ronda 1) ·
+//           --ledger (docs/resultados/gasto-api.json: el registro de gasto; se niega a lanzar si lo gastado + el tope de la corrida pasa de
+//           50 − 10 USD; sólo con la API real, no con --base-url) ·
 //           --out (docs/resultados/t07-modelo.md; el CSV de datos crudos queda al lado) · --price-in / --price-out (USD por
 //           millón de tokens, sólo para un modelo sin precio conocido) · --base-url (sólo pruebas: un servidor falso).
 //
@@ -41,6 +44,7 @@ Future<void> main(List<String> args) async {
     effort: effort.isEmpty ? null : effort,
     concurrency: int.parse(_opt(args, 'concurrency', '4')),
     budgetUsd: double.parse(_opt(args, 'budget-usd', '8')),
+    criterion: int.parse(_opt(args, 'criterion', '1')),
     timeout: Duration(seconds: int.parse(_opt(args, 'timeout', '90'))),
     inPerMTok: args.contains('--price-in') ? double.parse(_opt(args, 'price-in', '0')) : null,
     outPerMTok: args.contains('--price-out') ? double.parse(_opt(args, 'price-out', '0')) : null,
@@ -87,7 +91,27 @@ Future<void> main(List<String> args) async {
     effort: cfg.effort,
   );
   stderr.writeln('juzgando ${jobs.length} consultas con ${cfg.model} (tope \$${cfg.budgetUsd.toStringAsFixed(2)})…');
-  final res = await runT07Model(cfg, port, datasets: datasets);
+  final ledgerPath = _opt(args, 'ledger', 'docs/resultados/gasto-api.json');
+  final T07ModelResult res;
+  if (base.isEmpty) {
+    // La API REAL cuesta: la corrida va BAJO el registro de gasto (se niega a lanzar si pasa del límite; anota el gasto real al terminar
+    // o el tope entero si falla).
+    try {
+      res = await ApiLedger.load(ledgerPath).spend<T07ModelResult>(
+        run: 'T07 semillas ${cfg.seeds.join(',')}',
+        capUsd: cfg.budgetUsd,
+        body: () => runT07Model(cfg, port, datasets: datasets),
+        costOf: (r) => r.spentUsd,
+        noteOf: (r) => '${r.records.length} llamadas, ${cfg.model}, confianza mínima ${cfg.minConfidence}',
+      );
+    } on StateError catch (e) {
+      stderr.writeln(e.message);
+      client.close();
+      exit(4);
+    }
+  } else {
+    res = await runT07Model(cfg, port, datasets: datasets); // un servidor falso: no hay gasto real que registrar
+  }
   client.close();
 
   final out = _opt(args, 'out', 'docs/resultados/t07-modelo.md');
