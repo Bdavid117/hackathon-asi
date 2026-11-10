@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:shelf/shelf.dart';
 import 'package:shelf_router/shelf_router.dart';
 
+import 'access.dart';
 import 'approvals.dart';
 import 'dispatch.dart';
 import 'event_log.dart';
@@ -59,48 +60,41 @@ Response _projectionResponse(Request req, QueueRead r, bool cors, String body) {
   return Response.ok(body, headers: headers);
 }
 
-/// Compara en tiempo constante (no revela con el tiempo cuántos caracteres acertó quien adivina).
-bool _constantTimeEquals(List<int> a, List<int> b) {
-  var diff = a.length ^ b.length;
-  final n = a.length < b.length ? a.length : b.length;
-  for (var i = 0; i < n; i++) {
-    diff |= a[i] ^ b[i];
-  }
-  return diff == 0;
-}
-
-/// `Authorization: Bearer <código>`: el esquema no distingue mayúsculas (RFC 7235), el código sí, y se compara
-/// ENTERO (un prefijo, un sufijo o un espacio de más no sirven).
-bool _bearerMatches(String? header, String expected) {
-  if (header == null) return false;
-  final m = RegExp(r'^bearer (.*)$', caseSensitive: false).firstMatch(header);
-  if (m == null) return false;
-  return _constantTimeEquals(utf8.encode(m.group(1)!), utf8.encode(expected));
-}
-
-/// Qué código exige una ruta (`null` = abierta). DENEGADO POR OMISIÓN: todo lo que cuelgue de `/api/` exige
-/// código salvo `/api/health`; una ruta nueva no queda abierta por olvido. `/frame` (los ciudadanos no tienen
-/// código) y el tablero estático siguen abiertos. La réplica (`/api/events`, los reportes crudos con ubicación)
-/// pide el código de PARES; lo demás, el del coordinador; no son intercambiables.
-String? _tokenFor(String path, String? coordinatorToken, String? peerToken) {
-  if (path == 'frame' || path == 'api/health' || !path.startsWith('api/')) return null;
-  return path == 'api/events' ? peerToken : coordinatorToken;
-}
-
-Handler _guarded(Handler inner, {String? coordinatorToken, String? peerToken}) {
-  if (coordinatorToken == null && peerToken == null) return inner;
+/// El guardián de acceso. DENEGADO POR OMISIÓN: todo lo que cuelgue de `/api/` exige código salvo `/api/health`; una ruta nueva no
+/// queda abierta por olvido. `/frame` (los ciudadanos no tienen código) y el tablero estático siguen abiertos.
+///
+///  · La réplica (`/api/events`, los reportes crudos con ubicación) pide SÓLO el código de PARES (si no hay, queda abierta).
+///  · Lo demás pide el código del coordinador: con [codes] cada uno identifica a una persona (y su nombre viaja en el contexto
+///    de la petición); con [coordinatorToken], un código compartido que NO identifica. No son intercambiables.
+///
+/// Con sólo [codes] (sin token de coordinador ni de pares) el guardián TAMBIÉN actúa: los códigos cuentan como protección.
+Handler _guarded(Handler inner, {String? coordinatorToken, String? peerToken, Map<String, String> codes = const {}}) {
+  if (coordinatorToken == null && peerToken == null && codes.isEmpty) return inner;
+  Response denied() => Response(
+    401,
+    body: 'se exige el código de acceso (cabecera Authorization: Bearer …)',
+    headers: {'www-authenticate': 'Bearer realm="sard"', 'content-type': 'text/plain; charset=utf-8'},
+  );
   return (Request req) {
-    final needed = _tokenFor(req.url.path, coordinatorToken, peerToken);
-    if (needed != null && !_bearerMatches(req.headers['authorization'], needed)) {
-      return Response(
-        401,
-        body: 'se exige el código de acceso (cabecera Authorization: Bearer …)',
-        headers: {'www-authenticate': 'Bearer realm="sard"', 'content-type': 'text/plain; charset=utf-8'},
-      );
+    final path = req.url.path;
+    if (path == 'frame' || path == 'api/health' || !path.startsWith('api/')) return inner(req);
+    final auth = req.headers['authorization'];
+    if (path == 'api/events') {
+      if (peerToken != null && !bearerMatches(auth, peerToken)) return denied();
+      return inner(req);
     }
+    if (codes.isNotEmpty) {
+      final who = identifyBearer(auth, codes);
+      if (who == null) return denied();
+      return inner(req.change(context: {kWhoContext: who}));
+    }
+    if (coordinatorToken != null && !bearerMatches(auth, coordinatorToken)) return denied();
     return inner(req);
   };
 }
+
+/// El nombre de quien presentó su código (lo deja el guardián en el contexto), o `null` si no hay identidad.
+String? _who(Request req) => req.context[kWhoContext] as String?;
 
 Handler buildHandler({
   required Ingest ingest,
@@ -118,7 +112,17 @@ Handler buildHandler({
 
   /// Código de la réplica entre nodos (`--peer-token`): protege `/api/events`.
   String? peerToken,
+
+  /// Códigos de los coordinadores (`--coordinator-codes`): nombre → código. A diferencia del token compartido, el código IDENTIFICA a
+  /// quien firma: aprobar, registrar un informe o declarar un recurso se hace siempre a nombre del dueño del código.
+  Map<String, String> coordinatorCodes = const {},
 }) {
+  if (coordinatorToken != null && coordinatorCodes.isNotEmpty) {
+    throw ArgumentError('coordinatorToken y coordinatorCodes no se combinan: quien tuviera el token compartido firmaría con cualquier nombre.');
+  }
+  if (peerToken != null && coordinatorCodes.containsValue(peerToken)) {
+    throw ArgumentError('un código de coordinador no puede ser igual al de la réplica.');
+  }
   final queueService = queue ?? QueueService(log);
   final dispatcher = dispatch ?? Dispatch(log);
   final router = Router()
@@ -150,7 +154,9 @@ Handler buildHandler({
       }
       final ApprovalRequest a;
       try {
-        a = parseApprovalRequest(jsonDecode(utf8.decode(chunks.takeBytes())));
+        final bound = bindIdentity(_who(req), jsonDecode(utf8.decode(chunks.takeBytes())));
+        if (bound.mismatch != null) return Response(403, body: bound.mismatch);
+        a = parseApprovalRequest(bound.body);
       } on FormatException catch (e) {
         return Response(400, body: e.message);
       }
@@ -184,7 +190,9 @@ Handler buildHandler({
       }
       final DispatchRequest d;
       try {
-        d = parseDispatchRequest(jsonDecode(utf8.decode(chunks.takeBytes())));
+        final bound = bindIdentity(_who(req), jsonDecode(utf8.decode(chunks.takeBytes())));
+        if (bound.mismatch != null) return Response(403, body: bound.mismatch);
+        d = parseDispatchRequest(bound.body);
       } on FormatException catch (e) {
         return Response(400, body: e.message);
       }
@@ -198,6 +206,8 @@ Handler buildHandler({
       if (!r.duplicate) pipeline?.run(r.event);
       return _json({'id': r.event.id, 'reportKey': r.event.reportKey, 'duplicate': r.duplicate}, cors: cors);
     })
+    // Quién es el dueño del código presentado (o null si no hay identidad). Nunca por caché ni etiqueta: una identidad cambia con el código.
+    ..get('/api/whoami', (Request req) => Response.ok(jsonEncode({'who': _who(req)}), headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', if (cors) ..._devCors}))
     ..get('/api/resources', (Request req) => _json({'resources': [for (final e in queueService.effectiveResources()) e.toJson()]}, cors: cors))
     ..post('/api/resources', (Request req) async {
       // Igual que la aprobación y el despachador: sólo JSON, con tope de tamaño; el código del coordinador (si hay) ya se comprobó.
@@ -212,7 +222,9 @@ Handler buildHandler({
       }
       final ResourceDeclareRequest d;
       try {
-        d = parseResourceDeclaration(jsonDecode(utf8.decode(chunks.takeBytes())));
+        final bound = bindIdentity(_who(req), jsonDecode(utf8.decode(chunks.takeBytes())));
+        if (bound.mismatch != null) return Response(403, body: bound.mismatch);
+        d = parseResourceDeclaration(bound.body);
       } on FormatException catch (e) {
         return Response(400, body: e.message);
       }
@@ -276,5 +288,5 @@ Handler buildHandler({
           if (pipeline?.llmStats != null) 'llm': pipeline!.llmStats!.toJson(),
           if (pipeline != null) 'budget': pipeline.budget.toJson(),
         }, cors: cors));
-  return _guarded(router.call, coordinatorToken: coordinatorToken, peerToken: peerToken);
+  return _guarded(router.call, coordinatorToken: coordinatorToken, peerToken: peerToken, codes: coordinatorCodes);
 }

@@ -30,6 +30,12 @@ Uso: dart run bin/sard_node.dart --id <A|B|…> --port <n> --data <dir> [--key <
   --coordinator-token  código de acceso del COORDINADOR (también SARD_COORDINATOR_TOKEN; mínimo 8 caracteres): lo
               exigen el tablero (lectura) y la aprobación; el tablero lo pide al abrirse. NO es identidad: un código
               compartido no dice quién aprobó. Sin él, cualquiera con acceso a la red lee y aprueba.
+  --coordinator-codes  códigos de VARIOS coordinadores que IDENTIFICAN a cada uno (también SARD_COORDINATOR_CODES):
+              "Ana Gómez=codigo-de-ana,Luis Torres=codigo-de-luis". Cada código tiene al menos 8 caracteres, es distinto de los
+              demás y del de la réplica. Aprobar, registrar un informe y declarar un recurso se hace SIEMPRE a nombre del dueño del
+              código: el de Luis no puede firmar como Ana en este nodo. No se combina con --coordinator-token. Es «identificado por
+              código», no «autenticado»: sin TLS el código viaja en claro, no hay límite de intentos, y los nodos pares replican
+              el evento sin volver a comprobar el nombre.
   --peer-token  código de la RÉPLICA entre nodos (también SARD_PEER_TOKEN; mínimo 8): protege /api/events, que entrega
               los reportes crudos con su ubicación. Todos los nodos del grupo deben usar el mismo. Sin él, /api/events
               queda abierto aunque haya código de coordinador.
@@ -80,6 +86,20 @@ Future<void> _run(List<String> args) async {
 
   final coordinatorToken = secret('coordinator-token', 'SARD_COORDINATOR_TOKEN');
   final peerToken = secret('peer-token', 'SARD_PEER_TOKEN');
+  var coordinatorCodes = const <String, String>{};
+  final rawCodes = o['coordinator-codes'] ?? Platform.environment['SARD_COORDINATOR_CODES'];
+  if (rawCodes != null) {
+    if (coordinatorToken != null) {
+      stderr.writeln('--coordinator-codes no se combina con --coordinator-token: quien tuviera el código compartido firmaría con cualquier nombre.');
+      exit(64);
+    }
+    try {
+      coordinatorCodes = parseCoordinatorCodes(rawCodes, peerToken: peerToken);
+    } on FormatException catch (e) {
+      stderr.writeln(e.message);
+      exit(64);
+    }
+  }
   if (coordinatorToken != null && coordinatorToken == peerToken) {
     stderr.writeln('El código del coordinador y el de la réplica deben ser distintos: quien copia el log no debe poder aprobar.');
     exit(64);
@@ -131,6 +151,7 @@ Future<void> _run(List<String> args) async {
     pipeline: pipeline,
     coordinatorToken: coordinatorToken,
     peerToken: peerToken,
+    coordinatorCodes: coordinatorCodes,
   );
   // La auditoría de vínculos va por lotes, fuera de la ruta del ACK (a lo sumo cada 5 s y sólo si hay
   // reportes nuevos); con muchos reportes calcula en otro isolate.
@@ -161,14 +182,18 @@ Future<void> _run(List<String> args) async {
 
   final server = await io.serve(handler, InternetAddress.anyIPv4, port);
   stdout.writeln('sard_node $id escuchando en :${server.port} (${log.count()} eventos en el log, ${resources.length} recursos declarados)');
-  if (coordinatorToken == null) {
+  if (coordinatorToken == null && coordinatorCodes.isEmpty) {
     stdout.writeln('AVISO: sin --coordinator-token cualquiera con acceso a la red lee la cola (ubicaciones), puede registrar aprobaciones y puede registrar informes de despachador (p. ej. un P1 inventado).');
   }
   if (peerToken == null) {
     stdout.writeln('AVISO: sin --peer-token /api/events queda abierto: entrega los reportes crudos con su ubicación.');
   }
-  if (coordinatorToken != null || peerToken != null) {
-    stdout.writeln('Códigos de acceso activos (coordinador: ${coordinatorToken != null ? 'sí' : 'no'}, réplica: ${peerToken != null ? 'sí' : 'no'}). Un código compartido NO identifica a quien aprueba.');
+  if (coordinatorCodes.isNotEmpty) {
+    // SÓLO los nombres: nunca los códigos.
+    stdout.writeln('Coordinadores identificados por código: ${coordinatorCodes.keys.join(', ')}. Aprobar, informar y declarar recursos se registra a su nombre EN ESTE nodo; sin TLS el código viaja en claro, no hay límite de intentos y los pares replican el evento sin volver a comprobar el nombre.');
+  }
+  if (coordinatorToken != null || peerToken != null || coordinatorCodes.isNotEmpty) {
+    stdout.writeln('Códigos de acceso activos (coordinador: ${coordinatorToken != null || coordinatorCodes.isNotEmpty ? 'sí' : 'no'}, réplica: ${peerToken != null ? 'sí' : 'no'}).${coordinatorToken != null ? ' Un código compartido NO identifica a quien aprueba (para eso, --coordinator-codes).' : ''}');
   }
 
   Future<void> shutdown(ProcessSignal _) async {

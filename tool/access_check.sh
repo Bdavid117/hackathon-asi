@@ -3,7 +3,9 @@
 #   · sin código: 401 en lo del coordinador y en /api/events; /api/health, /frame y el tablero siguen abiertos
 #   · con el código del coordinador: 200; con el de pares en lo del coordinador: 401 (no son intercambiables)
 #   · la réplica A→B SIGUE funcionando con el código de pares, y un nodo C con otro código no replica nada
-# Uso: bash tool/access_check.sh      (usa los puertos 8191–8193)
+#   · IDENTIDAD (nodo D con --coordinator-codes): el código de Luis no firma como Ana ni aprobando, ni informando, ni declarando
+#     un recurso (403 y el log no crece); sin «who» se firma a nombre del dueño del código; /api/whoami lo dice
+# Uso: bash tool/access_check.sh      (usa los puertos 8191–8194)
 set -u
 cd "$(dirname "$0")/.."
 pkill -f "bin/sard_node.dart" 2>/dev/null; sleep 1
@@ -53,5 +55,28 @@ n_b=0; for _ in $(seq 1 30); do n_b=$(curl -s localhost:8192/api/health | python
 sleep 4; n_c=$(curl -s localhost:8193/api/health | python3 -c 'import sys,json; print(json.load(sys.stdin)["events"])')
 [ "$n_c" = "0" ] && ok "C, con otro código de pares, no replicó nada (0 eventos)" || bad "C replicó $n_c eventos con un código distinto"
 echo "C lo ve en /api/nodes: $(curl -s -H 'Authorization: Bearer coord-CCCC' localhost:8193/api/nodes | python3 -c 'import sys,json; d=json.load(sys.stdin); print([p.get("lastError") for p in d.get("peers",[])] or d)' 2>/dev/null | cut -c1-120)"
+
+echo "Identidad: nodo D con dos códigos de coordinador (sin --coordinator-token)"
+(cd apps/node && SARD_COORDINATOR_CODES="Ana Gómez=ana-codigo-26,Luis Torres=luis-codigo-26" SARD_PEER_TOKEN=pares-1234 nohup dart run bin/sard_node.dart --id D --port 8194 --data "$D/D" > "$D/D.log" 2>&1 &)
+for _ in $(seq 1 80); do curl -s "localhost:8194/api/health" >/dev/null 2>&1 && break; sleep 0.5; done
+ANA='Authorization: Bearer ana-codigo-26'; LUIS='Authorization: Bearer luis-codigo-26'; J='content-type: application/json'
+events() { curl -s localhost:8194/api/health | python3 -c 'import sys,json; print(json.load(sys.stdin)["events"])'; }
+body() { curl -s "$@"; }
+expect 401 "$(code localhost:8194/api/incidents)" "D: sin código → 401 (los códigos protegen aunque no haya token)"
+expect 401 "$(code -H 'Authorization: Bearer pares-1234' localhost:8194/api/incidents)" "D: el código de pares no abre lo del coordinador"
+expect 200 "$(code -H "$LUIS" localhost:8194/api/incidents)" "D: Luis → /api/incidents"
+[ "$(body -H "$ANA" localhost:8194/api/whoami)" = '{"who":"Ana Gómez"}' ] && ok "D: /api/whoami dice «Ana Gómez» con su código" || bad "D: /api/whoami no dice Ana"
+APPR='{"recommendationId":"a1b2c3d4e5f60718","incidentId":"aa-1","members":["aa-1"],"decision":"granted","note":""'
+UNIT='{"id":"AMB-01","kind":"ambulancia","label":"Ambulancia 1","lat":5.07,"lon":-75.51,"available":false'
+DISP='{"id":"a1b2c3d4e5f6a7b8","text":"edificio con gente atrapada","medium":"telefono"'
+n0=$(events)
+expect 403 "$(code -X POST -H "$LUIS" -H "$J" -d "$APPR,\"who\":\"Ana Gómez\"}" localhost:8194/api/approval)" "D: el código de Luis NO aprueba como Ana"
+expect 403 "$(code -X POST -H "$LUIS" -H "$J" -d "$DISP,\"who\":\"Ana Gómez\"}" localhost:8194/api/dispatch)" "D: el código de Luis NO registra un informe como Ana"
+expect 403 "$(code -X POST -H "$LUIS" -H "$J" -d "$UNIT,\"who\":\"Ana Gómez\"}" localhost:8194/api/resources)" "D: el código de Luis NO declara un recurso como Ana"
+[ "$(events)" = "$n0" ] && ok "D: los tres 403 no añadieron ningún evento" || bad "D: un 403 dejó un evento en el log"
+expect 200 "$(code -X POST -H "$LUIS" -H "$J" -d "$APPR}" localhost:8194/api/approval)" "D: Luis aprueba SIN «who»"
+expect 200 "$(code -X POST -H "$ANA" -H "$J" -d "$UNIT}" localhost:8194/api/resources)" "D: Ana declara un recurso SIN «who»"
+ev=$(curl -s -H "$ANA" localhost:8194/api/resources | python3 -c 'import sys,json; print(json.load(sys.stdin)["resources"][0].get("declaredBy"))' 2>/dev/null)
+[ "$ev" = "Ana Gómez" ] && ok "D: la unidad quedó declarada por «Ana Gómez» (el dueño del código)" || bad "D: declaredBy fue «$ev»"
 pkill -f "bin/sard_node.dart" 2>/dev/null
 [ "$fail" -eq 0 ] && echo "CÓDIGOS DE ACCESO: OK" || { echo "CÓDIGOS DE ACCESO: FALLÓ"; exit 1; }

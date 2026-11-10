@@ -1,6 +1,7 @@
 /// Nodo superviviente SARD: log de eventos, ingreso de tramas, API y replicación.
 library;
 
+export 'src/access.dart' show parseCoordinatorCodes, identifyBearer, bindIdentity, kWhoContext;
 export 'src/event_log.dart';
 export 'src/incident_index.dart';
 export 'src/incidents.dart';
