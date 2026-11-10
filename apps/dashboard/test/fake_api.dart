@@ -65,8 +65,8 @@ class FakeApi implements DashboardApi {
   List<Call> of(String name) => [for (final c in calls) if (c.name == name) c];
 
   @override
-  Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, int offset = 0, int limit = 200}) async {
-    calls.add(Call('incidents', {'view': view, 'urgency': urgency, 'bare': bare, 'offset': offset, 'limit': limit}));
+  Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, bool? pending, int offset = 0, int limit = 200}) async {
+    calls.add(Call('incidents', {'view': view, 'urgency': urgency, 'bare': bare, 'pending': pending, 'offset': offset, 'limit': limit}));
     _check();
     if (failIncidents != null) throw failIncidents!;
     if (view == 'short') {
@@ -76,7 +76,7 @@ class FakeApi implements DashboardApi {
     }
     if (bare == true) return this.bare;
     final src = all;
-    final items = [for (final i in src.items) if (urgency == null || i.urgency == urgency) i];
+    final items = [for (final i in src.items) if ((urgency == null || i.urgency == urgency) && (pending == null || i.isPendingDecision == pending)) i];
     final slice = items.skip(offset).take(limit).toList();
     return IncidentsPage(view: 'all', counters: src.counters, total: items.length, offset: offset, limit: limit, bare: null, items: slice);
   }

@@ -37,7 +37,7 @@ const List<String> kUrgencies = ['P1', 'P2', 'P3', 'P4'];
 // ───────────────────────────── contadores y página ─────────────────────────────
 
 class Counters {
-  const Counters({required this.incidents, required this.reports, required this.byUrgency, required this.bareSos, required this.highUncertainty, required this.needsReview, required this.inShortView, required this.followUp});
+  const Counters({required this.incidents, required this.reports, required this.byUrgency, required this.bareSos, required this.highUncertainty, required this.needsReview, required this.inShortView, required this.followUp, this.pendingDecision = 0, this.pendingOldestAt, this.discrepancies = 0});
 
   factory Counters.fromJson(Object? j) {
     final m = _map(j, 'counters');
@@ -51,6 +51,10 @@ class Counters {
       needsReview: _int(m['needsReview'], 'needsReview'),
       inShortView: _int(m['inShortView'], 'inShortView'),
       followUp: _int(m['followUp'], 'followUp'),
+      // Un nodo anterior no los manda, y un valor de otro tipo se lee como «ninguno»: nunca rompen el tablero.
+      pendingDecision: _nonNegative(m['pendingDecision']),
+      pendingOldestAt: m['pendingOldestAt'] is num ? (m['pendingOldestAt']! as num).toInt() : null,
+      discrepancies: _nonNegative(m['discrepancies']),
     );
   }
 
@@ -62,7 +66,16 @@ class Counters {
   final int needsReview;
   final int inShortView;
   final int followUp;
+
+  /// Propuestas que esperan a una persona (sobre el TOTAL, no sobre lo cargado) y desde cuándo espera la más antigua.
+  final int pendingDecision;
+  final int? pendingOldestAt;
+
+  /// Incidentes con decisiones contradictorias (se cuentan aparte de los pendientes).
+  final int discrepancies;
 }
+
+int _nonNegative(Object? v) => v is num && v >= 0 ? v.toInt() : 0;
 
 class BareAggregate {
   const BareAggregate({required this.count, required this.oldestAt, required this.newestAt, required this.sampleIds});
@@ -217,6 +230,7 @@ class IncidentRow {
     required this.shared,
     this.fromDispatch = 0,
     this.locQuality,
+    this.receivedAt,
   });
 
   factory IncidentRow.fromJson(Map<String, Object?> m) {
@@ -239,6 +253,7 @@ class IncidentRow {
       bareSos: _bool(m['bareSos'], 'bareSos'),
       lat: (m['lat'] as num?)?.toDouble(),
       lon: (m['lon'] as num?)?.toDouble(),
+      receivedAt: m['receivedAt'] is num ? (m['receivedAt']! as num).toInt() : null,
       // Un nodo anterior no lo manda, y un código que este tablero no conoce se lee como desconocido: nunca se inventa una cifra.
       locQuality: m['locQuality'] is String && _locPrecision.containsKey(m['locQuality']) ? m['locQuality']! as String : null,
       firstAt: _int(m['firstAt'], 'firstAt'),
@@ -267,6 +282,13 @@ class IncidentRow {
   final bool bareSos;
   final double? lat;
   final double? lon;
+
+  /// Cuándo recibió el NODO lo último del incidente (ms, en el reloj del nodo): sirve para detectar novedades
+  /// comparando el nodo consigo mismo, no con el reloj de este navegador. Nulo si el nodo no lo manda.
+  final int? receivedAt;
+
+  /// Una propuesta que todavía espera a una persona: la MISMA definición que el nodo (`IncidentIndex.isPending`).
+  bool get isPendingDecision => recommendation.state == 'propuesta' && !approval.discrepancy && (approval.status == 'pendiente' || approval.status == 'caduca');
 
   /// La PEOR precisión entre los reportes localizados del incidente (`within10m` … `over1km`, `manual`); nula si el nodo no la manda.
   final String? locQuality;

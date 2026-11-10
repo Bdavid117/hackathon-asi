@@ -47,6 +47,17 @@ class UrgencyBadge extends StatelessWidget {
   );
 }
 
+/// Cuánto puede esperar una propuesta sin que nadie la decida antes de avisarlo en la tarjeta. Es un criterio PROPIO del
+/// diseño (el enunciado no fija ninguno): P1 y P2 tienen plazo; P3 y P4, no.
+const Map<String, Duration> kDecisionDeadline = {'P1': Duration(minutes: 5), 'P2': Duration(minutes: 15)};
+
+/// ¿Esta propuesta lleva más del plazo esperando una decisión (o se le caducó y nadie la renovó)?
+bool isOverdue(IncidentRow r, DateTime now) {
+  final limit = kDecisionDeadline[r.urgency];
+  if (limit == null || !r.isPendingDecision) return false;
+  return now.difference(DateTime.fromMillisecondsSinceEpoch(r.firstAt * 1000)) >= limit;
+}
+
 String headlineOf(IncidentRow r) => r.bareSos ? 'SOS sin detalle' : (r.signals.isEmpty ? 'Sin indicadores' : r.signals.map(signalLabel).join(' · '));
 
 String countsLine(IncidentRow r) => [
@@ -76,7 +87,9 @@ class IncidentCard extends StatelessWidget {
     final urgency = DashColors.urgency(row.urgency);
     final proposed = row.recommendation.state == 'propuesta';
     final approval = row.approval;
-    final showApproval = proposed || approval.status != 'pendiente';
+    final overdue = isOverdue(row, now);
+    // Pasado el plazo, «Sin decidir hace N min» sustituye al «Pendiente de decisión» genérico (dice lo mismo, con urgencia).
+    final showApproval = (proposed || approval.status != 'pendiente') && !(overdue && approval.status == 'pendiente');
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Material(
@@ -114,6 +127,7 @@ class IncidentCard extends StatelessWidget {
                           if (row.isSecondHand) const Pill('De segunda mano', color: DashColors.warn, icon: Icons.record_voice_over_outlined)
                           else if (row.hasDispatch) const Pill('Incluye informe de despachador', color: DashColors.warn, icon: Icons.record_voice_over_outlined),
                           if (!row.hasLocation) const Pill('Sin ubicación', color: DashColors.muted, icon: Icons.location_off_outlined),
+                          if (overdue) Pill('Sin decidir ${ageLabel(row.firstAt, now)}', key: Key('overdue_${row.id}'), color: DashColors.danger, filled: true, icon: Icons.schedule),
                           Pill(recommendationChip(row), color: proposed ? DashColors.text : DashColors.muted),
                           if (showApproval) _approvalPill(approval),
                         ],

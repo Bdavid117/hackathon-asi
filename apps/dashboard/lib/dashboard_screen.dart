@@ -4,15 +4,17 @@ import 'package:flutter/material.dart';
 
 import 'access_prompt.dart';
 import 'api.dart';
+import 'arrivals.dart';
 import 'dispatch_dialog.dart';
 import 'brand.dart';
 import 'detail_panel.dart';
 import 'incident_card.dart';
+import 'incident_filter.dart';
 import 'incident_map.dart';
 import 'models.dart';
 import 'theme.dart';
 
-enum _Mode { short, all, bare }
+enum _Mode { short, all, bare, pending }
 
 /// El tablero del coordinador: **el incidente es la unidad**, no el mensaje.
 ///
@@ -52,6 +54,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Se ve el mapa en vez de la lista (la lista es lo que se ve por omisión).
   bool _showMap = false;
 
+  /// Filtros y búsqueda sobre lo CARGADO (el nodo es quien cuenta el total), y si su panel está abierto.
+  IncidentFilter _filter = const IncidentFilter();
+  bool _filterOpen = false;
+
+  /// Novedades: lo que el nodo recibió después de la última vez que se vio.
+  final Arrivals _arrivals = Arrivals();
+
   /// El nodo exige código y no se tiene (o ya no vale): sólo se ve la pantalla de acceso, sin datos.
   bool _locked = false;
   bool _triedCode = false;
@@ -81,6 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _Mode.short => widget.api.incidents(),
     _Mode.all => widget.api.incidents(view: 'all', urgency: _urgency, offset: offset, limit: limit),
     _Mode.bare => widget.api.incidents(view: 'all', bare: true, offset: offset, limit: limit),
+    _Mode.pending => widget.api.incidents(view: 'all', pending: true, offset: offset, limit: limit),
   };
 
   /// Lee la vista actual (y el estado de los nodos). En las vistas por páginas se vuelve a leer lo ya
@@ -117,6 +127,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ..clear()
           ..addAll(page.items)
           ..addAll(keep);
+        _arrivals.observe(_items); // la primera lectura fija la marca y no avisa de nada
         _offline = false;
         _invalid = false;
         _failure = null;
@@ -189,10 +200,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _mode = mode;
       _urgency = urgency;
       _items.clear();
+      _arrivals.reset(); // otra vista: lo que traiga la primera lectura no es una «novedad»
       _page = _page == null ? null : IncidentsPage(view: _page!.view, counters: _page!.counters, total: 0, offset: 0, limit: widget.pageSize, bare: null, items: const []);
     });
     _loading = false;
     _load();
+  }
+
+  /// Tocar el aviso de novedades: se dan por vistas y se abre la más urgente.
+  void _openNews() {
+    final news = _arrivals.news(_items);
+    if (news.isEmpty) return;
+    final id = news.first.id;
+    setState(() => _arrivals.acknowledge(_items));
+    _select(id);
   }
 
   void _select(String id) {
@@ -238,6 +259,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Con poco ancho la barra no tiene sitio para el selector (ya hay que recortar el título): va encima del contenido.
     final narrowBar = MediaQuery.sizeOf(context).width < 700;
     final toggle = _ViewToggle(map: _showMap, onChanged: (m) => setState(() => _showMap = m));
+    // El aviso de novedades SÓLO avisa: no reordena nada ni cambia de altura nada. Por eso no va en la cabecera de la lista
+    // (competiría por el ancho de su texto y todo se reajustaría): va en la barra superior, o junto al selector en pantallas
+    // estrechas. Tocarlo lo da por visto y abre la novedad más urgente.
+    final news = _arrivals.summary(_items);
+    final newsPill = news.count == 0
+        ? const SizedBox.shrink()
+        : Semantics(
+            key: const Key('news_pill'),
+            liveRegion: true,
+            label: 'Novedades: ${news.label}',
+            child: Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: ActionChip(
+                onPressed: _openNews,
+                avatar: const Icon(Icons.notifications_active_outlined, size: 16),
+                label: Text(news.label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                backgroundColor: news.p1 > 0 ? DashColors.dangerBg : DashColors.warnBg,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          );
     final list = _buildList(context, page);
     return Theme(
       data: dashTheme(),
@@ -245,7 +287,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         appBar: AppBar(
           title: _title,
           actions: [
-            if (!narrowBar) ...[toggle, const SizedBox(width: 4)],
+            if (!narrowBar) ...[toggle, const SizedBox(width: 4), newsPill],
             Builder(builder: _dispatchButton),
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -261,9 +303,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const _Banner(key: Key('invalid_banner'), color: DashColors.danger, bg: DashColors.dangerBg, icon: Icons.error_outline, text: 'El nodo mandó una respuesta que el tablero no puede interpretar. Se conserva la última vista válida: no te fíes de ella hasta que se resuelva.'),
             if (page != null && page.stale)
               _Banner(key: const Key('stale_banner'), color: DashColors.warn, bg: DashColors.warnBg, icon: Icons.history_toggle_off, text: 'Vista de hace ${(page.ageMs / 1000).round()} s: el nodo está recalculando y puede faltar algún reporte reciente.'),
-            if (narrowBar) Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 0), child: Align(alignment: Alignment.centerLeft, child: toggle)),
+            if (narrowBar) Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 0), child: Row(children: [toggle, const Spacer(), newsPill])),
             _NodesBar(nodes: _nodes, unknown: _nodesUnknown, now: _now),
-            if (page != null) _CountersBar(counters: page.counters, urgency: _mode == _Mode.all ? _urgency : null, bareActive: _mode == _Mode.bare, onUrgency: (u) => _switch(_Mode.all, urgency: u), onBare: () => _switch(_Mode.bare)),
+            if (page != null) _CountersBar(counters: page.counters, now: _now, urgency: _mode == _Mode.all ? _urgency : null, bareActive: _mode == _Mode.bare, pendingActive: _mode == _Mode.pending, onUrgency: (u) => _switch(_Mode.all, urgency: u), onBare: () => _switch(_Mode.bare), onPending: () => _switch(_Mode.pending)),
             Expanded(
               child: wide
                   ? Row(
@@ -333,28 +375,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     final now = _now;
     final children = <Widget>[];
+    // Filtros sobre lo cargado: lo que se esconde se cuenta (y cuántos son P1) en la cabecera; el filtro activo siempre se lee.
+    final result = _filter.apply(_items);
+    final filterButton = IconButton(
+      key: const Key('filter_open'),
+      tooltip: _filter.isActive ? 'Filtro activo: ${_filter.describe()}' : 'Filtrar y buscar en lo cargado',
+      onPressed: () => setState(() => _filterOpen = !_filterOpen),
+      icon: Icon(_filter.isActive ? Icons.filter_alt : Icons.filter_alt_outlined, color: _filter.isActive ? DashColors.warn : null),
+    );
+    final summaryText = 'Filtro: ${_filter.describe()} · ${result.shown.length} de ${_items.length} cargados${result.hiddenSummary == null ? '' : ' · ${result.hiddenSummary}'}';
     // La cabecera es fija (no se pierde al final de una lista larga): dice qué se está viendo y cómo ver el resto.
+    final headerRow = _mode == _Mode.short
+        ? Row(
+            children: [
+              Expanded(child: Text('Vista corta · ${page.total} de ${page.counters.incidents} incidentes', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
+              const SizedBox(width: 8),
+              filterButton,
+              OutlinedButton(key: const Key('show_all'), onPressed: () => _switch(_Mode.all), child: Text('Ver todo (${page.counters.incidents})')),
+            ],
+          )
+        : Row(
+            children: [
+              OutlinedButton.icon(key: const Key('back_to_short'), onPressed: () => _switch(_Mode.short), icon: const Icon(Icons.arrow_back, size: 16), label: const Text('Volver a la vista corta')),
+              const SizedBox(width: 12),
+              Expanded(child: Text(_mode == _Mode.bare ? 'Sólo SOS sin detalle (${page.total})' : (_mode == _Mode.pending ? 'Pendientes de decisión (${page.total})' : (_urgency == null ? 'Todos los incidentes (${page.total})' : 'Incidentes ${_urgency!} (${page.total})')), style: const TextStyle(fontWeight: FontWeight.w700))),
+              filterButton,
+            ],
+          );
     final header = Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: _mode == _Mode.short
-          ? Row(
-              children: [
-                Expanded(child: Text('Vista corta · ${page.total} de ${page.counters.incidents} incidentes', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
-                const SizedBox(width: 8),
-                OutlinedButton(key: const Key('show_all'), onPressed: () => _switch(_Mode.all), child: Text('Ver todo (${page.counters.incidents})')),
-              ],
-            )
-          : Row(
-              children: [
-                OutlinedButton.icon(key: const Key('back_to_short'), onPressed: () => _switch(_Mode.short), icon: const Icon(Icons.arrow_back, size: 16), label: const Text('Volver a la vista corta')),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_mode == _Mode.bare ? 'Sólo SOS sin detalle (${page.total})' : (_urgency == null ? 'Todos los incidentes (${page.total})' : 'Incidentes ${_urgency!} (${page.total})'), style: const TextStyle(fontWeight: FontWeight.w700))),
-              ],
-            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          headerRow,
+          if (_filter.isActive) Padding(padding: const EdgeInsets.only(top: 4), child: Text(summaryText, key: const Key('filter_summary'), style: const TextStyle(fontSize: 13, color: DashColors.warn, fontWeight: FontWeight.w700))),
+          if (_filterOpen) _FilterPanel(filter: _filter, onChanged: (f) => setState(() => _filter = f)),
+        ],
+      ),
     );
     final bare = _mode == _Mode.short ? page.bare : null;
     var bareInserted = bare == null;
-    for (final row in _items) {
+    for (final row in result.shown) {
       if (!bareInserted && (row.urgency == 'P3' || row.urgency == 'P4')) {
         children.add(_BareRow(bare: bare!, now: now, onShow: () => _switch(_Mode.bare)));
         bareInserted = true;
@@ -362,6 +423,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children.add(IncidentCard(row: row, now: now, selected: row.id == _selected, onTap: () => _select(row.id)));
     }
     if (!bareInserted) children.add(_BareRow(bare: bare!, now: now, onShow: () => _switch(_Mode.bare)));
+    if (_items.isNotEmpty && result.shown.isEmpty) {
+      children.add(const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('Ningún incidente de los cargados coincide con el filtro.', key: Key('filter_none'), textAlign: TextAlign.center, style: TextStyle(color: DashColors.muted, fontSize: 15)))));
+    }
     if (_items.isEmpty && bare == null && !_loading) {
       children.add(const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('Sin reportes todavía', style: TextStyle(color: DashColors.muted, fontSize: 16)))));
     }
@@ -380,7 +444,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: _showMap
               // Una instancia nueva por modo/urgencia: al cambiar de vista el mapa se encuadra de nuevo; con los datos que
               // llegan cada 2 s NO (ver IncidentMap).
-              ? IncidentMap(key: ValueKey('map-${_mode.name}-${_urgency ?? ''}'), rows: _items, selected: _selected, onSelect: _select, totalIncidents: page.counters.incidents)
+              ? IncidentMap(key: ValueKey('map-${_mode.name}-${_urgency ?? ''}'), rows: result.shown, selected: _selected, onSelect: _select, totalIncidents: page.counters.incidents - result.hidden.length)
               : ListView(key: const Key('incident_list'), children: children),
         ),
       ],
@@ -389,6 +453,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 // ───────────────────────────── piezas ─────────────────────────────
+
+/// El panel de filtros y búsqueda (lo abre y lo cierra la persona; no se mueve solo).
+class _FilterPanel extends StatefulWidget {
+  const _FilterPanel({required this.filter, required this.onChanged});
+
+  final IncidentFilter filter;
+  final void Function(IncidentFilter) onChanged;
+
+  @override
+  State<_FilterPanel> createState() => _FilterPanelState();
+}
+
+class _FilterPanelState extends State<_FilterPanel> {
+  late final TextEditingController _query = TextEditingController(text: widget.filter.query);
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('filter_panel'),
+    width: double.infinity,
+    margin: const EdgeInsets.only(top: 8),
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(color: DashColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: DashColors.border)),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          key: const Key('filter_query'),
+          controller: _query,
+          decoration: const InputDecoration(hintText: 'Buscar en lo cargado (p. ej. atrapado, vía, incendio)', prefixIcon: Icon(Icons.search, size: 20), isDense: true),
+          onChanged: (v) => widget.onChanged(widget.filter.withQuery(v)),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            for (final f in FilterFlag.values)
+              FilterChip(key: Key('filter_flag_${f.name}'), label: Text(f.label, style: const TextStyle(fontSize: 12)), selected: widget.filter.flags.contains(f), visualDensity: VisualDensity.compact, onSelected: (on) => widget.onChanged(widget.filter.withFlag(f, on))),
+            TextButton(
+              key: const Key('filter_clear'),
+              onPressed: widget.filter.isActive
+                  ? () {
+                      _query.clear();
+                      widget.onChanged(widget.filter.cleared());
+                    }
+                  : null,
+              child: const Text('Quitar filtro'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
 /// Lista | Mapa: dos formas de ver los MISMOS incidentes cargados. Va en la barra superior, de iconos, para no
 /// quitarle altura a la lista (es lo que se lee durante horas).
@@ -508,8 +632,11 @@ class _NodesBar extends StatelessWidget {
 /// La barra de triaje: un segmento por urgencia, ancho según cuántos incidentes hay (con un mínimo para
 /// que se lea y se pueda tocar), y los demás contadores. Tocar una urgencia filtra por ella.
 class _CountersBar extends StatelessWidget {
-  const _CountersBar({required this.counters, required this.urgency, required this.bareActive, required this.onUrgency, required this.onBare});
+  const _CountersBar({required this.counters, required this.now, required this.urgency, required this.bareActive, required this.pendingActive, required this.onUrgency, required this.onBare, required this.onPending});
   final Counters counters;
+  final DateTime now;
+  final bool pendingActive;
+  final VoidCallback onPending;
   final String? urgency;
   final bool bareActive;
   final void Function(String urgency) onUrgency;
@@ -549,15 +676,24 @@ class _CountersBar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 10,
-            runSpacing: 6,
-            children: [
-              _Stat(const Key('counter_highUncertainty'), 'Incertidumbre alta', counters.highUncertainty, DashColors.warn),
-              _Stat(const Key('counter_needsReview'), 'A revisar', counters.needsReview, DashColors.warn),
-              _Stat(const Key('counter_bareSos'), 'SOS sin detalle', counters.bareSos, DashColors.muted, onTap: counters.bareSos > 0 ? onBare : null, active: bareActive),
-              _Stat(const Key('counter_followUp'), 'En seguimiento fuera de la vista', counters.followUp, DashColors.muted),
-            ],
+          // Una sola línea que MIDE SIEMPRE LO MISMO: con `Wrap`, cada contador nuevo o cada ancho distinto añadía una línea y
+          // le quitaba altura a la lista y al detalle. Con poco ancho se desplaza en horizontal.
+          SingleChildScrollView(
+            key: const Key('stats_row'),
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final (i, stat) in <Widget>[
+                  _Stat(const Key('counter_highUncertainty'), 'Incertidumbre alta', counters.highUncertainty, DashColors.warn),
+                  _Stat(const Key('counter_needsReview'), 'A revisar', counters.needsReview, DashColors.warn),
+                  // Propuestas que esperan a una persona, sobre el TOTAL del nodo: tocarlas pide sólo esas; dice desde cuándo espera la más antigua.
+                  _Stat(const Key('counter_pendingDecision'), 'Pendientes de decisión', counters.pendingDecision, DashColors.warn, onTap: counters.pendingDecision > 0 ? onPending : null, active: pendingActive, suffix: counters.pendingOldestAt == null ? '' : ' · la más antigua ${ageLabel(counters.pendingOldestAt!, now)}'),
+                  _Stat(const Key('counter_discrepancies'), 'Decisiones contradictorias', counters.discrepancies, DashColors.danger),
+                  _Stat(const Key('counter_bareSos'), 'SOS sin detalle', counters.bareSos, DashColors.muted, onTap: counters.bareSos > 0 ? onBare : null, active: bareActive),
+                  _Stat(const Key('counter_followUp'), 'En seguimiento fuera de la vista', counters.followUp, DashColors.muted),
+                ].indexed) ...[if (i > 0) const SizedBox(width: 10), stat],
+              ],
+            ),
           ),
         ],
       ),
@@ -602,13 +738,16 @@ class _TriageSegment extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat(this.statKey, this.label, this.value, this.color, {this.onTap, this.active = false});
+  const _Stat(this.statKey, this.label, this.value, this.color, {this.onTap, this.active = false, this.suffix = ''});
   final Key statKey;
   final String label;
   final int value;
   final Color color;
   final VoidCallback? onTap;
   final bool active;
+
+  /// Texto que se añade a la etiqueta (p. ej. desde cuándo espera la más antigua).
+  final String suffix;
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -623,7 +762,7 @@ class _Stat extends StatelessWidget {
         children: [
           Text('$value', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color, fontFeatures: kTabular)),
           const SizedBox(width: 6),
-          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: DashColors.muted))),
+          Flexible(child: Text('$label$suffix', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: DashColors.muted))),
         ],
       ),
     ),

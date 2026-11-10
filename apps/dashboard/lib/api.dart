@@ -39,7 +39,7 @@ abstract class DashboardApi {
   /// `Authorization: Bearer`. Vive sólo en memoria: no se guarda en el navegador. NO es identidad.
   set accessCode(String? code);
 
-  Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, int offset = 0, int limit = 200});
+  Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, bool? pending, int offset = 0, int limit = 200});
   Future<IncidentDetail> detail(String id);
   Future<NodesStatus> nodes();
 
@@ -108,11 +108,12 @@ class HttpDashboardApi implements DashboardApi {
   }
 
   @override
-  Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, int offset = 0, int limit = 200}) async {
+  Future<IncidentsPage> incidents({String view = 'short', String? urgency, bool? bare, bool? pending, int offset = 0, int limit = 200}) async {
     final query = <String, String>{
       if (view != 'short') 'view': view,
       'urgency': ?urgency,
       if (bare != null) 'bare': '$bare',
+      if (pending != null) 'pending': '$pending',
       if (offset != 0) 'offset': '$offset',
       if (view != 'short' && limit != 200) 'limit': '$limit',
     };
