@@ -100,6 +100,22 @@ class FakeApi implements DashboardApi {
   Object? failResources;
   Object? failDeclare;
 
+  /// Quién es la persona para el nodo simulado: por código (`identities[código]`) o, si no hay, un nombre fijo (`whoamiName`).
+  String? whoamiName;
+  Map<String, String> identities = {};
+  Object? failWhoami;
+  Completer<void>? whoamiGate;
+
+  @override
+  Future<String?> whoami() async {
+    calls.add(Call('whoami'));
+    _check();
+    if (failWhoami != null) throw failWhoami!;
+    final answer = identities.isNotEmpty ? identities[_code] : whoamiName;
+    await whoamiGate?.future; // una respuesta que tarda: deja que cambien las cosas mientras se espera
+    return answer;
+  }
+
   /// Si es verdadero, la lectura de recursos falla DESPUÉS de haber aceptado una declaración (el nodo la guardó, pero no se pudo releer).
   bool failResourcesAfterDeclare = false;
   bool _declared = false;

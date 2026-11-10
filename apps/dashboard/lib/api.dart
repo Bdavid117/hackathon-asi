@@ -43,6 +43,10 @@ abstract class DashboardApi {
   Future<IncidentDetail> detail(String id);
   Future<NodesStatus> nodes();
 
+  /// Quién dice el nodo que soy según mi código de acceso (`--coordinator-codes`), o `null` si no identifica a nadie (código compartido,
+  /// sin código, o un nodo anterior sin esta ruta). Es «identificado por código», no «autenticado».
+  Future<String?> whoami();
+
   /// Los recursos que el nodo usa de verdad (los de arranque más lo declarado en vivo).
   Future<List<ResourceUnit>> resources();
 
@@ -168,6 +172,20 @@ class HttpDashboardApi implements DashboardApi {
     if (r.statusCode == 401) _denied();
     if (r.statusCode != 200) throw ApiException(r.statusCode, r.body);
     return NodesStatus.fromJson(_decode(r));
+  }
+
+  @override
+  Future<String?> whoami() async {
+    final r = await _client.get(_base.resolve('/api/whoami'), headers: _h()).timeout(timeout);
+    if (r.statusCode == 401) _denied();
+    if (r.statusCode == 404) return null; // un nodo anterior: nadie identificado, el nombre sigue libre
+    if (r.statusCode != 200) throw ApiException(r.statusCode, r.body);
+    final body = _decode(r);
+    if (!body.containsKey('who')) throw const FormatException('la respuesta no trae «who»');
+    final who = body['who'];
+    if (who == null) return null;
+    if (who is! String || who.trim().isEmpty) throw const FormatException('«who» debe ser un nombre');
+    return who;
   }
 
   @override

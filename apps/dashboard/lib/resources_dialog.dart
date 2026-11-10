@@ -17,12 +17,15 @@ const List<String> _kinds = ['ambulancia', 'bomberos', 'rescate', 'transito'];
 /// cosas distintas hay un CONFLICTO: la unidad NO se ofrece hasta que una persona elija (y la elección reemplaza a las dos).
 /// Nada de esto despacha nada: sólo cambia qué unidades puede nombrar el agente 6, y sus propuestas siguen esperando a una persona.
 class ResourcesDialog extends StatefulWidget {
-  const ResourcesDialog({super.key, required this.api, required this.who, required this.units, required this.onChanged});
+  const ResourcesDialog({super.key, required this.api, required this.who, required this.units, required this.onChanged, this.identity});
 
   final DashboardApi api;
 
   /// El nombre de quien declara, compartido con las aprobaciones y los informes: se recuerda durante la sesión.
   final ValueNotifier<String> who;
+
+  /// Si el código de acceso identifica a la persona, su nombre: se fija y no se puede cambiar (el nodo rechazaría otro).
+  final String? identity;
   final List<ResourceUnit> units;
 
   /// Se llama con la lista nueva tras cada declaración que el nodo aceptó.
@@ -34,7 +37,7 @@ class ResourcesDialog extends StatefulWidget {
 
 class _ResourcesDialogState extends State<ResourcesDialog> {
   late List<ResourceUnit> _units = [...widget.units]..sort((a, b) => a.id.compareTo(b.id));
-  late final TextEditingController _who = TextEditingController(text: widget.who.value);
+  late final TextEditingController _who = TextEditingController(text: widget.identity ?? widget.who.value);
   final TextEditingController _newId = TextEditingController();
   final TextEditingController _newLabel = TextEditingController();
   final TextEditingController _newLat = TextEditingController();
@@ -158,8 +161,13 @@ class _ResourcesDialogState extends State<ResourcesDialog> {
                   key: const Key('resources_who'),
                   controller: _who,
                   enabled: !_busy,
+                  readOnly: widget.identity != null,
                   maxLength: 80,
-                  decoration: const InputDecoration(labelText: 'Tu nombre (quien declara)', counterText: ''),
+                  decoration: InputDecoration(
+                    labelText: 'Tu nombre (quien declara)',
+                    counterText: '',
+                    helper: widget.identity == null ? null : const Text('Identificado por tu código de acceso', key: Key('resources_who_identified')),
+                  ),
                 ),
                 if (_whoMissing) const Padding(padding: EdgeInsets.only(bottom: 8), child: Text('Escribe tu nombre para declarar una unidad.', key: Key('resources_who_error'), style: TextStyle(color: DashColors.danger, fontSize: 13))),
                 if (_error != null)

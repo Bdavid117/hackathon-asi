@@ -34,12 +34,15 @@ String _newId() {
 /// responde o la rechaza, el cuadro sigue abierto y el informe **no** se da por registrado. Reintentar con lo mismo
 /// reusa el identificador (el nodo no duplica); si se cambia algo, el identificador es otro.
 class DispatchDialog extends StatefulWidget {
-  const DispatchDialog({super.key, required this.api, required this.who});
+  const DispatchDialog({super.key, required this.api, required this.who, this.identity});
 
   final DashboardApi api;
 
   /// El nombre de quien registra, compartido con las aprobaciones: se recuerda aunque el informe no llegue.
   final ValueNotifier<String> who;
+
+  /// Si el código de acceso identifica a la persona, su nombre: se fija y no se puede cambiar (el nodo rechazaría otro).
+  final String? identity;
 
   @override
   State<DispatchDialog> createState() => _DispatchDialogState();
@@ -50,7 +53,7 @@ class _DispatchDialogState extends State<DispatchDialog> {
   final TextEditingController _origin = TextEditingController();
   final TextEditingController _lat = TextEditingController();
   final TextEditingController _lon = TextEditingController();
-  late final TextEditingController _who = TextEditingController(text: widget.who.value);
+  late final TextEditingController _who = TextEditingController(text: widget.identity ?? widget.who.value);
   String _medium = 'radio';
   final Set<String> _flags = {};
   int _peopleCode = 0;
@@ -243,8 +246,13 @@ class _DispatchDialogState extends State<DispatchDialog> {
                 key: const Key('dispatch_who'),
                 controller: _who,
                 enabled: !_sending,
+                readOnly: widget.identity != null,
                 maxLength: _maxWho,
-                decoration: InputDecoration(labelText: 'Tu nombre', errorText: _whoMissing ? 'Escribe tu nombre para registrar el informe.' : null),
+                decoration: InputDecoration(
+                  labelText: 'Tu nombre',
+                  helper: widget.identity == null ? null : const Text('Identificado por tu código de acceso', key: Key('dispatch_who_identified')),
+                  errorText: _whoMissing ? 'Escribe tu nombre para registrar el informe.' : null,
+                ),
               ),
               if (_whoMissing) const SizedBox(key: Key('dispatch_who_error'), height: 0),
               if (_error != null)

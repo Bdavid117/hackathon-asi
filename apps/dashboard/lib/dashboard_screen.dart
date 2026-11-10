@@ -55,6 +55,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Se ve el mapa en vez de la lista (la lista es lo que se ve por omisión).
   bool _showMap = false;
 
+  /// Quién dice el nodo que soy (por mi código de acceso), o `null` si no identifica a nadie. Se pregunta UNA vez por sesión de acceso
+  /// (y de nuevo tras volver a entrar con otro código): nunca se conserva el de un código anterior.
+  String? _identity;
+  bool _identityChecked = false;
+
   /// Los recursos (unidades) que usa el nodo, para el botón «Recursos» y para el mapa. Si el nodo no los sirve, se sigue sin ellos.
   List<ResourceUnit> _resources = const [];
 
@@ -120,6 +125,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }),
     );
     unawaited(_loadResources());
+    if (!_identityChecked) unawaited(_loadIdentity());
     try {
       final loaded = _items.length;
       final limit = mode == _Mode.short ? widget.pageSize : (loaded < widget.pageSize ? widget.pageSize : (loaded > 1000 ? 1000 : loaded));
@@ -174,12 +180,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// Pregunta quién soy. Un fallo no bloquea nada ni se inventa un nombre: queda sin identidad (nombre libre) y se vuelve a preguntar.
+  Future<void> _loadIdentity() async {
+    _identityChecked = true; // una sola pregunta en vuelo
+    try {
+      final who = await widget.api.whoami();
+      if (!mounted || _locked) return;
+      setState(() {
+        _identity = who;
+        if (who != null) _who.value = who;
+      });
+    } on AccessDenied {
+      _identityChecked = false;
+      _lock();
+    } on Object {
+      _identityChecked = false;
+    }
+  }
+
   Future<void> _openResources() async {
     await showDialog<void>(
       context: context,
       builder: (_) => Theme(
         data: dashTheme(),
-        child: ResourcesDialog(api: widget.api, who: _who, units: _resources, onChanged: (u) => setState(() => _resources = u)),
+        child: ResourcesDialog(api: widget.api, who: _who, identity: _identity, units: _resources, onChanged: (u) => setState(() => _resources = u)),
       ),
     );
   }
@@ -193,6 +217,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _items.clear();
       _nodes = null;
       _resources = const [];
+      // El nombre que venía del código anterior NO se queda escrito para firmar con el siguiente.
+      if (_identity != null) _who.value = '';
+      _identity = null;
+      _identityChecked = false;
       _selected = null;
       _offline = false;
     });
@@ -261,6 +289,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               api: widget.api,
               id: id,
               who: _who,
+              identity: _identity,
               every: widget.every,
               clock: widget.clock,
               onGone: () {
@@ -351,6 +380,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   api: widget.api,
                                   id: _selected!,
                                   who: _who,
+                                  identity: _identity,
                                   every: widget.every,
                                   clock: widget.clock,
                                   onGone: () => WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -389,7 +419,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _openDispatch(BuildContext context) async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => Theme(data: dashTheme(), child: DispatchDialog(api: widget.api, who: _who)));
+    final ok = await showDialog<bool>(context: context, builder: (_) => Theme(data: dashTheme(), child: DispatchDialog(api: widget.api, who: _who, identity: _identity)));
     if (ok != true || !mounted || !context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(key: Key('dispatch_done'), content: Text('Informe registrado. Aparecerá en la lista en unos segundos.')));
     _load();

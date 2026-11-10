@@ -21,13 +21,16 @@ String distanceLabel(int? meters) {
 /// recomendación que vio. Si el incidente cambia mientras se decide, no se registra sobre la versión
 /// vieja: se avisa y se muestra la nueva.
 class IncidentDetailView extends StatefulWidget {
-  const IncidentDetailView({super.key, required this.api, required this.id, required this.who, this.every = const Duration(seconds: 2), this.clock, this.onGone});
+  const IncidentDetailView({super.key, required this.api, required this.id, required this.who, this.every = const Duration(seconds: 2), this.clock, this.onGone, this.identity});
 
   final DashboardApi api;
   final String id;
 
   /// El nombre de quien decide: se recuerda mientras dure la sesión.
   final ValueNotifier<String> who;
+
+  /// Si el código de acceso identifica a la persona, su nombre: se fija y no se puede cambiar (el nodo rechazaría otro).
+  final String? identity;
   final Duration? every;
   final DateTime Function()? clock;
 
@@ -111,7 +114,7 @@ class _IncidentDetailViewState extends State<IncidentDetailView> {
     final outcome = await showDialog<_DecisionOutcome>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _DecisionDialog(api: widget.api, seen: seen, granted: granted, who: widget.who),
+      builder: (_) => _DecisionDialog(api: widget.api, seen: seen, granted: granted, who: widget.who, identity: widget.identity),
     );
     if (!mounted || outcome == null) return;
     switch (outcome) {
@@ -591,19 +594,20 @@ class _Changed extends _DecisionOutcome {
 }
 
 class _DecisionDialog extends StatefulWidget {
-  const _DecisionDialog({required this.api, required this.seen, required this.granted, required this.who});
+  const _DecisionDialog({required this.api, required this.seen, required this.granted, required this.who, this.identity});
 
   final DashboardApi api;
   final IncidentDetail seen;
   final bool granted;
   final ValueNotifier<String> who;
+  final String? identity;
 
   @override
   State<_DecisionDialog> createState() => _DecisionDialogState();
 }
 
 class _DecisionDialogState extends State<_DecisionDialog> {
-  late final TextEditingController _who = TextEditingController(text: widget.who.value);
+  late final TextEditingController _who = TextEditingController(text: widget.identity ?? widget.who.value);
   final TextEditingController _note = TextEditingController();
   final Set<String> _supersede = {};
   bool _sending = false;
@@ -682,7 +686,18 @@ class _DecisionDialogState extends State<_DecisionDialog> {
               const SizedBox(height: 10),
               const Text('Tu decisión queda registrada con tu nombre y con la versión que ves ahora. Aprobar no despacha nada por sí solo.', style: TextStyle(fontSize: 13, height: 1.3)),
               const SizedBox(height: 14),
-              TextField(key: const Key('who_field'), controller: _who, enabled: !_sending, decoration: InputDecoration(labelText: 'Tu nombre', errorText: _whoMissing ? 'Escribe tu nombre para registrar la decisión' : null, errorMaxLines: 2)),
+              TextField(
+                key: const Key('who_field'),
+                controller: _who,
+                enabled: !_sending,
+                readOnly: widget.identity != null,
+                decoration: InputDecoration(
+                  labelText: 'Tu nombre',
+                  helper: widget.identity == null ? null : const Text('Identificado por tu código de acceso', key: Key('who_identified')),
+                  errorText: _whoMissing ? 'Escribe tu nombre para registrar la decisión' : null,
+                  errorMaxLines: 2,
+                ),
+              ),
               if (_whoMissing) const SizedBox(key: Key('who_error'), height: 0),
               const SizedBox(height: 10),
               TextField(key: const Key('note_field'), controller: _note, enabled: !_sending, maxLength: 280, minLines: 2, maxLines: 3, decoration: const InputDecoration(labelText: 'Nota (opcional)')),
