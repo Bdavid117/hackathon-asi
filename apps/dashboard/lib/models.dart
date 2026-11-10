@@ -612,6 +612,100 @@ class HistoryInfo {
   final int auditTotal;
 }
 
+// ───────────────────────────── zonas en silencio ─────────────────────────────
+
+/// Una celda de la rejilla donde SÍ llegaron reportes con ubicación y ya no llegan. Que una zona no aparezca aquí NO significa que esté a
+/// salvo, y que aparezca no significa que haya pasado algo: sólo que dejó de reportar.
+class SilentZone {
+  const SilentZone({required this.id, required this.lat, required this.lon, required this.total, required this.urgent, required this.lastAtMs});
+
+  /// El centro de la celda.
+  final String id;
+  final double lat;
+  final double lon;
+
+  /// Cuántos reportes con ubicación llegaron de esta celda en la ventana de actividad, y cuántos eran P1/P2.
+  final int total;
+  final int urgent;
+
+  /// Hora del nodo (ms) del último reporte de la celda.
+  final int lastAtMs;
+}
+
+class CoverageInfo {
+  const CoverageInfo({
+    required this.cells,
+    required this.silentTotal,
+    required this.activeCells,
+    required this.reportsInWindow,
+    required this.withoutLocation,
+    required this.nowMs,
+    required this.cellDeg,
+    required this.activity,
+    required this.silence,
+  });
+
+  /// Una zona o un número mal formado invalida TODA la respuesta (no se dibuja a medias ni se inventa una coordenada).
+  factory CoverageInfo.fromJson(Object? j) {
+    final m = _map(j, 'cobertura');
+    double finite(Object? v, String what) {
+      if (v is! num || !v.isFinite) throw FormatException('«$what» debe ser un número finito');
+      return v.toDouble();
+    }
+
+    int count(Object? v, String what) {
+      final n = _int(v, what);
+      if (n < 0) throw FormatException('«$what» no puede ser negativo');
+      return n;
+    }
+
+    final cellDeg = finite(m['cellDeg'], 'cellDeg');
+    if (cellDeg <= 0) throw const FormatException('«cellDeg» debe ser positivo');
+    return CoverageInfo(
+      cells: [
+        for (final c in _list(m['cells'], 'cells'))
+          () {
+            final z = _map(c, 'zona');
+            final total = count(z['total'], 'total'), urgent = count(z['urgent'], 'urgent');
+            if (urgent > total) throw const FormatException('«urgent» no puede superar «total»');
+            return SilentZone(id: _str(z['id'], 'id'), lat: finite(z['lat'], 'lat'), lon: finite(z['lon'], 'lon'), total: total, urgent: urgent, lastAtMs: _int(z['lastAtMs'], 'lastAtMs'));
+          }(),
+      ],
+      silentTotal: count(m['silentTotal'], 'silentTotal'),
+      activeCells: count(m['activeCells'], 'activeCells'),
+      reportsInWindow: count(m['reportsInWindow'], 'reportsInWindow'),
+      withoutLocation: count(m['withoutLocation'], 'withoutLocation'),
+      nowMs: _int(m['nowMs'], 'nowMs'),
+      cellDeg: cellDeg,
+      activity: Duration(milliseconds: count(m['activityMs'], 'activityMs')),
+      silence: Duration(milliseconds: count(m['silenceMs'], 'silenceMs')),
+    );
+  }
+
+  /// Sólo las zonas en silencio, las más urgentes y de más reportes primero (el nodo topa la lista; [silentTotal] es el total real).
+  final List<SilentZone> cells;
+  final int silentTotal;
+
+  /// Celdas con reportes recientes (no están en silencio) y reportes con ubicación en la ventana de actividad.
+  final int activeCells;
+  final int reportsInWindow;
+
+  /// Reportes de la ventana que NO tienen ubicación utilizable: no entran en ninguna zona.
+  final int withoutLocation;
+
+  /// La hora del NODO al calcularlo: de ahí sale cuánto hace que calló una zona (un reloj mal puesto en la pantalla no lo falsea).
+  final int nowMs;
+  final double cellDeg;
+  final Duration activity;
+  final Duration silence;
+
+  /// Cuánto hace que no llega nada de [z], según el reloj del nodo (nunca negativo).
+  Duration silentFor(SilentZone z) {
+    final ms = nowMs - z.lastAtMs;
+    return ms < 0 ? Duration.zero : Duration(milliseconds: ms);
+  }
+}
+
 // ───────────────────────────── recursos declarados ─────────────────────────────
 
 /// Una unidad (ambulancia, bomberos…) tal como la usa el nodo: la de arranque, o la última declaración vigente. Si dos nodos

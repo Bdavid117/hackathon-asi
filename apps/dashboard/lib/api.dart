@@ -50,6 +50,9 @@ abstract class DashboardApi {
   /// Los recursos que el nodo usa de verdad (los de arranque más lo declarado en vivo).
   Future<List<ResourceUnit>> resources();
 
+  /// Las zonas que reportaron y callaron (el silencio NO es seguridad). `null` si el nodo no lo sirve (uno anterior): no es un error.
+  Future<CoverageInfo?> coverage();
+
   /// Declara (o redeclara) una unidad. [supersedes] son las declaraciones vigentes que reemplaza; lanza si el nodo no la acepta.
   Future<void> declareResource({
     required String id,
@@ -186,6 +189,15 @@ class HttpDashboardApi implements DashboardApi {
     if (who == null) return null;
     if (who is! String || who.trim().isEmpty) throw const FormatException('«who» debe ser un nombre');
     return who;
+  }
+
+  @override
+  Future<CoverageInfo?> coverage() async {
+    final r = await _client.get(_base.resolve('/api/coverage'), headers: _h()).timeout(timeout);
+    if (r.statusCode == 401) _denied();
+    if (r.statusCode == 404) return null;
+    if (r.statusCode != 200) throw ApiException(r.statusCode, r.body);
+    return CoverageInfo.fromJson(_decode(r));
   }
 
   @override

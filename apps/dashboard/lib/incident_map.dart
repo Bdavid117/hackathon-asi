@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'incident_card.dart';
@@ -17,8 +19,24 @@ import 'theme.dart';
 ///    desplaza ninguno para «separarlos» (eso inventaría posiciones) y un P1 nunca queda tapado.
 ///  · La precisión no se finge: si la ubicación es menos precisa que el marcador, se dibuja su anillo de
 ///    incertidumbre; si no se sabe, no se dibuja uno inventado.
+/// La capa de «silencio»: las zonas que reportaron y callaron. **El silencio NO es seguridad**: una zona sin marca no está a salvo, y una
+/// marcada sólo dejó de reportar. Va DEBAJO de los incidentes, no recibe toques y se enciende y apaga con un interruptor (apagada no se
+/// pide al nodo ni se dibuja).
+class SilenceLayer {
+  const SilenceLayer({required this.on, this.info, this.note, required this.onToggle});
+
+  final bool on;
+
+  /// Lo último que dijo el nodo (`null` mientras no se haya leído, o si el nodo no lo calcula).
+  final CoverageInfo? info;
+
+  /// Por qué no hay (o no está al día) la lectura: «leyendo…», «este nodo no las calcula», «no se pudo actualizar».
+  final String? note;
+  final VoidCallback onToggle;
+}
+
 class IncidentMap extends StatefulWidget {
-  const IncidentMap({super.key, required this.rows, required this.selected, required this.onSelect, required this.totalIncidents, this.resources = const []});
+  const IncidentMap({super.key, required this.rows, required this.selected, required this.onSelect, required this.totalIncidents, this.resources = const [], this.silence});
 
   /// Los incidentes cargados (pueden ser un subconjunto del total: la vista corta, por ejemplo).
   final List<IncidentRow> rows;
@@ -30,6 +48,9 @@ class IncidentMap extends StatefulWidget {
 
   /// Las unidades (ambulancias, bomberos…): una capa DEBAJO de los incidentes, que no se toca ni cambia el encuadre. Vacía = sin capa.
   final List<ResourceUnit> resources;
+
+  /// La capa de silencio; `null` = el tablero no la ofrece (ni interruptor ni rótulo).
+  final SilenceLayer? silence;
 
   @override
   State<IncidentMap> createState() => _IncidentMapState();
@@ -75,6 +96,10 @@ class _IncidentMapState extends State<IncidentMap> {
     // Las unidades se cuentan APARTE (un rótulo sobre el lienzo): el estado de los incidentes conserva su cláusula final
     // «N más en la lista completa» y no se recorta por llevar más texto en pantallas estrechas.
     final unitsText = widget.resources.isEmpty ? null : 'Unidades: ${unitsInside.length} en el mapa${unitsOutside > 0 ? ' · $unitsOutside fuera de la vista' : ''}';
+    final layer = widget.silence;
+    final coverage = layer != null && layer.on ? layer.info : null;
+    final zonesInside = frame == null || coverage == null ? const <SilentZone>[] : [for (final z in coverage.cells) if (frame.contains(GeoPoint(z.lat, z.lon))) z];
+    final silenceText = layer == null || !layer.on ? null : _silenceCaption(coverage, layer.note, zonesInside.length);
     final status = '${inside.length} en el mapa · ${unlocated.length} sin ubicación · ${outside.length} fuera de la vista${more > 0 ? ' · $more más en la lista completa' : ''}';
     final byId = {for (final r in widget.rows) r.id: r};
     final open = [for (final id in _openMembers ?? const <String>[]) if (byId[id] != null) byId[id]!];
@@ -97,6 +122,8 @@ class _IncidentMapState extends State<IncidentMap> {
                     rows: inside,
                     units: unitsInside,
                     unitsCaption: unitsText,
+                    zones: zonesInside,
+                    coverage: coverage,
                     selected: widget.selected,
                     onTapCluster: _tapCluster,
                     open: open.length > 1 ? open : const [],
@@ -129,6 +156,9 @@ class _IncidentMapState extends State<IncidentMap> {
             ),
           ),
         ),
+        // El interruptor y el rótulo de la capa de silencio van FUERA del lienzo, en una franja de altura constante (encendida o apagada): un
+        // rótulo encima del mapa taparía incidentes, y el lienzo no debe cambiar de tamaño al encender la capa.
+        if (layer != null) _SilenceStrip(layer: layer, text: silenceText),
         _UnlocatedSection(rows: unlocated, onPick: widget.onSelect),
       ],
     );
@@ -138,7 +168,7 @@ class _IncidentMapState extends State<IncidentMap> {
 // ───────────────────────────── el lienzo ─────────────────────────────
 
 class _Canvas extends StatelessWidget {
-  const _Canvas({required this.frame, required this.rows, required this.units, required this.unitsCaption, required this.selected, required this.onTapCluster, required this.open, required this.onPick, required this.onClose});
+  const _Canvas({required this.frame, required this.rows, required this.units, required this.unitsCaption, required this.zones, required this.coverage, required this.selected, required this.onTapCluster, required this.open, required this.onPick, required this.onClose});
 
   final MapFrame frame;
   final List<IncidentRow> rows;
@@ -146,6 +176,10 @@ class _Canvas extends StatelessWidget {
 
   /// «Unidades: 3 en el mapa · 1 fuera de la vista»; nulo si no hay capa de recursos.
   final String? unitsCaption;
+
+  /// Las zonas en silencio dentro del encuadre y lo que las describe (nulas/vacías con la capa apagada).
+  final List<SilentZone> zones;
+  final CoverageInfo? coverage;
   final String? selected;
   final void Function(MarkerCluster cluster) onTapCluster;
 
@@ -177,6 +211,9 @@ class _Canvas extends StatelessWidget {
               clipBehavior: Clip.hardEdge,
               children: [
                 Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _GridPainter(spacing: scalePx, origin: Offset(center.x, center.y))))),
+                // Las zonas en silencio van DEBAJO de todo (anillos, unidades, incidentes) y no reciben toques: un P1 nunca queda tapado.
+                if (coverage != null)
+                  for (final z in zones) _silenceZone(z, coverage!, w, h),
                 // Los anillos de precisión van debajo de los marcadores y no reciben toques.
                 for (final c in paintOrder)
                   if (_ringPx(byId[c.top.id]!, pxPerMeter) case final ring?)
@@ -221,6 +258,34 @@ class _Canvas extends StatelessWidget {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  /// Una zona en silencio: un rectángulo rayado de línea discontinua (la forma y el trazado dicen «sin información»; el color solo no).
+  /// No recibe toques, pero SÍ conserva su descripción para quien no la ve (una prueba lo fija: `IgnorePointer` ya no esconde la semántica).
+  Widget _silenceZone(SilentZone z, CoverageInfo c, double w, double h) {
+    final half = c.cellDeg / 2;
+    final a = frame.project(GeoPoint(z.lat + half, z.lon - half), width: w, height: h);
+    final b = frame.project(GeoPoint(z.lat - half, z.lon + half), width: w, height: h);
+    final cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    // Con un encuadre muy abierto la celda sería un punto: se le deja un tamaño mínimo para que se vea.
+    final zw = math.max(8.0, (b.x - a.x).abs()), zh = math.max(8.0, (b.y - a.y).abs());
+    final reports = '${z.total} ${z.total == 1 ? 'reporte' : 'reportes'} en las últimas ${_windowLabel(c.activity)}';
+    final urgent = z.urgent == 0 ? '' : ' (${z.urgent} ${z.urgent == 1 ? 'urgente' : 'urgentes'})';
+    final last = ageLabel(z.lastAtMs ~/ 1000, DateTime.fromMillisecondsSinceEpoch(c.nowMs));
+    return Positioned(
+      left: cx - zw / 2,
+      top: cy - zh / 2,
+      width: zw,
+      height: zh,
+      child: IgnorePointer(
+        child: Semantics(
+          key: ValueKey('map_silence_${z.id}'),
+          container: true,
+          label: 'Zona en silencio: $reports$urgent; el último llegó $last. El silencio no es seguridad.',
+          child: CustomPaint(painter: _SilencePainter(strong: z.urgent > 0)),
         ),
       ),
     );
@@ -507,4 +572,146 @@ class _IncidentChip extends StatelessWidget {
     label: Text(headlineOf(row), style: const TextStyle(fontSize: 12)),
     visualDensity: VisualDensity.compact,
   );
+}
+
+// ───────────────────────────── la capa de silencio ─────────────────────────────
+
+const Color _kSilence = Color(0xFFA78BFA);
+
+/// «6 h» / «30 min».
+String _windowLabel(Duration d) => d.inMinutes % 60 == 0 && d.inMinutes >= 60 ? '${d.inHours} h' : '${d.inMinutes} min';
+
+/// El rótulo de la capa de silencio. Dice lo que SÍ se sabe (cuántas zonas, cuántas se dibujan, cuántos reportes no entran) y, siempre,
+/// que el silencio no es seguridad. Sin lectura no afirma un recuento: da la nota.
+String _silenceCaption(CoverageInfo? c, String? note, int inside) {
+  final lines = <String>[];
+  if (c != null) {
+    final n = c.silentTotal;
+    var head = '$n ${n == 1 ? 'zona' : 'zonas'} en silencio';
+    if (c.cells.length < n) head += ' (se dibujan las ${c.cells.length} más urgentes)';
+    final outside = c.cells.length - inside;
+    if (outside > 0) head += ' · $outside fuera de la vista';
+    lines.add(head);
+    if (c.withoutLocation > 0) lines.add('${c.withoutLocation} ${c.withoutLocation == 1 ? 'reporte sin ubicación no entra' : 'reportes sin ubicación no entran'}');
+  }
+  if (note != null) lines.add(note);
+  // El aviso va PRIMERO: si el texto no cabe y se recorta, se pierde un detalle y no la advertencia.
+  return 'El silencio no es seguridad. ${lines.join(' · ')}';
+}
+
+class _SilencePainter extends CustomPainter {
+  const _SilencePainter({required this.strong});
+
+  /// La zona tuvo reportes urgentes (P1/P2): relleno y trazo más fuertes.
+  final bool strong;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(rect, Paint()..color = _kSilence.withValues(alpha: strong ? 0.22 : 0.12));
+    canvas.save();
+    canvas.clipRect(rect);
+    final hatch = Paint()
+      ..color = _kSilence.withValues(alpha: 0.35)
+      ..strokeWidth = 1;
+    for (var d = -size.height; d < size.width; d += 7) {
+      canvas.drawLine(Offset(d, size.height), Offset(d + size.height, 0), hatch);
+    }
+    canvas.restore();
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strong ? 2 : 1.4
+      ..color = _kSilence.withValues(alpha: 0.9);
+    final border = Path()..addRect(rect.deflate(0.7));
+    for (final metric in border.computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += 9) {
+        canvas.drawPath(metric.extractPath(d, math.min(d + 5, metric.length)), stroke);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_SilencePainter old) => old.strong != strong;
+}
+
+/// El interruptor de la capa: una píldora de al menos 44 px de alto para tocarla, accesible como interruptor.
+class _SilenceToggle extends StatelessWidget {
+  const _SilenceToggle({super.key, required this.layer});
+
+  final SilenceLayer layer;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = layer.on;
+    return Semantics(
+      container: true,
+      button: true,
+      toggled: on,
+      label: 'Zonas en silencio',
+      hint: 'Marca dónde se reportó y se dejó de reportar. El silencio no es seguridad.',
+      excludeSemantics: true,
+      onTap: layer.onToggle,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: layer.onToggle,
+        child: SizedBox(
+          height: 44,
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: on ? _kSilence.withValues(alpha: 0.25) : DashColors.surface.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: on ? _kSilence : DashColors.border, width: 2), // el mismo grosor: encender no cambia el tamaño de la píldora
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(on ? Icons.visibility_off : Icons.visibility_off_outlined, size: 16, color: on ? DashColors.text : DashColors.muted),
+                  const SizedBox(width: 4),
+                  Text('Silencio', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: on ? DashColors.text : DashColors.muted)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// La franja de la capa: el interruptor y, con la capa encendida, lo que se sabe de ella. Mide SIEMPRE lo mismo para que encender la capa no
+/// cambie el tamaño del lienzo (y no mueva los marcadores bajo el dedo).
+class _SilenceStrip extends StatelessWidget {
+  const _SilenceStrip({required this.layer, required this.text});
+
+  final SilenceLayer layer;
+  final String? text;
+
+  static const double height = 52;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      child: SizedBox(
+        height: height,
+        child: Row(
+          children: [
+            _SilenceToggle(key: const Key('map_silence_toggle'), layer: layer),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text ?? 'Zonas que reportaron y dejaron de reportar.',
+                key: text == null ? const Key('map_silence_hint') : const Key('map_silence_caption'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, height: 1.25, color: text == null ? DashColors.muted.withValues(alpha: 0.7) : DashColors.muted),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

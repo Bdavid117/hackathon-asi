@@ -63,6 +63,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Los recursos (unidades) que usa el nodo, para el botón «Recursos» y para el mapa. Si el nodo no los sirve, se sigue sin ellos.
   List<ResourceUnit> _resources = const [];
 
+  /// La capa de silencio del mapa (zonas que reportaron y callaron; el silencio NO es seguridad). Por omisión apagada, y apagada no cuesta
+  /// red: sólo se lee con la capa encendida Y el mapa a la vista. Al apagarla se olvida la lectura, para no enseñar una vieja al encenderla.
+  bool _silenceOn = false;
+  CoverageInfo? _coverage;
+  _CoverageState _coverageState = _CoverageState.idle;
+  bool _coverageLoading = false;
+
   /// Filtros y búsqueda sobre lo CARGADO (el nodo es quien cuenta el total), y si su panel está abierto.
   IncidentFilter _filter = const IncidentFilter();
   bool _filterOpen = false;
@@ -125,6 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }),
     );
     unawaited(_loadResources());
+    unawaited(_loadCoverage());
     if (!_identityChecked) unawaited(_loadIdentity());
     try {
       final loaded = _items.length;
@@ -180,6 +188,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  /// Lee las zonas en silencio SÓLO si la capa está encendida y el mapa a la vista. Un nodo anterior (404) o un fallo no tumban el tablero:
+  /// se dice en el rótulo de la capa. Un 401 bloquea como cualquier otra lectura.
+  Future<void> _loadCoverage() async {
+    if (!_silenceOn || !_showMap || _coverageLoading || _locked) return;
+    _coverageLoading = true;
+    try {
+      final c = await widget.api.coverage();
+      if (!mounted || !_silenceOn) return; // se apagó mientras llegaba: se tira
+      setState(() {
+        _coverage = c;
+        _coverageState = c == null ? _CoverageState.unsupported : _CoverageState.ok;
+      });
+    } on AccessDenied {
+      _lock();
+    } on Object {
+      if (mounted && _silenceOn) setState(() => _coverageState = _CoverageState.failed);
+    } finally {
+      _coverageLoading = false;
+    }
+  }
+
+  void _toggleSilence() {
+    setState(() {
+      _silenceOn = !_silenceOn;
+      if (!_silenceOn) {
+        _coverage = null;
+        _coverageState = _CoverageState.idle;
+      }
+    });
+    if (_silenceOn) unawaited(_loadCoverage());
+  }
+
+  /// Por qué la capa no tiene (o no tiene al día) su lectura. Sin lectura NO se afirma ningún recuento.
+  String? get _silenceNote => switch ((_coverage, _coverageState)) {
+    (null, _CoverageState.unsupported) => 'Este nodo no calcula las zonas en silencio.',
+    (null, _CoverageState.failed) => 'No se pudo leer el silencio; se vuelve a intentar.',
+    (null, _) => 'Leyendo el silencio…',
+    (_, _CoverageState.failed) => 'No se pudo actualizar; se muestra la última lectura.',
+    _ => null,
+  };
+
   /// Pregunta quién soy. Un fallo no bloquea nada ni se inventa un nombre: queda sin identidad (nombre libre) y se vuelve a preguntar.
   Future<void> _loadIdentity() async {
     _identityChecked = true; // una sola pregunta en vuelo
@@ -217,6 +266,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _items.clear();
       _nodes = null;
       _resources = const [];
+      _coverage = null;
+      _coverageState = _CoverageState.idle;
       // El nombre que venía del código anterior NO se queda escrito para firmar con el siguiente.
       if (_identity != null) _who.value = '';
       _identity = null;
@@ -315,7 +366,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final wide = MediaQuery.sizeOf(context).width >= _wide;
     // Con poco ancho la barra no tiene sitio para el selector (ya hay que recortar el título): va encima del contenido.
     final narrowBar = MediaQuery.sizeOf(context).width < 700;
-    final toggle = _ViewToggle(map: _showMap, onChanged: (m) => setState(() => _showMap = m));
+    final toggle = _ViewToggle(
+      map: _showMap,
+      onChanged: (m) {
+        setState(() => _showMap = m);
+        if (m) unawaited(_loadCoverage()); // al volver al mapa con la capa encendida, una lectura fresca (no la de antes de irse)
+      },
+    );
     // El aviso de novedades SÓLO avisa: no reordena nada ni cambia de altura nada. Por eso no va en la cabecera de la lista
     // (competiría por el ancho de su texto y todo se reajustaría): va en la barra superior, o junto al selector en pantallas
     // estrechas. Tocarlo lo da por visto y abre la novedad más urgente.
@@ -515,7 +572,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: _showMap
               // Una instancia nueva por modo/urgencia: al cambiar de vista el mapa se encuadra de nuevo; con los datos que
               // llegan cada 2 s NO (ver IncidentMap).
-              ? IncidentMap(key: ValueKey('map-${_mode.name}-${_urgency ?? ''}'), rows: result.shown, selected: _selected, onSelect: _select, totalIncidents: page.counters.incidents - result.hidden.length, resources: _resources)
+              ? IncidentMap(key: ValueKey('map-${_mode.name}-${_urgency ?? ''}'), rows: result.shown, selected: _selected, onSelect: _select, totalIncidents: page.counters.incidents - result.hidden.length, resources: _resources, silence: SilenceLayer(on: _silenceOn, info: _coverage, note: _silenceNote, onToggle: _toggleSilence))
               : ListView(key: const Key('incident_list'), children: children),
         ),
       ],
@@ -874,3 +931,6 @@ class _BareRow extends StatelessWidget {
     ),
   );
 }
+
+/// Cómo va la lectura de las zonas en silencio: sin pedir, leída, un nodo anterior que no las calcula, o un fallo.
+enum _CoverageState { idle, ok, unsupported, failed }

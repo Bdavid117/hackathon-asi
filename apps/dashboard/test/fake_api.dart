@@ -116,6 +116,23 @@ class FakeApi implements DashboardApi {
     return answer;
   }
 
+  /// Lo que contesta `coverage()`; `null` = un nodo anterior que no la sirve.
+  CoverageInfo? coverageInfo;
+  Object? failCoverage;
+
+  /// Si se da, `coverage()` espera a que se complete (una respuesta que tarda).
+  Completer<void>? holdCoverage;
+
+  @override
+  Future<CoverageInfo?> coverage() async {
+    calls.add(Call('coverage'));
+    _check();
+    if (failCoverage != null) throw failCoverage!;
+    final answer = coverageInfo; // lo que había AL PEDIR: una respuesta que tarda no se entera de lo que cambie después
+    await holdCoverage?.future;
+    return answer;
+  }
+
   /// Si es verdadero, la lectura de recursos falla DESPUÉS de haber aceptado una declaración (el nodo la guardó, pero no se pudo releer).
   bool failResourcesAfterDeclare = false;
   bool _declared = false;
