@@ -88,40 +88,121 @@ tool/device_check.sh   pruebas de integración en Android o iOS contra un nodo r
 tool/android_*_check.sh  sin red → sale solo; batería real → modos
 ```
 
-## Comandos
+## Reproducir los resultados
+
+Todo lo que dice este repositorio sale de un comando de esta sección. **Casi todo corre sin conexión, sin claves y sin gastar nada**; la única excepción son las mediciones con el modelo de lenguaje real (§4). Los tiempos se midieron el 10 de noviembre de 2026 en una Mac (Apple silicon) con la máquina en reposo; con carga pueden variar.
+
+### 0 · Requisitos
+
+| Para | Qué hace falta |
+|---|---|
+| Todo | **Flutter 3.41.9** (trae Dart 3.11.5), `git`, `curl`, `lsof`, Python 3 |
+| Protocolo en navegador, tablero web, prueba de humo y PDF | **Google Chrome** (si está en otra ruta, variable `CHROME`) |
+| PDF de arquitectura | Python 3 con `pypdf` |
+| La app en un simulador o emulador | Xcode (simulador de iOS) o Android SDK (emulador de Android) |
+| El video de presentación | `swiftc` (viene con Xcode) y las voces del sistema (`say`); **no** hace falta `ffmpeg` |
+
+Probado en macOS 27. Los datos son **sintéticos** y los canales, **simulados** (lo que permite el §4.7 del enunciado).
+
+### 1 · Preparación (una vez)
 
 ```bash
-dart pub get                                   # resuelve el workspace
-bash tool/test_all.sh                          # pruebas + análisis + H1 + demostración + T12 + T14 + tablero web + canal del despachador (≈ 6 min)
-
-# Un nodo con el tablero (compilar el tablero antes)
-(cd apps/dashboard && flutter build web --no-web-resources-cdn)
-(cd apps/node && dart run bin/sard_node.dart --id A --port 8081 --data /tmp/sard-A --web-root ../dashboard/build/web --resources ../../config/recursos.json)
-dart run packages/sim/bin/seed_scenario.dart            # opcional: 8 incidentes de ejemplo para ver el tablero
-
-# El APK para instalar en un celular Android (la IP del nodo queda compilada dentro; misma Wi-Fi que esta Mac)
-bash tool/build_apk.sh
-
-# La app (iOS: localhost; emulador de Android: 10.0.2.2)
-(cd apps/mobile && flutter run -d <dispositivo> --dart-define=NODES=http://localhost:8081)
-
-# Partición real de 10 min con dos nodos (≈ 11 min) y tres nodos con relevo (≈ 1 min); criterios en la cabecera de cada script
-dart run packages/sim/bin/t18_particion_larga.dart
-dart run packages/sim/bin/t19_tres_nodos.dart
-
-# Recorrido de punta a punta con pérdida de nodo
-dart run packages/sim/bin/e2e_skeleton.dart --seed 42 --reports 60 --loss 0.3
-
-# Demostración con una condición adversa, ráfaga, modelo que falla y tablero estructural
-PART=20 bash tool/demo.sh 42
-dart run packages/sim/bin/burst.dart --reports 10000
-dart run packages/sim/bin/t12.dart
-dart run packages/sim/bin/t14.dart
-
-# Mediciones de transporte (T02–T04) y pruebas en dispositivo
-dart run packages/sim/bin/transport_report.dart docs/resultados/b2.md
-bash tool/device_check.sh android emulator-5554
+git clone https://github.com/Bdavid117/hackathon-asi && cd hackathon-asi
+dart pub get          # resuelve el workspace (paquetes y aplicaciones)
 ```
+
+### 2 · La batería completa — `bash tool/test_all.sh` (≈ 6 min, termina con `TODO EN VERDE` y código 0)
+
+| Qué corre | Pruebas / resultado |
+|---|---|
+| `packages/protocol` (en VM **y** en Chrome) · `client_core` · `agents` · `sim` | 124 · 89 · 421 · 224 |
+| `apps/node` · `apps/mobile` (widgets) · `apps/dashboard` (widgets) | 596 · 127 · 488 |
+| Análisis estático de los cinco paquetes y las dos aplicaciones Flutter | «No issues found» en cada uno |
+| H1: recorrido de punta a punta con pérdida de nodo (dos corridas, la segunda con la rama del isolate) | `H1 OK` |
+| Demostración adversa (partición, `kill -9`, reconexión) **dos veces** con la misma semilla | misma huella (T09, T10, T15) |
+| T12 (modelo colgado o roto y relevo) · ráfaga con el modelo colgado y `ulimit -n 1024` · T14 | cada uno termina `OK` |
+| Tablero **compilado** abierto en Chrome sin cabeza; códigos de acceso (3 nodos); informe de despachador (3 nodos); recursos declarados (2 nodos) | `OK` en cada uno |
+
+**Total: 2 069 pruebas.** `bash tool/test_all.sh --sin-e2e` omite lo que arranca nodos reales (más rápido). **No la corra con la demostración en vivo (§5) arriba:** comparten los puertos 8081/8082 y la carga puede hacer fallar un arranque (una vez un nodo no arrancó en 60 s con la máquina cargada; aislado y repetido, pasa).
+
+### 3 · Cada resultado, con su comando
+
+Pase siempre `--out` a un archivo temporal si sólo quiere **reproducir**: sin él, T12, T18 y T19 **sobrescriben** su informe versionado (y el árbol queda sucio). Los informes más recientes (T17 a T20) llevan fecha, commit y semilla de la corrida que los produjo.
+
+| Resultado | Informe | Comando | Tiempo |
+|---|---|---|---|
+| T01 · `kill -9` sin perder un SOS dado por guardado | [`b5.md`](docs/resultados/b5.md) §1 | `(cd packages/client_core && dart test test/t01_kill_test.dart)` | 14 s |
+| T02–T04 · bytes por reporte, entrega bajo pérdida, ventanas breves (tiempo virtual) | [`b2.md`](docs/resultados/b2.md) | `dart run packages/sim/bin/transport_report.dart /tmp/b2.md` | 6 s |
+| T06 (reglas), T07, T08 · urgencia, deduplicación, rumor frente a corroboración | [`b3.md`](docs/resultados/b3.md) | `dart run packages/sim/bin/b3_report.dart /tmp/b3.md` | 22 s |
+| H1 · recorrido de punta a punta con pérdida de nodo | [`h1.md`](docs/resultados/h1.md) | `dart run packages/sim/bin/e2e_skeleton.dart --seed 42` (usa los puertos 8081–8082; `--port-base` los cambia) | 20 s |
+| T09, T10, T15 · reinicio tras `kill -9`, convergencia y huella reproducible | [`b5.md`](docs/resultados/b5.md) §1 | `PART=4 bash tool/demo.sh 42` (`PART=20` para una partición de 20 s) | 53 s |
+| T11 · ráfaga de 10 000 reportes | [`b5-rafaga.md`](docs/resultados/b5-rafaga.md) | `dart run packages/sim/bin/burst.dart --reports 10000 --out /tmp/burst.md` | 22 s |
+| T12 · modelo colgado o roto, reparto y relevo entre dos nodos | [`t12.md`](docs/resultados/t12.md) | `dart run packages/sim/bin/t12.dart --reports 100 --out /tmp/t12.md` | 78 s |
+| T14 · ningún P1 fuera de la vista inicial | [`t14.md`](docs/resultados/t14.md) | `dart run packages/sim/bin/t14.dart --seeds 401 --out /tmp/t14.md` | 9 s |
+| T16 · canal del despachador con 3 nodos reales | [`despachador.md`](docs/resultados/despachador.md) | `bash tool/dispatch_check.sh` | 23 s |
+| T17 · contradicciones entre reportes | [`t17-contradicciones.md`](docs/resultados/t17-contradicciones.md) | `dart run packages/sim/bin/t17_contradicciones.dart --out /tmp/t17.md` | 2 s |
+| T18 · partición de 10 min con dos nodos y un proxy con interruptor | [`t18-particion-larga.md`](docs/resultados/t18-particion-larga.md) | `dart run packages/sim/bin/t18_particion_larga.dart --out /tmp/t18.md` | ≈ 11 min |
+| T19 · tres nodos: relevo del modelo y convergencia | [`t19-tres-nodos.md`](docs/resultados/t19-tres-nodos.md) | `dart run packages/sim/bin/t19_tres_nodos.dart --out /tmp/t19.md` | 63 s |
+| T20 · la capa «Silencio» frente a una verdad aparte | [`t20-silencio.md`](docs/resultados/t20-silencio.md) | `(cd apps/node && dart run tool/t20_silencio.dart --seeds 20 --zones 60 --first-seed 100 --out /tmp/t20.md)` | 2 s |
+| Códigos de acceso (`--coordinator-token`, `--peer-token`) | [`b5.md`](docs/resultados/b5.md) | `bash tool/access_check.sh` | 19 s |
+| Recursos declarados en vivo, conflicto y resolución | [`b5.md`](docs/resultados/b5.md) | `bash tool/resources_check.sh` | 27 s |
+| Tablero compilado abierto en Chrome | — | `bash tool/web_smoke.sh --no-build` (antes: `(cd apps/dashboard && flutter build web --no-web-resources-cdn)`) | 9 s |
+| Mapa, capa «Silencio», panel «Situación», historia del incidente | [`b6-mapa.md`](docs/resultados/b6-mapa.md), [`cobertura.md`](docs/resultados/cobertura.md) | pruebas de `apps/dashboard` y `apps/node` (en la batería) | — |
+
+**En un dispositivo** (necesita un emulador o simulador encendido; **`device_check.sh` hace `pkill` de todo nodo en marcha** y usa el puerto 8081):
+
+```bash
+bash tool/device_check.sh android emulator-5554     # o:  bash tool/device_check.sh ios <UDID del simulador>
+bash tool/android_offline_check.sh                  # SOS sin red → no llega nada → al volver la red sale solo
+bash tool/android_battery_check.sh                  # modos normal, ahorro y sólo SOS con la batería a 100, 15 y 3 %
+bash tool/build_apk.sh                              # APK de Android (emulador: bash tool/build_apk.sh emulador)
+```
+
+### 4 · Lo que cuesta dinero: el modelo de lenguaje real
+
+T06, T07 y T13 **con modelo** llaman a la API de Anthropic; todo lo demás, no. Los informes de esas corridas traen sus datos crudos (CSV) y su gasto: [`modelo-real.md`](docs/resultados/modelo-real.md), [`t06-modelo.md`](docs/resultados/t06-modelo.md), [`reto4-juez.md`](docs/resultados/reto4-juez.md).
+
+```bash
+dart run packages/sim/bin/t06_model.dart --plan --seeds 601,602,603,604,605 --per-seed 150   # cuántas llamadas y cuánto costarían; NO gasta
+ANTHROPIC_API_KEY=… dart run packages/sim/bin/t06_model.dart --seeds 601,602,603,604,605 --per-seed 150 --budget-usd 10
+dart run packages/sim/bin/t07_modelo.dart --plan --seeds 701,702,703,704,705                 # lo mismo para el juez de modelo (Reto 4)
+```
+
+`--plan` siempre antes de gastar. Las corridas medidas costaron entre 1,8 y 9,5 USD cada una; el registro [`gasto-api.json`](docs/resultados/gasto-api.json) y `ApiLedger` se niegan a lanzar una corrida si lo gastado más su tope pasa de 40 USD. La clave va **sólo** en la variable de entorno `ANTHROPIC_API_KEY` (nunca se versiona); `--llm on` en un nodo envía texto libre a un tercero y está apagado por omisión.
+
+### 5 · La demostración en vivo y la app en un simulador
+
+```bash
+bash tool/expo.sh                       # dos nodos que se replican (8081 y 8082) con seis horas de historia SINTÉTICA; se queda en primer plano; Ctrl+C lo apaga todo
+bash tool/expo_ctl.sh kill A            # kill -9 de verdad del nodo A (en otra terminal)
+bash tool/expo_ctl.sh start A           # lo reanima con su mismo disco (≈ 3 s)
+bash tool/expo_ctl.sh status            # eventos y estado de los dos
+(cd apps/mobile && flutter run -d <simulador> --dart-define=NODES=http://localhost:8081,http://localhost:8082)   # emulador de Android: http://10.0.2.2:8081,http://10.0.2.2:8082
+```
+
+Un nodo suelto con el tablero: `(cd apps/dashboard && flutter build web --no-web-resources-cdn)` y `(cd apps/node && dart run bin/sard_node.dart --id A --port 8081 --data /tmp/sard-A --web-root ../dashboard/build/web --resources ../../config/recursos.json)`; `dart run packages/sim/bin/seed_scenario.dart --now` le carga 8 incidentes. **Guion con tiempos medidos, qué debe verse y plan B por escena:** [`docs/pitch/demo-en-vivo.md`](docs/pitch/demo-en-vivo.md). El diálogo de ubicación del simulador de iOS es del sistema y ningún script puede pulsarlo: toque «Permitir al usar la app» una vez (o concédalo con `xcrun simctl privacy <UDID> grant location com.example.sardMobile` **después** de instalar la app).
+
+### 6 · Regenerar los documentos, el pitch y el video
+
+```bash
+python3 docs/src/build.py                                           # PDF de arquitectura → docs/SARD-arquitectura-app-movil.pdf (Chrome + pypdf)
+python3 docs/src/tools/frame_size.py                                # mide la trama binaria frente a JSON
+python3 -I docs/pitch/build_pdf.py --pdf docs/pitch/SARD-pitch.pdf [--png-dir DIR]   # el pitch (18 láminas; fuentes en docs/pitch/deck/)
+python3 -I tool/brand/build_icons.py                                # los íconos de la marca (Android, iOS y tablero web)
+dart run packages/sim/bin/make_dashboard_fixtures.dart              # los JSON del tablero a partir de un nodo real
+```
+
+El **video de presentación** (52 s, tomas reales de la app y del tablero) se reconstruye con [`docs/pitch/video/README.md`](docs/pitch/video/README.md); el `.mp4` no se versiona. Fuentes del PDF: `docs/src/parts/*.html` (contenido), `docs/src/diagrams.py` (figuras), `docs/src/style.css` (estilo).
+
+### 7 · Si algo falla
+
+| Síntoma | Causa y salida |
+|---|---|
+| «el puerto NNNN ya está en uso» | Otra demostración o prueba: `lsof -nP -iTCP:NNNN -sTCP:LISTEN` y cierre lo que sobre. Puertos: H1 8081–8082 · burst 8093 · T14 8094 · demo 8095–8096 · web 8099 · T18 8101–8102 · T19 8111–8113 · accesos 8191–8193 · despachador 8194–8196 · recursos 8197–8198 |
+| «el nodo A no respondió en 60 s» | Arranque lento con la máquina cargada: repetir con la máquina en reposo (no es un fallo del nodo; aislada, la prueba pasa) |
+| T12 con reparto desigual (A=24, B=0) | Intermitencia conocida y sin explicar (una vez en una corrida completa); el script imprime el estado de los dos nodos |
+| Chrome no está en la ruta usual | `export CHROME="/ruta/a/chrome"`; sin Chrome la prueba de humo se omite (código 77) y lo dice |
+| `flutter doctor` marca una licencia de Android sin aceptar | No impide compilar ni ejecutar en el emulador |
 
 ## Resumen de la arquitectura
 
@@ -136,18 +217,7 @@ Los paquetes compartidos (`protocol`, `client_core`, `agents`, `sim`) serán **D
 
 ## Entorno de desarrollo
 
-Flutter 3.41.9, Dart 3.11.5, AVD de Android `MediumAndroid` y simulador de iOS `SARD-iPhone` (iPhone 17, iOS 27). Aviso conocido: `flutter doctor` marca 1 de 8 licencias de Android sin aceptar; no impide compilar ni ejecutar en el emulador.
-
-## Regenerar el PDF
-
-Requiere Google Chrome, Python 3 y `pypdf`.
-
-```bash
-python3 docs/src/build.py              # genera docs/SARD-arquitectura-app-movil.pdf
-python3 docs/src/tools/frame_size.py   # mide la trama binaria frente a JSON
-```
-
-Fuentes del documento: `docs/src/parts/*.html` (contenido), `docs/src/diagrams.py` (figuras), `docs/src/style.css` (estilo). Si Chrome está en otra ruta, definir la variable de entorno `CHROME`.
+Flutter 3.41.9, Dart 3.11.5, macOS 27, AVD de Android `MediumAndroid` y simulador de iOS `SARD-iPhone` (iPhone 17, iOS 27). Los requisitos de cada tarea están en [«Reproducir los resultados»](#reproducir-los-resultados).
 
 ## Pendiente
 

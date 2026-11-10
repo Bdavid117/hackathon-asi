@@ -13,7 +13,7 @@ bash tool/expo.sh --build            # compila el tablero (1–2 min la primera 
 
 - **Los nodos sirven el tablero ya compilado:** si cambió la interfaz hay que pasar `--build`, o la demostración enseña la versión anterior.
 - **Permiso de ubicación del simulador (un toque, una vez):** la primera vez que la app se abre en iOS aparece un diálogo del sistema («¿Permitir a SARD utilizar tu ubicación?»). **Ningún script puede pulsarlo**: toque «Permitir al usar la app» antes de empezar. Para que el GPS sea de Manizales: `xcrun simctl location booted set 5.0689,-75.5174`.
-- **No corra `bash tool/test_all.sh` con la demostración arriba:** comparten procesos y el simulador de carga puede hacer fallar un arranque (una vez un nodo no arrancó en 60 s con la máquina cargada). Las demás pruebas usan otros puertos (demo 8095/8096, T14 8094, T18 8101/8102, T19 8111–8113) y pueden correr al lado de `expo.sh` (8081/8082).
+- **No corra `bash tool/test_all.sh` con la demostración arriba:** comparten procesos y el simulador de carga puede hacer fallar un arranque (una vez un nodo no arrancó en 60 s con la máquina cargada). Las que usan otros puertos pueden correr al lado de `expo.sh` (8081/8082): `demo.sh` 8095/8096, T14 8094, ráfaga 8093, T18 8101/8102, T19 8111–8113, T20 ninguno. **Las que NO**: el recorrido H1 (`e2e_skeleton.dart`) usa 8081/8082 por omisión (`--port-base` lo cambia) y `tool/device_check.sh` usa 8081 y hace `pkill` de **todo** nodo en marcha, incluidos los de la demostración.
 
 ## 1 · El recorrido central (≈ 8 min)
 
