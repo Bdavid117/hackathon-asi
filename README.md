@@ -6,6 +6,8 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 
 > **Alcance de la demostración.** El enunciado lo permite en su §4.7: «El recorrido puede ejecutarse con datos sintéticos y canales simulados. No se exige desplegar una red de radio real ni contar con acceso a infraestructura gubernamental.» Por eso todo lo de este repositorio usa datos sintéticos y canales simulados, y el objetivo 10 pide justamente «pruebas reproducibles de desconexión, pérdida de paquetes y recuperación». El emulador de Android y el simulador de iOS son una decisión del equipo (el enunciado no fija plataforma). **Dos cosas que NO vienen del enunciado:** (1) el enunciado no trae rúbrica, pesos ni metas numéricas; (2) los umbrales que aparecen aquí —recall de P1 ≥ 95 %, falsa fusión ≤ 1 %, particiones de 10 min, «ningún P1 fuera de la vista»— son metas del **propio diseño** (cap. 9 del PDF de arquitectura). Incumplir una meta propia se reporta, pero no es incumplir el enunciado.
 
+> **¿Quiere repetir las pruebas?** Siga la [guía paso a paso](#guía-paso-a-paso-de-cero-a-todas-las-pruebas): va de la instalación a cada prueba, con el comando, lo que debe verse y cuánto tarda.
+
 ## Estado actual
 
 **B0 a B5 implementados y medidos.** B4 y B5 —la app captura personas y frase; el nodo calcula incidentes con la recomendación del agente 6 y la aprobación registrada; el tablero del coordinador; el reparto del trabajo caro entre nodos; la ráfaga de 10 000 reportes y la demostración con una condición adversa— están en [`docs/resultados/b5.md`](docs/resultados/b5.md) (decisiones y mutaciones en [`b5-decisiones.md`](docs/resultados/b5-decisiones.md)). **Lo que NO se logró o no se probó** (límites de validez; que los datos sean sintéticos y los canales simulados no cuenta como uno, porque el enunciado lo permite): el modelo de lenguaje se consultó de verdad sólo en T06 y T13 con modelo y en una prueba del nodo (datos sintéticos, una corrida; T12 y la ráfaga siguen con un servidor falso); el agrupamiento casi no fusiona, así que la ventaja del tablero es de orden y no de agrupación; no hubo prueba con coordinadores; las particiones de `demo.sh` fueron de 5–20 s (después T18 midió una de 10 min con dos nodos y T19 un aislamiento de 30 s con tres, en una sola máquina y con modelos falsos); quien aprueba no está autenticado y la clave de integridad es compartida. ⚠️ En B3, **dos de los tres criterios medidos —propios del diseño— no se cumplen** (T06 recall de P1 78,5 % frente a la meta propia de 95 %; T07 sólo cumple «falsa fusión ≤ 1 %» en conjunto y porque casi no agrupa: una de cinco semillas nuevas llega a 2,9 %) y se reportan así, con su diagnóstico, en [`docs/resultados/b3.md`](docs/resultados/b3.md). Los datos son sintéticos y los genera el mismo autor que las reglas, así que las cifras miden coherencia interna y no desempeño en campo. **`--llm on` envía el texto libre de los ciudadanos a un tercero sin redactar datos personales** (apagado por defecto; ver PDF §8). Desarrolla una sola persona, con Flutter: **Dart de punta a punta**. Un reporte recorre los ocho pasos del enunciado y la app se comporta bien en sus condiciones: **se guarda sin red y sale solo al volver la señal** (en el emulador de Android: 1 s tras devolver la red), lee el **GPS y la batería por las API del sistema** (en el emulador, simulados desde su consola; ubicación como revisión del mismo reporte; modos normal, ahorro y sólo SOS) y reparte el envío con **envejecimiento y cuota anti-inanición**.
@@ -56,7 +58,7 @@ El enunciado (tabla 4, §6) pide siete. Dónde está cada uno y cómo comprobarl
 
 | N.º | Entregable | Dónde está | Cómo comprobarlo |
 |---|---|---|---|
-| 1 | Prototipo funcional | La app ciudadana ([`apps/mobile`](apps/mobile)), el nodo superviviente ([`apps/node`](apps/node)) y el tablero del coordinador ([`apps/dashboard`](apps/dashboard)) | `PART=20 bash tool/demo.sh 42` (recorrido de punta a punta con una condición adversa) o «Un nodo con el tablero» en [Comandos](#comandos) |
+| 1 | Prototipo funcional | La app ciudadana ([`apps/mobile`](apps/mobile)), el nodo superviviente ([`apps/node`](apps/node)) y el tablero del coordinador ([`apps/dashboard`](apps/dashboard)) | `PART=20 bash tool/demo.sh 42` (recorrido de punta a punta con una condición adversa) o «Un nodo con el tablero» en el [paso 6 de la guía](#guía-paso-a-paso-de-cero-a-todas-las-pruebas) |
 | 2 | Código fuente | Este repositorio, público: [github.com/Bdavid117/hackathon-asi](https://github.com/Bdavid117/hackathon-asi). Instalación y versiones en [Entorno de desarrollo](#entorno-de-desarrollo) | `dart pub get` y `bash tool/test_all.sh` |
 | 3 | Documento de arquitectura | [`docs/SARD-arquitectura-app-movil.pdf`](docs/SARD-arquitectura-app-movil.pdf): componentes y recorrido (cap. 3), app (cap. 5), nodos, sincronización, tejido de agentes, almacenamiento y tablero (cap. 6), dependencias (§3.4) | Se regenera con `python3 docs/src/build.py` |
 | 4 | Fichas de agentes | El mismo PDF, §6.4: una ficha por agente con los ocho campos (objetivo, entradas, salidas, herramientas, memoria, límites de autonomía, manejo de errores y terminación) | El código de cada agente es una función pura en [`packages/agents`](packages/agents) |
@@ -87,6 +89,202 @@ packages/sim/bin/llm_smoke.dart · t06_model.dart · t13_modelo.dart   el modelo
 tool/device_check.sh   pruebas de integración en Android o iOS contra un nodo real
 tool/android_*_check.sh  sin red → sale solo; batería real → modos
 ```
+
+## Guía paso a paso: de cero a todas las pruebas
+
+**Quién es el «usuario» aquí.** El sistema tiene tres papeles: la **persona que envía un SOS** (la app), el **despachador** que registra lo que oyó por radio o teléfono, y el **coordinador** que revisa y aprueba (el tablero). Esta guía los recorre **con datos sintéticos y canales simulados**, a mano y con scripts, que es lo que permite el §4.7 del enunciado. **No hubo pruebas con personas** (ni ciudadanos, ni despachadores, ni coordinadores): ningún paso de abajo las sustituye, y la guía no trae un protocolo de sesión con personas.
+
+**Siga el orden.** Los pasos comparten puertos (8081 y 8082 para la demostración) y **tres scripts matan todos los nodos en marcha** (`access_check.sh`, `device_check.sh` y `android_offline_check.sh`, avisados donde aparecen). No deje nada arriba entre un paso y el siguiente. Los comandos se escriben desde la raíz del repositorio.
+
+| Paso | Qué hace | Tiempo | ¿Gasta API? |
+|---|---|---|---|
+| 0 y 1 | Comprobar requisitos e instalar | según la conexión | no |
+| 2 | La batería completa de pruebas automáticas | ≈ 6 min | no |
+| 3 | Resultados sueltos (T01 a T20), sin ensuciar el repositorio | segundos a 11 min | no |
+| 4 | El recorrido de punta a punta con una condición adversa | ≈ 1 min | no |
+| 5 | **Los tres papeles, a mano**, con la demostración en vivo | a su ritmo (arranque ≈ 14 s) | no |
+| 6 | Un nodo suelto con el escenario ampliado | a su ritmo | no |
+| 7 | Comprobaciones con procesos reales y en dispositivo | 9 a 27 s cada script de nodos | no |
+| 8 | El modelo de lenguaje real | — | **sí** |
+
+### Paso 0 · Comprobar los requisitos
+
+```bash
+flutter --version                       # debe decir Flutter 3.41.9 (con Dart 3.11.5)
+git --version && python3 --version && curl --version | head -1
+ls -d "/Applications/Google Chrome.app" # si Chrome está en otra ruta: export CHROME="/ruta/a/chrome"
+```
+
+El detalle de qué necesita cada prueba (simulador, emulador, `pypdf`) está en [«0 · Requisitos»](#0--requisitos).
+
+### Paso 1 · Descargar e instalar
+
+```bash
+git clone https://github.com/Bdavid117/hackathon-asi && cd hackathon-asi
+dart pub get          # resuelve el workspace: cuatro paquetes y tres aplicaciones
+```
+
+Debe terminar sin errores. Si ya tiene el repositorio, `git pull` y otra vez `dart pub get`.
+
+### Paso 2 · La batería completa (nada más en marcha)
+
+```bash
+bash tool/test_all.sh                   # ≈ 6 min
+echo $?                                 # 0
+```
+
+Debe terminar con `TODO EN VERDE` y código 0. Corre las pruebas de los cuatro paquetes y de las tres aplicaciones, el análisis estático, el recorrido H1 con pérdida de nodo, la demostración adversa **dos veces** con la misma semilla, T12, la ráfaga con el modelo colgado, T14, el tablero compilado en Chrome sin cabeza y los scripts de códigos de acceso, despachador y recursos. La tabla completa está en «2 · La batería completa» de [Reproducir los resultados](#reproducir-los-resultados). Con `--sin-e2e` omite lo que arranca nodos reales (más rápido). **No la corra con la demostración del paso 5 arriba.**
+
+### Paso 3 · Resultados sueltos, sin ensuciar el repositorio
+
+Los que escriben un informe lo dejan en `/tmp`; **conserve siempre el `--out`**: sin él, T12, T18 y T19 sobrescriben su informe versionado. Qué mide cada uno, su informe y su tiempo están en la tabla de [«3 · Cada resultado, con su comando»](#3--cada-resultado-con-su-comando).
+
+```bash
+(cd packages/client_core && dart test test/t01_kill_test.dart)      # T01 · 6 kill -9 sin perder un SOS guardado (≈ 14 s)
+dart run packages/sim/bin/transport_report.dart /tmp/b2.md          # T02–T04 · bytes, pérdida de paquetes y ventanas breves (≈ 6 s)
+dart run packages/sim/bin/b3_report.dart /tmp/b3.md                 # T06 (reglas), T07, T08 · urgencia, duplicados y rumor (≈ 22 s)
+dart run packages/sim/bin/burst.dart --reports 10000 --out /tmp/burst.md                      # T11 · ráfaga de 10 000 (≈ 22 s)
+dart run packages/sim/bin/t12.dart --reports 100 --out /tmp/t12.md                            # T12 · modelo colgado y relevo (≈ 78 s)
+dart run packages/sim/bin/t14.dart --seeds 401 --out /tmp/t14.md                              # T14 · ningún P1 fuera de la vista (≈ 9 s)
+dart run packages/sim/bin/t17_contradicciones.dart --out /tmp/t17.md                          # T17 · contradicciones (≈ 2 s)
+(cd apps/node && dart run tool/t20_silencio.dart --seeds 20 --zones 60 --first-seed 100 --out /tmp/t20.md)   # T20 · capa «Silencio» (≈ 2 s)
+dart run packages/sim/bin/t19_tres_nodos.dart --out /tmp/t19.md                               # T19 · tres nodos (≈ 63 s)
+dart run packages/sim/bin/t18_particion_larga.dart --out /tmp/t18.md                          # T18 · partición de 10 min (≈ 11 min)
+```
+
+Cada uno termina con un veredicto aplicado por código (por ejemplo, T17 imprime «cumple los tres criterios»; T20 dice que **H4 no se cumple**: es lo esperado, el informe lo reporta así). Las cifras se comparan con las del informe versionado: los que usan semilla dan lo mismo; los de tiempos varían con la máquina.
+
+### Paso 4 · El recorrido de punta a punta con una condición adversa
+
+```bash
+PART=4 bash tool/demo.sh 42             # ≈ 53 s (PART=20 para una partición de 20 s)
+```
+
+Levanta **dos nodos reales**, los parte en dos, manda una ráfaga de 26 reportes, mata a uno con `kill -9` a mitad, lo reinicia midiendo el RTO, reconecta la red y compara las proyecciones. Debe verse que **A acusó 8 de 26 y los otros 18 conmutaron a B**, el RTO, la convergencia y, al final, `misma semilla ⇒ misma huella (T15)` (lo ejecuta dos veces). Cubre los pasos 7 y 8 del recorrido del enunciado: [`b5.md`](docs/resultados/b5.md) §1 (T09, T10, T15). El recorrido H1 completo, con el mismo canal de pérdida: `dart run packages/sim/bin/e2e_skeleton.dart --seed 42` (≈ 20 s; usa los puertos 8081–8082).
+
+### Paso 5 · Los tres papeles, a mano, con la demostración en vivo
+
+Es la demostración de [`demo-en-vivo.md`](docs/pitch/demo-en-vivo.md) con cada papel por separado. Necesita dos ventanas de Chrome y dos terminales (la 1.ª se queda ocupada).
+
+**5.1 · Levantar los dos nodos** (terminal 1, no la cierre):
+
+```bash
+bash tool/expo.sh --build               # la primera vez: compila el tablero (1–2 min); después basta  bash tool/expo.sh  (≈ 14 s)
+```
+
+Debe mostrar un cuadro final con `Nodo A … (123 eventos)`, `Nodo B … (123 eventos)` y `Zonas en silencio ahora: 4`. Los dos nodos se replican entre sí y cargan seis horas de historia **sintética**. Las dos zonas que siguen reportando pasan a silencio solas 30 minutos después de arrancar: si se retrasa, reinicie con Ctrl+C y otra vez. `bash tool/expo.sh --empty` arranca sin escenario.
+
+**5.2 · Abrir el tablero en dos ventanas** (1440 × 900): `http://localhost:8081` (nodo A) y `http://localhost:8082` (nodo B). Debe verse la barra `3 P1 · 21 P2 · 16 P3`, «31 pendientes de decisión» y, a la derecha, el panel «Situación» con la red de nodos sincronizada.
+
+**5.3 · Papel del coordinador.** En la ventana de A: abra un P1 de la lista. Debe verse el *porqué* (indicadores y citas), la observación original, «Fuente única» y una **recomendación que es una propuesta**, con lo que falta antes de aprobar. Pulse **Aprobar** y escriba un nombre: queda registrado quién decidió y con qué versión. Abra «Historia» al final del detalle: pestaña «Agentes» (qué hizo cada uno, con nodo y hora) y pestaña «Decisiones» (quién, cuándo, estado). Respaldo: T13 y T14 en [`b5.md`](docs/resultados/b5.md) §1 y `apps/dashboard/test/detail_panel_test.dart`.
+
+**5.4 · Silencio digital.** Cambie a «Mapa» y active el botón **«Silencio»** (franja bajo el mapa). Debe verse **4 zonas rayadas** y el rótulo que empieza por «El silencio no es seguridad». Cuánto acierta, medido en el paso 3 (T20): precisión 48,8 % y exhaustividad 89,1 %. Respaldo: [`cobertura.md`](docs/resultados/cobertura.md).
+
+**5.5 · Papel del despachador.** Pulse **«Registrar informe»** (arriba a la derecha). Escriba lo que «oyó por radio», de quién viene, marque «Atrapado» y «Herido» y envíe. Debe aparecer un incidente **P1 «De segunda mano»**, con una sola fuente, confianza 0,2 y «Sin ubicación»: el detalle dice que todavía no se puede recomendar por falta de ubicación. Si escribe latitud y longitud, entra con calidad «manual» y la recomendación pide confirmarla. Lo mismo, con tres nodos reales y sin teclear: `bash tool/dispatch_check.sh` (≈ 23 s; sólo toca los puertos 8194–8196). Respaldo: [`despachador.md`](docs/resultados/despachador.md) (T16).
+
+**5.6 · Papel del ciudadano, en un simulador o emulador.** Elija **una** plataforma (terminal 2).
+
+*iOS (simulador):*
+
+```bash
+xcrun simctl list devices               # copie el UDID del simulador (el equipo usó uno llamado «SARD-iPhone»)
+xcrun simctl boot <UDID>
+open -a Simulator                                       # si Xcode no trae la app Simulator, el simulador corre sin ventana: véalo con  xcrun simctl io <UDID> screenshot foto.png
+xcrun simctl location booted set 5.0689,-75.5174        # GPS en Manizales
+(cd apps/mobile && flutter run -d <UDID> --dart-define=NODES=http://localhost:8081,http://localhost:8082)
+```
+
+*Android (emulador):*
+
+```bash
+~/Library/Android/sdk/emulator/emulator -list-avds      # nombre del AVD (el equipo usó «MediumAndroid»)
+~/Library/Android/sdk/emulator/emulator -avd <nombre del AVD> &
+flutter devices                         # espere a ver emulator-5554
+(cd apps/mobile && flutter run -d emulator-5554 --dart-define=NODES=http://10.0.2.2:8081,http://10.0.2.2:8082)
+```
+
+La primera compilación tarda minutos; hágala antes. La primera vez aparece el diálogo del sistema de ubicación (iOS: «¿Permitir a SARD utilizar tu ubicación?»; Android: «Allow SARD to access this device's location?»): **ningún script de prueba lo pulsa**, toque «Permitir al usar la app» («While using the app» en Android). El 10.0.2.2 es cómo el emulador de Android ve el equipo anfitrión.
+
+Lo que se hace en la app (**pasos manuales: el equipo no ha ensayado el toque en el simulador**, porque un script no puede pulsarlo; lo que sí está automatizado es el paso 7):
+
+1. Toque **SOS**. Debe decir «Guardado en tu teléfono» sin esperar a la red, y en el tablero aparece el reporte nuevo en pocos segundos.
+2. Después, con calma, toque «2–5» personas y escriba una frase: enriquece el **mismo** reporte, no lo duplica (el SOS nunca lleva texto; la frase se corta a 140 bytes).
+3. *Sin red, sólo en Android.* Apague la red del emulador, toque SOS, mate la app y reábrala (sigue ahí), y devuelva la red: el reporte sale solo ≈ 1 s después. **El simulador de iOS no tiene un interruptor de red por script**; ese caso se prueba en Android (`tool/android_offline_check.sh`, paso 7).
+
+   ```bash
+   ADB=~/Library/Android/sdk/platform-tools/adb
+   $ADB shell svc wifi disable; $ADB shell svc data disable     # sin red
+   $ADB shell svc wifi enable;  $ADB shell svc data enable      # con red otra vez (no la deje apagada)
+   ```
+4. Compruebe que los dos nodos tienen lo mismo: `bash tool/expo_ctl.sh status`.
+
+**5.7 · Se cae un nodo** (terminal 2, mientras el tablero sigue abierto):
+
+```bash
+bash tool/expo_ctl.sh kill A            # kill -9 de verdad, sin avisar
+bash tool/expo_ctl.sh start A           # lo reanima con SU MISMO disco (≈ 3 s)
+bash tool/expo_ctl.sh status            # los dos con el mismo número de eventos y «sincronizado»
+```
+
+Tras `kill A`, la ventana de **B** sigue con todo y muestra una franja amarilla «Vista parcial», el par en rojo («Sin respuesta · hace N s») y el aviso en «Situación». La ventana de **A** queda en «Sin conexión»: es lo esperado, porque esa página depende del nodo que la sirvió (el tablero no conmuta solo; se abre la del otro). Con A caído puede enviar otro SOS desde la app: **ese caso (la app pasando a B) no se ha ensayado a mano**; la conmutación sí está medida con procesos reales en el paso 4. Tras `start A`, espere ≤ 3 s para que replique.
+
+**5.8 · Cerrar.** Ctrl+C en la terminal 1 apaga los dos nodos y borra sus datos temporales. Compruebe que no quedó nada (no debe imprimir nada):
+
+```bash
+lsof -nP -iTCP:8081 -iTCP:8082 -sTCP:LISTEN
+```
+
+### Paso 6 · Un nodo suelto con el escenario ampliado
+
+Con **nada** en los puertos 8081 y 8082 (cierre el paso 5). Primero compile el tablero si no lo hizo (`(cd apps/dashboard && flutter build web --no-web-resources-cdn)`).
+
+```bash
+D=$(mktemp -d)
+(cd apps/node && dart run bin/sard_node.dart --id A --port 8081 --data "$D" \
+   --web-root ../dashboard/build/web --resources ../../config/recursos.json) &
+until curl -s localhost:8081/api/health >/dev/null 2>&1; do sleep 0.5; done     # espera a que el nodo responda
+dart run packages/sim/bin/seed_scenario.dart --node http://localhost:8081 --now --extended
+```
+
+Abra `http://localhost:8081`. `--now` pone horas de ahora (el tablero dice «hace 3 min») y `--extended` añade **una contradicción** entre dos reportes (se muestran los dos y se cuentan en «Con contradicciones», sin resolverse), **una vía bloqueada** en la ruta de la ambulancia (la propuesta del P1 pide «confirmar que la ruta esté libre») y **la ambulancia 2 no disponible** (panel «Recursos» de la barra; cambiar una unidad no despacha nada). Para apagarlo:
+
+```bash
+pkill -f "sard_node.dart --id A --port 8081"; rm -rf "$D"
+```
+
+Con identidad por coordinador, el nodo se arranca con `--coordinator-codes "Ana=código,Luis=código"`: cada código tiene dueño y el de Luis no puede firmar como Ana. Sin ese argumento, el nodo está abierto. Es «identificado por código», no «autenticado».
+
+### Paso 7 · Comprobaciones con procesos reales y en dispositivo
+
+Con **nada** en marcha. Los marcados con ⚠ **matan todo nodo que corra** (`pkill` de `bin/sard_node.dart`).
+
+```bash
+bash tool/web_smoke.sh --no-build       # ≈ 9 s · el tablero compilado en Chrome sin cabeza pinta los contadores (OK / 77 si no hay Chrome)
+pkill -f "sard_node.dart --id A --port 8099"   # web_smoke deja su nodo escuchando en el 8099 al terminar: ciérrelo así
+bash tool/resources_check.sh            # ≈ 27 s · recursos en vivo: partición, kill -9, conflicto y resolución (puertos 8197–8198)
+bash tool/dispatch_check.sh             # ≈ 23 s · el canal del despachador con tres nodos (8194–8196)
+bash tool/access_check.sh               # ≈ 19 s · ⚠ códigos de acceso e identidad por coordinador (8191–8194)
+```
+
+Con el emulador o el simulador **ya encendido** (`flutter devices` lo lista):
+
+```bash
+bash tool/device_check.sh android emulator-5554       # ⚠ SOS → nodo → reabrir, agentes, GPS y detalles, con el main() real
+bash tool/device_check.sh ios <UDID>                  # ⚠ lo mismo en el simulador de iOS
+bash tool/android_offline_check.sh                    # ⚠ SOS sin red → no llega nada → al volver la red sale solo (siempre la deja encendida)
+bash tool/android_battery_check.sh                    # batería a 100, 15 y 3 %: modos normal, ahorro y sólo SOS (siempre la restablece)
+bash tool/build_apk.sh                                # APK de Android (con el emulador: bash tool/build_apk.sh emulador)
+```
+
+### Paso 8 · El modelo de lenguaje real (cuesta dinero)
+
+Es lo **único** que llama a la API de Anthropic. Haga siempre primero el plan, que no gasta nada, y vea [«4 · Lo que cuesta dinero»](#4--lo-que-cuesta-dinero-el-modelo-de-lenguaje-real) antes de lanzar nada:
+
+```bash
+dart run packages/sim/bin/t06_model.dart --plan --seeds 601,602,603,604,605 --per-seed 150    # cuántas llamadas y cuánto costarían; NO gasta
+```
+
+La clave va sólo en la variable de entorno `ANTHROPIC_API_KEY`, nunca en un archivo del repositorio. Si algo falla en cualquier paso, mire [«7 · Si algo falla»](#7--si-algo-falla).
 
 ## Reproducir los resultados
 
@@ -198,7 +396,7 @@ El **video de presentación** (52 s, tomas reales de la app y del tablero) se re
 
 | Síntoma | Causa y salida |
 |---|---|
-| «el puerto NNNN ya está en uso» | Otra demostración o prueba: `lsof -nP -iTCP:NNNN -sTCP:LISTEN` y cierre lo que sobre. Puertos: H1 8081–8082 · burst 8093 · T14 8094 · demo 8095–8096 · web 8099 · T18 8101–8102 · T19 8111–8113 · accesos 8191–8193 · despachador 8194–8196 · recursos 8197–8198 |
+| «el puerto NNNN ya está en uso» | Otra demostración o prueba: `lsof -nP -iTCP:NNNN -sTCP:LISTEN` y cierre lo que sobre. Puertos: H1 8081–8082 · burst 8093 · T14 8094 · demo 8095–8096 · web 8099 · T18 8101–8102 · T19 8111–8113 · accesos 8191–8194 · despachador 8194–8196 · recursos 8197–8198 |
 | «el nodo A no respondió en 60 s» | Arranque lento con la máquina cargada: repetir con la máquina en reposo (no es un fallo del nodo; aislada, la prueba pasa) |
 | T12 con reparto desigual (A=24, B=0) | Intermitencia conocida y sin explicar (una vez en una corrida completa); el script imprime el estado de los dos nodos |
 | Chrome no está en la ruta usual | `export CHROME="/ruta/a/chrome"`; sin Chrome la prueba de humo se omite (código 77) y lo dice |
