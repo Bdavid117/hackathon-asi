@@ -103,7 +103,27 @@ class ApiLedger {
       save();
       rethrow;
     }
-    record(run: run, usd: costOf(result), note: noteOf(result));
+    // Lo gastado se anota SIEMPRE: un defecto al armar la partida (una nota que parece una clave, un importe inválido) no puede dejar
+    // el registro por debajo de la realidad después de haber pagado.
+    var usd = capUsd;
+    var estimated = true;
+    var note = 'el importe de la corrida no era válido: se anota el tope entero como estimación conservadora; comprueba la consola';
+    try {
+      final cost = costOf(result);
+      if (cost.isFinite && cost >= 0) {
+        usd = cost;
+        estimated = false;
+        try {
+          note = noteOf(result);
+          if (_looksLikeSecret.hasMatch(note)) note = '(nota omitida: parecía una clave)';
+        } on Object {
+          note = '(nota omitida: no se pudo armar)';
+        }
+      }
+    } on Object {
+      // se queda con el tope como estimación
+    }
+    record(run: run, usd: usd, note: note, estimated: estimated);
     save();
     return result;
   }

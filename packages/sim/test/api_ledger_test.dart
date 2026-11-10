@@ -129,6 +129,37 @@ void main() {
       expect(again.entries.last.estimated, isFalse);
     });
 
+    test('una nota que PARECE una clave (p. ej. un hash de 40 caracteres) no impide registrar el gasto REAL: se anota sin la nota', () async {
+      seed([entry('a', 2.0)]);
+      final l = ApiLedger.load(path);
+      await l.spend<double>(run: 'T07', capUsd: 12, body: () async => 8.0, costOf: (x) => x, noteOf: (_) => 'commit 0123456789abcdef0123456789abcdef01234567');
+      final again = ApiLedger.load(path);
+      expect(again.spentUsd, closeTo(10.0, 1e-9), reason: 'el dinero gastado se anota SIEMPRE');
+      expect(again.entries.last.note, isNot(contains('0123456789abcdef')));
+      expect(again.entries.last.note, contains('nota omitida'));
+    });
+
+    test('si armar la nota lanza una excepción, el gasto real se anota igual', () async {
+      seed([entry('a', 2.0)]);
+      final l = ApiLedger.load(path);
+      await l.spend<double>(run: 'T07', capUsd: 12, body: () async => 8.0, costOf: (x) => x, noteOf: (_) => throw const FormatException('no se pudo'));
+      final again = ApiLedger.load(path);
+      expect(again.spentUsd, closeTo(10.0, 1e-9));
+      expect(again.entries.last.estimated, isFalse, reason: 'el importe es real; sólo falta la nota');
+      expect(again.entries.last.note, contains('nota omitida'));
+    });
+
+    test('si el importe que devuelve la corrida es inválido (NaN, negativo) se anota el TOPE como estimación y no se pierde el gasto', () async {
+      for (final bad in [double.nan, -1.0, double.infinity]) {
+        seed([entry('a', 2.0)]);
+        final l = ApiLedger.load(path);
+        await l.spend<double>(run: 'T07', capUsd: 12, body: () async => bad, costOf: (x) => x, noteOf: (_) => 'n');
+        final again = ApiLedger.load(path);
+        expect(again.spentUsd, closeTo(14.0, 1e-9), reason: '$bad: se cuenta el tope entero');
+        expect(again.entries.last.estimated, isTrue, reason: '$bad');
+      }
+    });
+
     test('si la corrida FALLA registra el tope como estimación conservadora y relanza el error', () async {
       seed([entry('a', 2.0)]);
       final l = ApiLedger.load(path);

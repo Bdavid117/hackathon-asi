@@ -91,5 +91,5 @@ cd apps/node && dart test test/incident_location_test.dart
 (cd apps/dashboard && flutter build web --no-web-resources-cdn)
 (cd apps/node && dart run bin/sard_node.dart --id A --port 8081 --data /tmp/sard-A --web-root ../dashboard/build/web --resources ../../config/recursos.json)
 dart run packages/sim/bin/seed_scenario.dart --node http://localhost:8081 --now      # y abrir http://localhost:8081/ → icono del mapa
-bash tool/test_all.sh                                                                  # todo (≈ 6 min): 1 887 pruebas con lo que se añadió después (B7 y B8)
+bash tool/test_all.sh                                                                  # todo (≈ 6 min): 1 959 pruebas con lo que se añadió después (B7 y B8)
 ```
