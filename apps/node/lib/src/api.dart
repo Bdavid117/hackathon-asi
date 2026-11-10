@@ -53,8 +53,10 @@ Map<String, String> _freshHeaders(QueueRead r, bool cors, String etag) => {
 /// La respuesta de una lectura de la proyección. Si el cliente ya tiene esta versión (`If-None-Match`
 /// igual al ETag) se responde **304 sin cuerpo**: un tablero que sondea sin cambios no vuelve a bajar
 /// megabytes. La frescura se declara igual en los dos casos. Un ETag ajeno o basura se ignora.
-Response _projectionResponse(Request req, QueueRead r, bool cors, String body) {
-  final etag = 'W/"${r.epoch}.${r.version}:${req.url.path}?${req.url.query}"';
+/// [stamp] es lo que, además de la versión de la proyección, hace distinta una respuesta: el detalle lleva la historia, que sale de
+/// eventos (vínculos, normalizaciones) que NO mueven la versión de la cola; sin él se serviría un `304` con la historia vieja.
+Response _projectionResponse(Request req, QueueRead r, bool cors, String body, {String stamp = ''}) {
+  final etag = 'W/"${r.epoch}.${r.version}$stamp:${req.url.path}?${req.url.query}"';
   final headers = _freshHeaders(r, cors, etag);
   if (req.headers['if-none-match'] == etag) return Response(304, headers: {...headers}..remove('content-type'));
   return Response.ok(body, headers: headers);
@@ -266,9 +268,9 @@ Handler buildHandler({
     })
     ..get('/api/incidents/<id>', (Request req, String id) async {
       final r = await queueService.read();
-      final detail = r.detailOf(Uri.decodeComponent(id));
+      final detail = queueService.detailWithHistory(r, Uri.decodeComponent(id));
       if (detail == null) return Response(404, body: 'incidente desconocido (puede haberse fusionado o dividido: vuelve a pedir la lista)');
-      return _projectionResponse(req, r, cors, detail);
+      return _projectionResponse(req, r, cors, detail, stamp: '+${log.count()}');
     })
     ..get('/api/nodes', (Request req) => _json(health?.snapshot(log) ?? NodeHealth(nodeId: log.nodeId, peers: const []).snapshot(log), cors: cors))
     ..get('/api/events', (Request req) {

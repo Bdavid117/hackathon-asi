@@ -4,6 +4,7 @@ library;
 export 'src/access.dart' show parseCoordinatorCodes, identifyBearer, bindIdentity, kWhoContext;
 export 'src/event_log.dart';
 export 'src/incident_index.dart';
+export 'src/incident_history.dart';
 export 'src/incidents.dart';
 export 'src/ingest.dart';
 export 'src/merged_reports.dart';

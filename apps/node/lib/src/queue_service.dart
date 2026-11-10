@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math';
 
 import 'package:sard_agents/sard_agents.dart';
 
 import 'event_log.dart';
+import 'incident_history.dart';
 import 'incident_index.dart';
 import 'resource_book.dart';
 import 'incidents.dart';
@@ -135,6 +137,30 @@ class QueueService {
     _job = f;
     f.then<void>((_) {}, onError: (Object _) {}); // si nadie espera, que el error no quede sin manejar
     return f;
+  }
+
+  /// El detalle del incidente [id] de la lectura [r] CON su historia (traza de agentes y auditoría), o `null` si no existe.
+  ///
+  /// La historia se arma aquí, al pedir un detalle, y no en la proyección: así cuesta lo que pesa ESE incidente y no entra en la
+  /// cola, la lista ni el resumen (la huella no cambia). Un incidente muy grande cuesta una consulta por reporte, nada más.
+  String? detailWithHistory(QueueRead r, String id) {
+    final base = r.detailOf(id);
+    if (base == null) return null;
+    final detail = (jsonDecode(base) as Map).cast<String, Object?>();
+    final members = [for (final m in (detail['members'] as List? ?? const [])) if (m is String) m];
+    const types = {'report.received', 'report.normalized', 'triage.assessed', 'incident.linked'};
+    final memberEvents = [
+      for (final key in members)
+        for (final e in _log.eventsFor(key))
+          if (types.contains(e.type)) e,
+    ];
+    final history = buildIncidentHistory(
+      detail: detail,
+      memberEvents: memberEvents,
+      approvalEvents: [..._log.allOfType('approval.granted'), ..._log.allOfType('approval.denied')],
+      resourceEvents: _log.allOfType('resource.declared'),
+    );
+    return jsonEncode({...detail, 'history': history.toJson()});
   }
 
   Future<QueueRead> read() async {
