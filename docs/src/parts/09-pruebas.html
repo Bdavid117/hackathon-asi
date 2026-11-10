@@ -2,6 +2,8 @@
 
 <p>Este capítulo respalda el entregable 6 («métricas, escenarios ejecutados, errores observados, limitaciones y resultados de las pruebas de estrés») y las pruebas reproducibles que pide el objetivo 10. La idea central es que <strong>el banco de pruebas es un componente del producto</strong>, no un añadido de última hora.</p>
 
+<p><strong>De dónde salen los criterios.</strong> El enunciado no fija umbrales: los de la columna «Criterio» de las tablas de este capítulo son metas propias del diseño. Incumplir una de ellas se reporta, pero no equivale a incumplir el enunciado. Del mismo modo, usar datos sintéticos y canales simulados es el alcance que permite el §4.7, no una limitación del enunciado; lo que sí se declara como límite es la <em>validez</em> de las cifras (por ejemplo, que el generador y las reglas son del mismo autor).</p>
+
 <h2 id="s9-1">El banco de pruebas</h2>
 <figure>
   {{svg:despliegue}}
@@ -163,7 +165,7 @@
   <li><strong>Escenarios ejecutados:</strong> archivos YAML con su semilla, versión del código y entorno.</li>
   <li><strong>Resultados:</strong> tablas y curvas de las métricas anteriores, con la comparación de modo reglas y modo modelo.</li>
   <li><strong>Errores observados:</strong> fallas reales encontradas durante las pruebas y cómo se resolvieron.</li>
-  <li><strong>Limitaciones:</strong> qué no se probó (canales reales, escala real, dispositivos iOS) y qué se simplificó.</li>
+  <li><strong>Limitaciones:</strong> qué no se probó (canales reales, que el §4.7 no exige; escala real; dispositivos iOS reales) y qué se simplificó.</li>
   <li><strong>Reproducción:</strong> los comandos exactos para volver a ejecutar cada escenario.</li>
 </ol>
 <p>Documentar con honestidad las limitaciones y los errores observados es parte de lo que el enunciado pide y es lo que permite al jurado auditar la solución.</p>

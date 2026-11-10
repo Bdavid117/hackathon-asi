@@ -39,7 +39,7 @@
     <tr><td>B3 · Agentes y deduplicación</td><td>Agentes 1, 2 y 3 reales (reglas y modelo); generador sintético con verdad de referencia; puerto LLM con respaldo.</td><td><strong>H2:</strong> T06–T08 medidos y reportados.</td></tr>
     <tr><td>B4 · Resiliencia</td><td>Anti-entropía, dueño por <em>rendezvous</em>, agente 5, reconstrucción de proyecciones, inyector de fallos.</td><td><strong>H3:</strong> demostración con una condición adversa (T09, T10).</td></tr>
     <tr><td>B5 · Tablero y coordinación</td><td>Lista corta con contadores, evidencia y contradicciones, agente 6, aprobación, frescura.</td><td>T14; la aprobación queda registrada.</td></tr>
-    <tr><td>B6 · Estrés y entrega</td><td>T11–T13 y T15 finales, informe de resultados, documentación, guion y video de respaldo.</td><td><strong>H4:</strong> los siete entregables completos.</td></tr>
+    <tr><td>B6 · Estrés y entrega</td><td>T11–T13 y T15 finales, informe de resultados, documentación, guion y video de respaldo (se graba cuando los retos estén cumplidos).</td><td><strong>H4:</strong> los siete entregables completos.</td></tr>
   </tbody>
   <caption>Bloques, contenido y criterio de terminado.</caption>
 </table>
@@ -78,7 +78,7 @@
 <table class="tight">
   <thead><tr><th style="width:24%">Frente</th><th>Responsabilidad principal</th><th style="width:26%">Bloques donde pesa</th></tr></thead>
   <tbody>
-    <tr><td>Móvil y transporte</td><td>App, planificador de envío, códec en el dispositivo, pruebas de energía en un teléfono real.</td><td>B1, B2</td></tr>
+    <tr><td>Móvil y transporte</td><td>App, planificador de envío, códec en el dispositivo, pruebas de energía en el emulador (un teléfono real es opcional).</td><td>B1, B2</td></tr>
     <tr><td>Nodo y resiliencia</td><td>Log, sincronización, agentes 4 y 5, despliegue de nodos, inyector de fallos.</td><td>B1, B4</td></tr>
     <tr><td>Agentes y datos</td><td>Agentes 1, 2, 3 y 6, puerto LLM, generador sintético, métricas de calidad.</td><td>B3, B5</td></tr>
     <tr><td>Tablero, pruebas y relato</td><td>Tablero, orquestador de escenarios, informe de resultados, pitch y documentación.</td><td>B5, B6</td></tr>
@@ -93,7 +93,7 @@
     <tr><td>Querer cubrir todo y no tener nada completo</td><td>Recorrido vertical primero (H1 hacia el 28 % del tiempo); bloques con criterio de terminado.</td></tr>
     <tr><td>El modelo de lenguaje falla o no hay Internet en la demostración</td><td>Modo de reglas y respuestas grabadas; el puerto lo permite desde el diseño.</td></tr>
     <tr><td>Falla en vivo de la demostración</td><td>Escenario con semilla y un solo comando; video de respaldo; datos locales.</td></tr>
-    <tr><td>Problemas del dispositivo real (permisos, batería, fabricante)</td><td>Probar en el teléfono real desde B1, no sólo en emulador.</td></tr>
+    <tr><td>Problemas del dispositivo real (permisos, batería, fabricante)</td><td>La plataforma confirmada es emulador y simulador, y el enunciado permite canales simulados (§4.7): la demostración no depende de hardware. Un teléfono real queda como mejora opcional.</td></tr>
     <tr><td>Calibración lenta de la deduplicación</td><td>Conjunto sintético con verdad de referencia desde B3; umbrales conservadores que priorizan no fusionar.</td></tr>
     <tr><td>Sincronización más compleja de lo previsto</td><td>Empezar con replicación por sondeo y evolucionar a anti-entropía; los eventos inmutables lo permiten.</td></tr>
     <tr><td>Sobreingeniería del códec binario</td><td>Vectores de prueba y JSON compacto como paso intermedio.</td></tr>
@@ -123,6 +123,7 @@
   <li><strong>Confirmar el plazo disponible</strong>: es el dato que falta para dimensionar el recorte de {{ref:s10-3}} para los bloques B3 a B6.</li>
   <li><strong>B3 hecho y medido (H2):</strong> agentes 1, 2 y 3, generador sintético con verdad de referencia, puerto del modelo con respaldo y T06–T08 medidos. <strong>Dos de los tres criterios no se cumplen</strong> (T06 78,5 %; T07 sólo en conjunto y trivialmente: una de cinco semillas nuevas supera el 1 %) y se reportan así, con su diagnóstico, en <code>docs/resultados/b3.md</code>. Para cerrar la brecha hacía falta un modelo real: se midió después, el 9 de noviembre (docs/resultados/modelo-real.md: el recall de P1 en reportes con texto pasa del 85,4 % al 96,0 %, pero el criterio de T06 completo sigue sin cumplirse) y, para la deduplicación, una señal que separe sucesos vecinos casi idénticos. <strong>Siguiente:</strong> B4 · resiliencia (anti-entropía, dueño por <em>rendezvous</em>, agente 5).</li>
   <li><strong>B4 y B5 hechos y medidos</strong> (<code>docs/resultados/b5.md</code>): la app captura personas y frase; el nodo calcula incidentes con recomendación del agente 6 y aprobación registrada; el tablero los muestra con contadores honestos y «vista parcial»; el trabajo caro se reparte por <em>rendezvous</em> con relevo; la ráfaga de 10 000 pasó de 516 s a ≈ 10 s. <strong>Lo que no se logró o no se probó:</strong> el modelo de lenguaje no se había consultado de verdad al cerrar B5 (después se midió, ver docs/resultados/modelo-real.md; T12 y la ráfaga siguen con un servidor falso); el agrupamiento sigue sin fusionar casi nada, así que la ventaja del tablero es de orden y no de agrupación; no hubo prueba con coordinadores; la partición se probó 5–20 s, no 10 min; quien aprueba se protege con un código compartido (opcional, <code>--coordinator-token</code>) pero no se identifica, el código viaja sin cifrar y la clave de integridad es compartida.</li>
-  <li><strong>Probar en hardware real:</strong> B2 se verificó en el emulador de Android y el simulador de iOS (ubicación y batería simuladas); falta un teléfono real, un servicio en primer plano de Android y, si se quiere, un canal de baja capacidad.</li>
+  <li><strong>Opcional, más allá de lo que exige el enunciado:</strong> B2 se verificó en el emulador de Android y el simulador de iOS (ubicación y batería simuladas), que es lo que permite el §4.7. Un teléfono real, un servicio en primer plano de Android y un canal de baja capacidad serían pasos hacia un despliegue, no requisitos de la hackathon.</li>
+  <li><strong>Video de respaldo de la demostración:</strong> decidido; se graba <em>cuando los retos estén cumplidos</em>, con el código congelado, y no se versiona en el repositorio. Respalda a <code>tool/demo.sh</code>, no lo sustituye: el entregable 7 pide una demostración reproducible.</li>
   <li><strong>Hallazgo de B2 sin resolver:</strong> en ventanas de 3 s cada 60 s, el 100 % de los SOS sale en la primera ventana <em>sólo si el sistema avisa bien de cuándo hay red</em>; si dice que hay red pero el nodo no responde (intentos de 5 s) baja al <strong>20 %</strong> (todos acaban saliendo después). Mejoras a medir: un plazo de intento corto justo tras volver la señal y reintentar enseguida mientras el enlace responde.</li>
 </ol>

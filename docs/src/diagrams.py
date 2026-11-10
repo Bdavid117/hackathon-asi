@@ -382,7 +382,7 @@ def despliegue():
     b = []
     b.append(box(8, 10, 168, 150, CYAN_L, CYAN, 10))
     b.append(text(92, 29, "Teléfonos", 11.5, 800, NAVY))
-    b.append(box(18, 40, 148, 50, "#fff", CYAN, 7)); b.append(lines(92, 58, ["Android real (app)", "1 reporte en vivo"], 9.8, 13))
+    b.append(box(18, 40, 148, 50, "#fff", CYAN, 7)); b.append(lines(92, 58, ["Android (emulador)", "1 reporte en vivo"], 9.8, 13))
     b.append(box(18, 98, 148, 52, "#fff", CYAN, 7)); b.append(lines(92, 116, ["Clientes headless ×N", "carga sintética (mismo códec)"], 9.4, 13))
 
     b.append(arrow(176, 85, 214, 85, NAVY, both=True)); b.append(arrow(176, 125, 214, 125, NAVY, both=True))

@@ -6,6 +6,8 @@ Pensado para **8–10 minutos** (con 5 minutos se omiten los pasos 5 y 7). Cada 
 
 > **Regla del guion:** se dice lo que está medido y se dice dónde termina. Cada «sí» lleva su «pero» (hay una lista al final). Un jurado que encuentra solo un límite que usted no mencionó deja de creer el resto.
 
+> **Alcance, con las palabras del enunciado.** El §4.7 dice: «El recorrido puede ejecutarse con datos sintéticos y canales simulados. No se exige desplegar una red de radio real ni contar con acceso a infraestructura gubernamental.» Eso se dice **al principio, como alcance**, no al final como disculpa. Y cuidado con el vocabulario: el enunciado **no fija** metas numéricas ni rúbrica; el 95 %, el 1 % y los 10 minutos son metas **del propio diseño**. Se dice «nuestra meta», nunca «lo que pide el enunciado». (Atribuir al enunciado algo que no dice es justo el tipo de error que hace dudar de lo demás.)
+
 ## Antes de empezar (10 min antes)
 
 ```bash
@@ -20,7 +22,7 @@ dart run packages/sim/bin/seed_scenario.dart --node http://localhost:8081 --now 
 (cd apps/mobile && flutter run -d emulator-5554 --dart-define=NODES=http://10.0.2.2:8081)
 ```
 
-Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal con `bash tool/demo.sh 42` **ya ensayada** (con `PART=4` dura ≈ 45 s en total, porque la ejecuta dos veces para comprobar la huella). **Plan B** si falla la máquina: las capturas y las tablas están en `docs/resultados/b5.md` y en el PDF (§6.7 y §9).
+Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal con `bash tool/demo.sh 42` **ya ensayada** (con `PART=4` dura ≈ 45 s en total, porque la ejecuta dos veces para comprobar la huella). **Plan B** si falla la máquina: las capturas y las tablas están en `docs/resultados/b5.md` y en el PDF (§6.7 y §9), y el **video de respaldo** (se graba cuando los retos estén cumplidos; todavía no existe) enseñará la misma ejecución. El video respalda a `tool/demo.sh`, no lo sustituye.
 
 ## Cuánto dura la presentación: elija una ruta
 
@@ -58,13 +60,14 @@ En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que 
 
 - «Funciona con el modelo de lenguaje.» → Sólo con cifras y límites: se midió contra la API real en **una** corrida con datos **sintéticos** (recall de P1 85,4 % → 96,0 % en reportes con texto, 10 falsos P1 en 750); T12 sigue con un servidor falso y no se probó con datos reales. «Resuelve el criterio de T06» es falso: el global sigue en ≈ 85 % (estimado) porque ≈ 38 % de los P1 no traen texto.
 - «Agrupa los reportes duplicados.» → Casi no agrupa (0,43 % de los pares verdaderos con reglas). Se *sugieren* posibles duplicados. Un juez de modelo de lenguaje subió el recall de pares de 0,8 % a 4,4 % pero con más falsas fusiones (2,2 % frente a 1,2 %), y por eso **no está en el nodo** (`docs/resultados/reto4-juez.md`).
-- «Resiste una partición de 10 minutos.» → Se probó 5–20 s, por configuración, no por red.
+- «Resiste una partición de 10 minutos.» → Se probó 5–20 s, por configuración, no por red. Los 10 minutos eran lo que **proponía nuestro diseño** para T10; el enunciado no fija ninguna duración.
 - «Es seguro.» → Con los códigos de acceso activos, el tablero y la réplica exigen un código compartido (sin ellos, el nodo está abierto). Ese código no dice quién aprobó, viaja sin cifrar (sin TLS) y no tiene límite de intentos; la clave de integridad de las tramas es compartida y pública en el repositorio, así que quien llegue por red puede falsificar tramas (`/frame` está abierto a propósito).
 - «Mejora el tiempo del coordinador.» → No hubo prueba con coordinadores. Lo medido es *elementos a revisar* con datos sintéticos.
 - «El despachador resuelve el Reto 4.» → No: otros orígenes con otras palabras siguen sin agruparse; sólo el mismo texto se funde (y cuenta como una fuente).
 - «El modelo resuelve el Reto 4 / agrupa las 5 fuentes independientes.» → Se probó, una vez y con datos sintéticos: reúne 4 de las 5 fuentes (confianza 0,60 → 0,97), pero la falsa fusión sube y el criterio fijado antes de medir no se cumple; el nodo no lo usa.
 - «Probado con despachadores / con radio real.» → Lo teclea una persona; no se probó con despachadores ni con radio.
-- «Probado en teléfonos.» → Emulador de Android y simulador de iOS; ningún teléfono real ni radio real.
+- «Probado en teléfonos.» → Falso: es emulador de Android y simulador de iOS. **Qué decir en su lugar:** «Datos sintéticos y canales simulados, como permite el §4.7; la app corre en un emulador de Android y un simulador de iOS.» Eso no es una confesión: es el alcance. No se afirma nada de consumo real de energía ni de radio real, porque no se midió.
+- «El enunciado pide 95 % de recall / 1 % de falsa fusión / particiones de 10 minutos.» → No: son metas propias (cap. 9 del PDF de arquitectura). El enunciado no fija umbrales.
 
 ## Preguntas probables
 
@@ -75,3 +78,6 @@ En el tablero, **«Registrar informe»** (arriba a la derecha): escribir lo que 
 - **¿Qué es la «huella»?** Un SHA-256 de lo que ve el coordinador (quién está con quién, urgencias, recomendaciones y estado de las aprobaciones) sin relojes ni identificadores internos. Si dos nodos tienen la misma, muestran lo mismo.
 - **¿Por qué no subieron el umbral del juez a 0,85 y lo volvieron a medir?** Porque los cinco errores están todos en 0,80 y esa idea sale de los mismos datos que se midieron: probarla exige semillas nuevas y un criterio nuevo escrito antes (≈ 6 USD, 12 min). Se dejó como hipótesis, no como resultado (`docs/resultados/reto4-juez.md`).
 - **¿Se pueden reproducir las cifras?** Sí: `docs/resultados/b5.md` §8 lista cada comando.
+- **¿Lo probaron en un teléfono real?** No, y el enunciado no lo exige: el §4.7 permite «datos sintéticos y canales simulados» y el objetivo 10 pide pruebas *reproducibles*, que es justo lo que da un canal simulado con semilla. La app se verificó en un emulador de Android y un simulador de iOS (ubicación y batería simuladas desde su consola). Lo que **no** se afirma es consumo real de energía ni comportamiento de una radio real.
+- **¿De dónde sale el 95 %?** De nuestro propio diseño (cap. 9 del PDF de arquitectura), no del enunciado, que no trae umbrales. Lo medimos contra esa vara y dijimos que no la cumplimos.
+- **¿Qué pasa si el sistema operativo mata la app?** La cola está en SQLite y no se pierde, pero no sale hasta reabrir la app: no hay servicio en primer plano de Android. Es un límite de despliegue declarado, fuera del alcance del §4.7.

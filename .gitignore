@@ -54,3 +54,7 @@ docs/src/_build/
 # Dart / Flutter (generado)
 .dart_tool/
 .packages
+
+# Video de respaldo de la demostración (pesa; se aloja aparte, ver docs/pitch/video-respaldo.md)
+*.mp4
+*.mov
