@@ -107,6 +107,37 @@ Future<Ack> runMode(String label, int n, int port, {FakeLlmMode? mode, Duration 
   }
 }
 
+/// El estado de los dos nodos cuando el reparto no salió: qué ve cada uno del otro, cuántos eventos tiene de cada origen, cuántos
+/// juicios del modelo hay por origen, y el final de cada registro. Sirve para saber SI B no recibió, no procesó o no contestó.
+Future<String> diagnose(http.Client client, Uri urlA, Uri urlB, Directory dirA, Directory dirB, {required List<Map<String, Object?>> events, required DateTime started}) async {
+  final b = StringBuffer()..writeln('DIAGNÓSTICO (${DateTime.now().toIso8601String()}, ${DateTime.now().difference(started).inMilliseconds} ms tras enviar las tramas)');
+  Future<String> get(Uri u) async {
+    try {
+      return (await client.get(u).timeout(const Duration(seconds: 5))).body;
+    } on Object catch (e) {
+      return 'ERROR $e';
+    }
+  }
+
+  for (final (name, url, dir) in [('A', urlA, dirA), ('B', urlB, dirB)]) {
+    b
+      ..writeln('· nodo $name /api/health: ${await get(url.resolve('/api/health'))}')
+      ..writeln('· nodo $name /api/nodes: ${await get(url.resolve('/api/nodes'))}');
+    final log = File('${dir.path}/node-$name.out');
+    final lines = log.existsSync() ? log.readAsLinesSync() : <String>[];
+    b.writeln('· nodo $name, final del registro (${lines.length} líneas):');
+    for (final l in lines.skip(lines.length > 12 ? lines.length - 12 : 0)) {
+      b.writeln('    $l');
+    }
+  }
+  final byOrigin = <Object?, int>{};
+  for (final e in events) {
+    byOrigin[e['origin']] = (byOrigin[e['origin']] ?? 0) + 1;
+  }
+  b.writeln('· juicios del modelo vistos desde A, por origen: $byOrigin');
+  return b.toString();
+}
+
 Future<Map<String, Object?>> relay(int n, int portA, int portB, {required FakeLlmMode bMode, required bool killB}) async {
   final dirA = Directory.systemTemp.createTempSync('sard-t12a-'), dirB = Directory.systemTemp.createTempSync('sard-t12b-');
   final fakeA = await FakeClaudeServer.start(mode: FakeLlmMode.ok);
@@ -163,7 +194,12 @@ Future<Map<String, Object?>> relay(int n, int portA, int portB, {required FakeLl
     final duplicated = byReport.values.where((o) => o.length > 1).length;
 
     if (!killB) {
-      return {'n': n, 'covered': byReport.length, 'fromA': fromA, 'fromB': fromB, 'duplicated': duplicated, 'tookMs': took.inMilliseconds, 'takeover': takeover};
+      // Si con los dos modelos sanos algo no se repartió o no se cubrió, se guarda en qué estado estaba B: sin eso una intermitencia
+      // no se puede explicar (antes sólo se veía «A=24, B=0»).
+      final diag = (bMode == FakeLlmMode.ok && (byReport.length < n || fromB == 0))
+          ? await diagnose(client, urlA, urlB, dirA, dirB, events: events, started: t0)
+          : null;
+      return {'n': n, 'covered': byReport.length, 'fromA': fromA, 'fromB': fromB, 'duplicated': duplicated, 'tookMs': took.inMilliseconds, 'takeover': takeover, 'diag': diag};
     }
     // kill -9 de B: A se queda solo y es dueño de todo (sin esperar el plazo)
     b.kill9();
@@ -263,6 +299,7 @@ Future<void> main(List<String> args) async {
     ..writeln()
     ..writeln('- Reportes con juicio del modelo: **${r['covered']} de ${r['n']}** en ${(r['tookMs'] as int) / 1000} s. Eventos del modelo por origen: A=${r['fromA']}, B=${r['fromB']}; reportes con más de un juicio (cómputo repetido): ${r['duplicated']}.')
     ..writeln('- Tras **kill -9 de B** (y 11 s sin verlo) llegan ${r['n']} reportes nuevos a A: juicio del modelo en **${r['covered2']} de ${r['n']}** en ${(r['tookAfterKillMs'] as int) / 1000} s (A es ya el dueño de todo: no espera el relevo).');
+  if (share['diag'] != null) stdout.writeln(share['diag']);
   verdict('reparto: todos los reportes tienen juicio del modelo y NINGUNO se repitió (${share['duplicated']} repetidos)', share['covered'] == share['n'] && share['duplicated'] == 0);
   verdict('reparto: el trabajo se repartió de verdad entre los dos nodos (A=${share['fromA']}, B=${share['fromB']}): B procesó reportes que le llegaron por replicación', (share['fromB'] as int) > 0 && (share['fromA'] as int) > 0);
   verdict('relevo: todos los reportes acabaron con juicio del modelo aunque el modelo de B estaba colgado', r['covered'] == r['n']);
@@ -276,7 +313,8 @@ Future<void> main(List<String> args) async {
     ..writeln('- El modelo es **falso**: un servidor local que responde lo que se le programa. Prueba el comportamiento del **nodo** ante un modelo que responde, tarda, falla o no contesta; **no** prueba la calidad de ningún modelo ni la API real (no verificada).')
     ..writeln('- El plazo de cada consulta es de 8 s; el reparto usa los nodos que el nodo ve vivos. Latencias en procesos `dart run` (JIT) en una sola máquina.')
     ..writeln('- El relevo se mide con **dos** nodos; con más nodos el orden de relevo sigue el mismo hash, pero no se midió.')
-    ..writeln('- La replicación sondea cada 3 s: el juicio de un dueño tarda hasta ~6 s (ida y vuelta) en verse en el otro nodo. Con `--takeover` menor que eso el relevo se adelantaría y habría **cómputo repetido** (falsa alarma), no trabajo perdido; por omisión es 10 s. Aquí se usó ${r['takeover']} s para acortar la prueba, y no hubo repetidos.');
+    ..writeln('- La replicación sondea cada 3 s: el juicio de un dueño tarda hasta ~6 s (ida y vuelta) en verse en el otro nodo. Con `--takeover` menor que eso el relevo se adelantaría y habría **cómputo repetido** (falsa alarma), no trabajo perdido; por omisión es 10 s. Aquí se usó ${r['takeover']} s para acortar la prueba, y no hubo repetidos.')
+    ..writeln('- **Intermitencia sin explicar.** Una vez, en una corrida completa de `tool/test_all.sh`, el reparto salió A=24, B=0 (B no produjo ninguno de sus juicios). No se ha vuelto a ver: 7 corridas posteriores (5 de ellas con 7 procesos quemando CPU) dieron A=24, B=16 en 3,6 s, y con 30 procesos quemando CPU ni siquiera llegó a medirse (un nodo no arrancó en 60 s: otra causa, la de un arranque JIT sin CPU). Si vuelve a pasar, este script imprime el estado de los dos nodos (qué ve cada uno del otro, eventos por origen y el final de cada registro) para saber si B no recibió, no procesó o no contestó. No se ha tocado ningún plazo para esconderla.');
   File(out)
     ..parent.createSync(recursive: true)
     ..writeAsStringSync(b.toString());

@@ -12,30 +12,8 @@ final Uint8List _key = Uint8List.fromList(utf8.encode('clave-de-ejemplo'));
 /// contenido no depende del día), no los de ahora.
 Future<void> postScenario(Uri node, http.Client client, {int t0 = 1786370851}) async {
   var n = 0;
-  Future<void> send(String device, int flags, {String? text, double? lat = 5.0703, double? lon = -75.5138, int people = 0, int at = 0, int rev = 0, int? refSeq, int? seq}) async {
-    final s = seq ?? ++n;
-    final f = encodeReportFrame(
-      ReportFrame(
-        deviceId: deviceIdFromHex(device),
-        seq: s,
-        rev: rev,
-        refSeq: refSeq,
-        prioHint: prioHintFromFlags(flags),
-        incidentType: 1,
-        flags: flags,
-        peopleBucket: people,
-        locQuality: lat == null ? LocQuality.none : LocQuality.within50m,
-        lat: lat,
-        lon: lon,
-        capturedAt: t0 + at,
-        batteryQ: 8,
-        text: text,
-      ),
-      _key,
-    );
-    final r = await client.post(node.resolve('/frame'), body: f);
-    if (r.statusCode != 200) throw StateError('el nodo rechazó una trama: ${r.statusCode}');
-  }
+  Future<void> send(String device, int flags, {String? text, double? lat = 5.0703, double? lon = -75.5138, int people = 0, int at = 0, int rev = 0, int? refSeq, int? seq}) =>
+      _postFrame(node, client, device: device, seq: seq ?? ++n, flags: flags, text: text, lat: lat, lon: lon, people: people, capturedAt: t0 + at, rev: rev, refSeq: refSeq);
 
   // 1) un P1: atrapados y heridos, con personas y una frase
   await send('00000000000000a1', SituationFlags.atrapado | SituationFlags.herido, people: 2, at: 0); // seq 1
@@ -53,4 +31,61 @@ Future<void> postScenario(Uri node, http.Client client, {int t0 = 1786370851}) a
   await send('00000000000000e3', 0, lat: 5.0201, lon: -75.5601, at: 220, seq: 1);
   // 6) un P3 informativo
   await send('00000000000000f1', SituationFlags.menoresMayores, text: 'hay niños en la casa pero estamos bien', lat: 5.0350, lon: -75.4400, at: 240, seq: 1);
+}
+
+/// Una trama del escenario, firmada con la clave de ejemplo y enviada al nodo: lo que hace un teléfono.
+Future<void> _postFrame(
+  Uri node,
+  http.Client client, {
+  required String device,
+  required int seq,
+  required int flags,
+  required int capturedAt,
+  String? text,
+  double? lat,
+  double? lon,
+  int people = 0,
+  int rev = 0,
+  int? refSeq,
+}) async {
+  final f = encodeReportFrame(
+    ReportFrame(
+      deviceId: deviceIdFromHex(device),
+      seq: seq,
+      rev: rev,
+      refSeq: refSeq,
+      prioHint: prioHintFromFlags(flags),
+      incidentType: 1,
+      flags: flags,
+      peopleBucket: people,
+      locQuality: lat == null ? LocQuality.none : LocQuality.within50m,
+      lat: lat,
+      lon: lon,
+      capturedAt: capturedAt,
+      batteryQ: 8,
+      text: text,
+    ),
+    _key,
+  );
+  final r = await client.post(node.resolve('/frame'), body: f);
+  if (r.statusCode != 200) throw StateError('el nodo rechazó una trama: ${r.statusCode}');
+}
+
+/// Lo que se añade al escenario fijo para enseñar lo último del tablero (se pide con `seed_scenario --extended`):
+///
+///  · una CONTRADICCIÓN: dos teléfonos, en el mismo sitio y con casi el mismo texto, uno dice «hay heridos» y el otro «sin heridos»; el tablero la marca sin resolverla;
+///  · una VÍA BLOQUEADA entre la base de la ambulancia 1 y el P1: la propuesta pasa a pedir «confirmar la ruta»;
+///  · un RECURSO NO DISPONIBLE: la ambulancia 2 se declara fuera de servicio (a nombre de [who]; con [code] si el nodo lo exige).
+///
+/// El pendiente ANTIGUO («sin decidir hace N min») ya lo da el P1 del escenario fijo con `--now`.
+Future<void> postExtendedScenario(Uri node, http.Client client, {int t0 = 1786370851, String? code, String who = 'Ana Gómez'}) async {
+  await _postFrame(node, client, device: '00000000000000c3', seq: 1, flags: SituationFlags.herido, capturedAt: t0 + 40, text: 'casa derrumbada calle quince hay heridos en el segundo piso', lat: 5.0752, lon: -75.5200);
+  await _postFrame(node, client, device: '00000000000000c4', seq: 1, flags: 0, capturedAt: t0 + 55, text: 'casa derrumbada calle quince sin heridos en el segundo piso', lat: 5.0752, lon: -75.5199);
+  await _postFrame(node, client, device: '00000000000000b3', seq: 1, flags: SituationFlags.viaBloqueada, capturedAt: t0 + 70, text: 'derrumbe tapa el camino', lat: 5.0695, lon: -75.5155);
+  final r = await client.post(
+    node.resolve('/api/resources'),
+    headers: {'content-type': 'application/json', 'authorization': ?(code == null ? null : 'Bearer $code')},
+    body: jsonEncode({'id': 'AMB-02', 'kind': 'ambulancia', 'label': 'Ambulancia 2 · Base Chipre', 'lat': 5.0603, 'lon': -75.5071, 'available': false, 'who': who}),
+  );
+  if (r.statusCode != 200) throw StateError('el nodo rechazó la declaración del recurso: ${r.statusCode} ${r.body}');
 }
