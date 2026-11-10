@@ -168,7 +168,7 @@ class _DispatchDialogState extends State<DispatchDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Información de segunda mano: pasa por el mismo triaje que los avisos de la app. La ubicación es opcional y, si la pones, se toma como escrita a mano (no es un GPS); sin ella el sistema no la inventa. No despacha nada. La hora que queda es la de registro, no la de cuando se oyó.',
+                'Información de segunda mano: pasa por el mismo triaje que los avisos de la app. La ubicación es opcional (más abajo); sin ella el sistema no la inventa. No despacha nada. La hora que queda es la de registro, no la de cuando se oyó.',
                 key: Key('dispatch_intro'),
                 style: TextStyle(fontSize: 13, height: 1.3, color: DashColors.muted),
               ),

@@ -240,7 +240,7 @@ void main() {
       expect(intro, findsOneWidget);
       final text = tester.widget<Text>(intro).data!;
       expect(text, contains('ubicación es opcional'));
-      expect(text, contains('escrita a mano'));
+      expect(text, contains('no la inventa'));
     });
 
     testWidgets('sin texto no se envía: dice qué falta y NO llama al nodo; sin nombre, tampoco', (tester) async {
