@@ -7,53 +7,53 @@ Un sismo. Un apagón.
 Y alguien que necesita que su pedido de ayuda llegue.
 
 3
-00:00:06,276 --> 00:00:09,551
+00:00:06,600 --> 00:00:09,875
 SARD convierte un toque en un reporte que sobrevive.
 
 4
-00:00:09,551 --> 00:00:13,211
+00:00:09,875 --> 00:00:13,536
 Se guarda sin red, pesa apenas 33 bytes,
 
 5
-00:00:13,211 --> 00:00:16,159
+00:00:13,536 --> 00:00:16,483
 y sale solo cuando vuelve la señal.
 
 6
-00:00:16,909 --> 00:00:20,006
+00:00:17,400 --> 00:00:20,498
 Cada reporte llega a una red de nodos sin jefe.
 
 7
-00:00:20,006 --> 00:00:22,020
+00:00:20,498 --> 00:00:22,511
 Si uno cae, otro sigue;
 
 8
-00:00:22,020 --> 00:00:24,903
+00:00:22,511 --> 00:00:25,395
 y al reunirse, vuelven a coincidir.
 
 9
-00:00:25,653 --> 00:00:28,553
+00:00:26,400 --> 00:00:29,300
 El tablero ordena lo urgente, explica por qué,
 
 10
-00:00:28,553 --> 00:00:30,083
+00:00:29,300 --> 00:00:30,830
 y propone la acción.
 
 11
-00:00:30,083 --> 00:00:33,958
+00:00:30,830 --> 00:00:34,705
 Nada se ejecuta sin la aprobación de una persona.
 
 12
-00:00:36,153 --> 00:00:39,966
+00:00:36,000 --> 00:00:39,813
 Y cuando una zona deja de reportar, el mapa lo marca.
 
 13
-00:00:39,966 --> 00:00:42,553
+00:00:39,813 --> 00:00:42,400
 Porque el silencio no es seguridad.
 
 14
-00:00:43,653 --> 00:00:46,402
+00:00:43,200 --> 00:00:45,948
 SARD. Reportes que sobreviven.
 
 15
-00:00:46,402 --> 00:00:48,811
+00:00:45,948 --> 00:00:48,358
 Decisiones que se pueden explicar.
