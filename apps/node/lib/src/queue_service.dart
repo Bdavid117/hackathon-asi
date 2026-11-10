@@ -6,6 +6,7 @@ import 'package:sard_agents/sard_agents.dart';
 
 import 'event_log.dart';
 import 'incident_index.dart';
+import 'resource_book.dart';
 import 'incidents.dart';
 
 /// Una lectura de la cola: el JSON, si es de una versión anterior del log y qué antigüedad tiene.
@@ -79,13 +80,16 @@ class QueueService {
   final DateTime Function() _clock;
   final Future<Projection> Function(List<Event>, List<Event>, List<Event>, List<Resource>) _compute;
 
-  /// Recursos declarados que el agente 6 puede proponer.
+  /// Recursos de ARRANQUE (el archivo `--resources`). Los declarados después, como eventos, los modifican: ver [effectiveResources].
   final List<Resource> resources;
+
+  /// Lo que de verdad se usa: los de arranque fusionados con las declaraciones del log (sin reloj; ver `mergeResources`).
+  List<EffectiveResource> effectiveResources() => mergeResources(resources, readResourceDeclarations(_log.allOfType('resource.declared')));
 
   /// Los únicos eventos que cambian lo que muestra la cola: los reportes recibidos, el triaje (el del
   /// modelo) y las aprobaciones. Los latidos, la auditoría y las normalizaciones NO la invalidan: si
   /// no, cada uno forzaría un recálculo (segundos con muchos reportes) sin que nada relevante cambie.
-  static const List<String> relevantTypes = ['report.received', 'triage.assessed', 'approval.granted', 'approval.denied'];
+  static const List<String> relevantTypes = ['report.received', 'triage.assessed', 'approval.granted', 'approval.denied', 'resource.declared'];
 
   _Snap? _snap;
   int _versions = 0;
@@ -120,7 +124,7 @@ class QueueService {
     final triage = _log.allOfType('triage.assessed');
     final approvals = [..._log.allOfType('approval.granted'), ..._log.allOfType('approval.denied')];
     late final Future<_Snap> f;
-    f = _compute(received, triage, approvals, resources)
+    f = _compute(received, triage, approvals, [for (final e in effectiveResources()) e.resource])
         .then((projection) {
           final end = _clock();
           return _snap = _Snap(projection, count, end, end.difference(start).inMilliseconds, ++_versions);

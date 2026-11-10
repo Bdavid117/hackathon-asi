@@ -11,6 +11,7 @@ export 'src/normalize.dart';
 export 'src/recommendation.dart';
 export 'src/rendezvous.dart';
 export 'src/resources.dart';
+export 'src/resource_merge.dart';
 export 'src/sources.dart';
 export 'src/text_signals.dart';
 export 'src/text_sim.dart';

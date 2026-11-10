@@ -43,7 +43,7 @@ void main() {
 
   int approvals() => log.allOfType('approval.granted').length + log.allOfType('approval.denied').length;
 
-  const coordinatorPaths = ['/api/queue', '/api/incidents', '/api/incidents/aa-1', '/api/nodes'];
+  const coordinatorPaths = ['/api/queue', '/api/incidents', '/api/incidents/aa-1', '/api/nodes', '/api/resources'];
 
   group('con --coordinator-token: lo del coordinador exige el código', () {
     for (final path in coordinatorPaths) {
@@ -64,6 +64,18 @@ void main() {
       final r = await postApproval(guarded, auth: 'Bearer $coordinator');
       expect(r.statusCode, 200);
       expect(approvals(), 1);
+    });
+
+    test('POST /api/resources: sin código no se declara NADA (el log queda igual) y con código sí', () async {
+      final body = jsonEncode({'id': 'AMB-01', 'kind': 'ambulancia', 'label': 'Ambulancia 1', 'lat': 5.07, 'lon': -75.51, 'available': false, 'who': 'Ana Gómez'});
+      Future<Response> declare({String? auth}) => Future.sync(() => guarded(Request('POST', Uri.parse('http://localhost/api/resources'), body: body, headers: {'content-type': 'application/json', 'authorization': ?auth})));
+      final before = log.count();
+      expect((await declare()).statusCode, 401);
+      expect((await declare(auth: 'Bearer nope')).statusCode, 401);
+      expect((await declare(auth: 'Bearer $peerCode')).statusCode, 401, reason: 'el código de pares no sirve para declarar');
+      expect(log.count(), before, reason: 'ni un evento por una petición no autorizada');
+      expect((await declare(auth: 'Bearer $coordinator')).statusCode, 200);
+      expect(log.allOfType('resource.declared'), hasLength(1));
     });
 
     test('la autorización se comprueba ANTES que el resto: sin código, ni siquiera se distingue un cuerpo malo de uno bueno', () async {

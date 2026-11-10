@@ -11,6 +11,7 @@ import 'ingest.dart';
 import 'node_health.dart';
 import 'pipeline.dart';
 import 'queue_service.dart';
+import 'resource_book.dart';
 
 /// Cabeceras CORS **sólo para desarrollo** (`--cors on`). Por omisión NO se envían: el tablero se sirve
 /// del mismo origen que la API, y con un comodín cualquier página abierta en el navegador del
@@ -196,6 +197,35 @@ Handler buildHandler({
       // Los agentes de reglas corren sobre lo recién guardado (un reintento no los repite).
       if (!r.duplicate) pipeline?.run(r.event);
       return _json({'id': r.event.id, 'reportKey': r.event.reportKey, 'duplicate': r.duplicate}, cors: cors);
+    })
+    ..get('/api/resources', (Request req) => _json({'resources': [for (final e in queueService.effectiveResources()) e.toJson()]}, cors: cors))
+    ..post('/api/resources', (Request req) async {
+      // Igual que la aprobación y el despachador: sólo JSON, con tope de tamaño; el código del coordinador (si hay) ya se comprobó.
+      final mime = (req.headers['content-type'] ?? '').split(';').first.trim().toLowerCase();
+      if (mime != 'application/json') return Response(415, body: 'se exige content-type: application/json');
+      final declared = int.tryParse(req.headers['content-length'] ?? '');
+      if (declared != null && declared > kMaxResourceBytes) return Response(413, body: 'cuerpo demasiado grande');
+      final chunks = BytesBuilder(copy: false);
+      await for (final chunk in req.read()) {
+        chunks.add(chunk);
+        if (chunks.length > kMaxResourceBytes) return Response(413, body: 'cuerpo demasiado grande');
+      }
+      final ResourceDeclareRequest d;
+      try {
+        d = parseResourceDeclaration(jsonDecode(utf8.decode(chunks.takeBytes())));
+      } on FormatException catch (e) {
+        return Response(400, body: e.message);
+      }
+      // Sólo se reemplazan declaraciones REALES de ESTA unidad (no una aprobación, ni la de otra unidad, ni algo inventado).
+      for (final id in d.supersedes) {
+        final target = log.eventById(id);
+        final targetId = target?.body['resource'] is Map ? (target!.body['resource']! as Map)['id'] : null;
+        if (target == null || target.type != 'resource.declared' || targetId != d.resource.id) {
+          return Response(400, body: 'supersedes: «$id» no es una declaración de ${d.resource.id}');
+        }
+      }
+      final e = log.append('resource.declared', {'resource': d.resource.toJson(), 'declared_by': d.who}, reportKey: 'res-${d.resource.id}', inputs: d.supersedes);
+      return _json({'id': e.id}, cors: cors);
     })
     ..get('/api/queue', (Request req) async {
       final r = await queueService.read();

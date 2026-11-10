@@ -57,6 +57,10 @@ if [ "${1:-}" != "--sin-e2e" ]; then
   printf '%-34s' "Informe de despachador (3 nodos)"
   bash tool/dispatch_check.sh > "$OUT" 2>&1; rc=$?
   if [ $rc -eq 0 ]; then echo "OK    $(grep 'INFORME DE DESPACHADOR' "$OUT" | tail -1)"; else echo "FALLÓ"; tail -20 "$OUT"; fail=1; fi
+  # Los recursos declarados en vivo con 2 nodos reales (puertos 8197–8198): partición, declaraciones distintas, kill -9, conflicto, resolución.
+  printf '%-34s' "Recursos declarados (2 nodos)"
+  bash tool/resources_check.sh > "$OUT" 2>&1; rc=$?
+  if [ $rc -eq 0 ]; then echo "OK    $(grep 'RECURSOS DECLARADOS' "$OUT" | tail -1)"; else echo "FALLÓ"; tail -20 "$OUT"; fail=1; fi
 fi
 rm -f "$OUT" "$OUT.t12.md" "$OUT.t14.md" "$OUT.burst.md"
 [ "$fail" -eq 0 ] && echo "TODO EN VERDE" || { echo "HAY FALLOS"; exit 1; }
