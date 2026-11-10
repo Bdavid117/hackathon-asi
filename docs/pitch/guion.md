@@ -50,6 +50,8 @@ La lámina de «lo que no cumplimos» **no se omite nunca**: es la que más cré
 
 ## Un paso más, si hay un minuto: el Reto 4 con el modelo (lámina «Reto 4 con el modelo: medido, no adoptado»)
 
+**Hay dos rondas.** La segunda (semillas 706–713, umbral 0,85, criterio reescrito tras ver la primera: evidencia más débil) subió el recall de pares de 0,48 a 1,99 % con 175 de 178 uniones acertadas, pero la falsa fusión pasó de 0,00 a 0,92 %: bajo el 1 % absoluto y fuera de «reglas + 0,5 puntos»; no se adopta y la pregunta se cierra. Los 3 errores tienen justo 0,85.
+
 No hay demostración en vivo (la API real cuesta y tarda ≈ 12 min): se enseña la lámina y, si preguntan, `docs/resultados/reto4-juez.md` y `t07-modelo.md`. Lo que se dice: el juez une más (recall de pares 0,8 % → 4,4 %; 97,7 % de sus uniones acertadas; en la corroboración de 5 fuentes reúne 4 y la confianza pasa de 0,60 a 0,97) **pero la falsa fusión sube de 1,2 % a 2,2 %** frente al límite de 1 %, y por eso **no está en el nodo**. Lo que respalda que no se midió a posteriori: el criterio de adopción está commiteado (`6ed2fe5`) antes de gastar y el código medido es `8e10d47`.
 
 ## Un paso más, si hay un minuto: el despachador (Escenario 2)

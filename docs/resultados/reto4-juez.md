@@ -1,4 +1,4 @@
-# Reto 4 con juez semántico (modelo de lenguaje) · medido, **no adoptado**
+# Reto 4 con juez semántico (modelo de lenguaje) · medido en dos rondas, **no adoptado**
 
 **Estado (9 nov 2026):** se construyó un juez que le pide al modelo real decidir si dos reportes cuentan el mismo suceso con otras palabras, y se midió una vez con semillas nuevas (701–705) contra la API real. **Aplicado el criterio fijado de antemano, el resultado es negativo: no se ofrece como opción en el nodo.** Gasto del Reto 4: ≈ 6,2 USD (piloto 0,55 + corrida 5,66). Los números completos están en [`t07-modelo.md`](t07-modelo.md) (generado) y [`t07-modelo-datos.csv`](t07-modelo-datos.csv) (una fila por par juzgado, sin texto).
 
@@ -52,9 +52,44 @@
 - Cinco uniones malas bastan: 0 → 5 grupos mezclados nuevos (de 2 a 5 reportes) y la falsa fusión de pares casi se duplica. Es la misma fragilidad de siempre: un vínculo falso fusiona varios pares.
 - Que el juez dude («possible», 0,3–0,6) en los textos que sólo dicen la calle es **correcto**, no un fallo: ahí no hay información. El techo del recall lo pone lo que el texto dice (sólo el 48 % de los pares verdaderos con texto comparten la calle escrita y el 66 % alguna palabra de contenido).
 
+## Ronda 2 (10 nov 2026): 8 semillas nuevas y confianza mínima 0,85 · **tampoco se adopta**
+
+**Qué se hizo.** La ronda 1 dejó una hipótesis, deducida de sus propios datos: los cinco `same` equivocados tenían confianza exactamente 0,80, así que exigir 0,85 los habría dejado fuera (143 uniones buenas y 0 malas de las 257 y 5). Se probó con semillas **706–713**, mismo tamaño por semilla, mismo modelo, mismo esfuerzo y **el mismo mensaje**, con el criterio v2 de [`t07-ronda2-criterio.md`](t07-ronda2-criterio.md), commiteado antes de gastar (`cb425ae`). **Ese criterio se reescribió tras ver la ronda 1** (el «+5 puntos y el doble» era inalcanzable por aritmética con 0,85; el de «5 fuentes» dependía de un texto que el juez calificó `possible`): es **evidencia más débil que la de la primera vez**. Código medido: `8243b0f`, árbol limpio. Informe generado: [`t07-ronda2.md`](t07-ronda2.md) y [`t07-ronda2-datos.csv`](t07-ronda2-datos.csv).
+
+**Gasto:** 1 586 llamadas, **9,54 USD** (0,0060 por llamada; el tope de la corrida era 12 y el registro [`gasto-api.json`](gasto-api.json) suma 21,16 USD en total según el propio programa). La consola de Anthropic no se ha conciliado todavía.
+
+| | Sólo reglas | Reglas + modelo |
+|---|---|---|
+| Recall de pares | 0,48 % | **1,99 %** (+1,51 puntos) |
+| Precisión de pares | 100,0 % | 99,1 % |
+| **Falsa fusión** | **0,00 %** | **0,92 %** |
+| Grupos mezclados | 0 | 3 |
+| Uniones del modelo | — | 178, **175 acertadas (98,3 %)** |
+| Corroboración de 5 fuentes (observación) | 1 fuente | 3–4 fuentes en el mayor grupo, 8 de 8; confianza 0,60 → 0,94–0,97; **ninguna reúne las 5** |
+
+| Criterio v2 | Valor | ¿Cumple? |
+|---|---|---|
+| 1. falsa fusión ≤ 1 % **y** ≤ la de las reglas + 0,5 puntos | 0,92 % con el modelo, 0,00 % con las reglas | **no** |
+| 2. precisión de las uniones ≥ 95 % con al menos 100 uniones | 98,3 % (175 de 178) | sí |
+| 3. recall de pares +1,5 puntos | +1,51 puntos | sí (por 0,01) |
+| 4. fallos ≤ 5 % y llamadas de más de 8 s ≤ 5 % | 8 de 1 586; 6 de 1 578 útiles | sí |
+| 6. el rumor no gana fuentes ni pasa de 0,8 | 8 de 8 | sí |
+
+**Veredicto aplicado por código: NO se adopta (falla el criterio 1). La pregunta se cierra: no hay tercera ronda.** El nodo sigue sin usar el juez y `link_judge` queda como componente medido dos veces y no adoptado.
+
+**Lectura honesta:**
+
+- La falsa fusión con el modelo (0,92 %) quedó **bajo el 1 % absoluto**; falla sólo la cláusula relativa («≤ la de las reglas + 0,5 puntos») porque las reglas dieron 0,00 %, sin ningún grupo mezclado. Con 24 sucesos por conjunto ese 0,00 % es en parte suerte de muestreo (en la ronda 1 las reglas dieron 1,22 % y en `b3.md` iban de 0 a 2,86 % según la semilla), pero el criterio estaba fijado así y **no se reinterpreta después de verlo**.
+- **La hipótesis «0,85 lo arregla» no se confirmó.** Los 3 `same` equivocados con confianza ≥ 0,85 tienen **exactamente 0,85**, el umbral: el mismo patrón que en la ronda 1 (los 5 de 0,80). Subir el umbral desplazó el problema al siguiente valor que el modelo emite. Que 0,88 lo arreglaría sería otra hipótesis post hoc sobre los mismos datos, y probarla sería una tercera ronda, que el criterio cerró.
+- **La ganancia es real pero pequeña:** recall de pares 0,48 → 1,99 % (sobre los pares con texto en los dos reportes, 1,6 → 5,3 %). Cumple el +1,5 puntos por una centésima.
+- **La corroboración mejora** (de 1 fuente independiente a 3–4 en 8 de 8 escenarios, confianza hasta 0,97) pero no llega a reunir las 5, como en la ronda 1; su criterio se retiró, y se informa como observación.
+- Fiabilidad: 7 salidas inválidas y 1 plazo agotado de 1 586 llamadas; 6 de 1 578 útiles pasaron de los 8 s del nodo.
+
+**Lo que NO dice:** datos sintéticos escritos por quien escribió las reglas y el mensaje; una sola corrida (estos modelos no permiten fijar el muestreo); conjuntos de 24 sucesos con un intervalo de falsa fusión ancho; un criterio reescrito tras ver la ronda 1.
+
 ## Lo que NO sabemos (y no se debe afirmar)
 
-- **Que un umbral de 0,85 lo arreglaría.** Es una hipótesis deducida de estos mismos datos, y descartaría 113 de las 256 uniones buenas (casi la mitad de la ganancia). Probarla exige **semillas nuevas** (706–710) y un criterio nuevo escrito antes: ≈ 6 USD y 12 min.
+- **Que un umbral de 0,85 lo arreglaría.** *(Probado en la ronda 2 con semillas nuevas: no se confirmó; ver arriba.)*
 - Si con texto real, no generado por quien escribió las reglas y el mensaje, los gemelos se confunden más o menos.
 - Con 24 sucesos por conjunto, el intervalo de la falsa fusión es ancho; una segunda corrida podría dar otras cifras (estos modelos no permiten fijar el muestreo).
 - El texto libre del ciudadano sale hacia un tercero sin redactar (PDF §8); en la app el texto es opcional (≤ 140 bytes), así que el efecto real depende de cuántos reportes lo traigan (en el generador, el 55 %).

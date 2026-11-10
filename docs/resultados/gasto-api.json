@@ -1,10 +1,47 @@
 {
   "nota": "Gasto de la API de Anthropic según el propio programa; la consola de Anthropic manda. Sólo importes, fechas y notas: jamás claves.",
   "entries": [
-    {"run": "T06 con Sonnet 5.5 (750 reportes)", "date": "2026-11-09", "usd": 1.7731, "note": "t06-modelo.md", "estimated": false},
-    {"run": "T06 con Opus 5.5 (750 reportes)", "date": "2026-11-09", "usd": 3.5816, "note": "t06-modelo-opus.md", "estimated": false},
-    {"run": "T13, llm_smoke y pruebas menores", "date": "2026-11-09", "usd": 0.05, "note": "derivado: «≈ 5,4 USD» de modelo-real.md menos los dos T06", "estimated": true},
-    {"run": "T07 ronda 1 (semillas 701–705)", "date": "2026-11-09", "usd": 5.66, "note": "t07-modelo.md: 963 llamadas", "estimated": false},
-    {"run": "T07 piloto (semilla 700)", "date": "2026-11-09", "usd": 0.5, "note": "no se anotó su gasto: estimación conservadora", "estimated": true}
+    {
+      "run": "T06 con Sonnet 5.5 (750 reportes)",
+      "date": "2026-11-09",
+      "usd": 1.7731,
+      "note": "t06-modelo.md",
+      "estimated": false
+    },
+    {
+      "run": "T06 con Opus 5.5 (750 reportes)",
+      "date": "2026-11-09",
+      "usd": 3.5816,
+      "note": "t06-modelo-opus.md",
+      "estimated": false
+    },
+    {
+      "run": "T13, llm_smoke y pruebas menores",
+      "date": "2026-11-09",
+      "usd": 0.05,
+      "note": "derivado: «≈ 5,4 USD» de modelo-real.md menos los dos T06",
+      "estimated": true
+    },
+    {
+      "run": "T07 ronda 1 (semillas 701–705)",
+      "date": "2026-11-09",
+      "usd": 5.66,
+      "note": "t07-modelo.md: 963 llamadas",
+      "estimated": false
+    },
+    {
+      "run": "T07 piloto (semilla 700)",
+      "date": "2026-11-09",
+      "usd": 0.55,
+      "note": "reto4-juez.md: piloto 0,55 USD",
+      "estimated": false
+    },
+    {
+      "run": "T07 semillas 706,707,708,709,710,711,712,713",
+      "date": "2026-11-10",
+      "usd": 9.540840000000001,
+      "note": "1586 llamadas, claude-sonnet-5-5, confianza mínima 0.85",
+      "estimated": false
+    }
   ]
 }
