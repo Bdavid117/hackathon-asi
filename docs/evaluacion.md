@@ -52,7 +52,7 @@ Los tres primeros se califican **por etapa** (filas «Etapa primeras seis horas�
 
 | Subcriterio | Qué lo respalda | Dónde |
 |---|---|---|
-| **Claridad** | Una idea por lámina (16 láminas); el tablero explica cómo se lee (panel «Situación») | `docs/pitch/SARD-pitch.pdf` y el Artifact |
+| **Claridad** | Una idea por lámina (18 láminas); el tablero explica cómo se lee (panel «Situación») | `docs/pitch/SARD-pitch.pdf` y el Artifact |
 | **Comunicación asertiva** | Cifras con su límite al lado; lista de **frases que no se deben decir**; preguntas difíciles con respuesta preparada | [`guion.md`](pitch/guion.md) |
 | **Manejo de la evidencia** | Cada afirmación → un informe con fecha, commit y comando; criterios o hipótesis commiteados **antes** de medir (T20; la ronda 2 del juez, con un criterio reescrito tras ver la ronda 1, y dicho); un guion de demostración con lo que se hace en vivo y lo que se muestra guardado | `docs/resultados/`, [`demo-en-vivo.md`](pitch/demo-en-vivo.md) |
 

@@ -10,18 +10,20 @@
     "cover",
     "problema",
     "recorrido",
+    "arquitectura",
     "app",
+    "protocolo",
     "agentes",
     "traza",
     "modelo",
     "reto4",
     "tablero",
+    "silencio",
     "despachador",
+    "replica",
     "caida",
     "rafaga",
     "fallos",
-    "limites",
-    "sigue",
     "repro"
   ],
   "sections": {
@@ -30,12 +32,12 @@
       "start": "cover"
     },
     "s2": {
-      "description": "Lo construido y lo medido, con sus cifras",
-      "start": "app"
+      "description": "Lo construido: arquitectura, protocolo, agentes y tablero",
+      "start": "arquitectura"
     },
     "s3": {
-      "description": "Lo que no cumplimos, lo que sigue y cómo reproducirlo",
-      "start": "limites"
+      "description": "Resiliencia, rendimiento y cómo reproducirlo",
+      "start": "replica"
     }
   },
   "faces": {

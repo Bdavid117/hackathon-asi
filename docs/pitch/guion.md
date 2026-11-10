@@ -2,7 +2,7 @@
 
 Pensado para **8–10 minutos** (con 5 minutos se omiten los pasos 5 y 7). Cada paso dice qué se ve, qué decir, qué comando lo produce y **qué cifra respalda lo que se dice**. Todo está en el repositorio; nada depende de la red.
 
-> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (16 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
+> **Las láminas** de este guion están en [`SARD-pitch.pdf`](SARD-pitch.pdf) (18 láminas; las notas del orador de cada una repiten lo que sigue). Las capturas son reales (tablero con el escenario de ejemplo y app en el emulador de Android), no maquetas.
 
 > **Regla del guion:** se dice lo que está medido y se dice dónde termina. Cada «sí» lleva su «pero» (hay una lista al final). Un jurado que encuentra solo un límite que usted no mencionó deja de creer el resto.
 
@@ -28,15 +28,15 @@ Abra `http://localhost:8081/` en Chrome (1360 × 860). Tenga a mano una terminal
 
 ## Cuánto dura la presentación: elija una ruta
 
-Las **notas del orador de las 16 láminas suman unos 16–17 minutos** si se dicen todas (la lámina «Cada agente deja su rastro» añade ≈ 1 minuto a las 15 anteriores; no se midió con reloj); los pasos de la demostración de abajo suman 8–10 minutos y se pueden alternar con las láminas. Rutas propuestas (los tiempos salen de las notas de cada lámina; ensáyelas con reloj, no son una medición):
+Las **notas del orador de las 18 láminas suman más de 17 minutos** si se dicen todas (no se midió con reloj); los pasos de la demostración de abajo suman 8–10 minutos y se pueden alternar con las láminas. Rutas propuestas (los tiempos salen de las notas de cada lámina; ensáyelas con reloj, no son una medición):
 
 | Duración | Láminas, en este orden | Se omite |
 |---|---|---|
-| **5 min** | portada (0:20) · recorrido (0:40) · tablero (1:00) · caída de un nodo (1:30) · lo que no cumplimos (1:00) · reproducir (0:30) | todo lo demás |
-| **10 min** | portada · problema (0:30) · recorrido (0:40) · app (1:00) · tablero (1:30) · caída (1:30) · modelo (1:00) · Reto 4 (1:00) · lo que no cumplimos (1:00) · lo que sigue (0:30) · reproducir (0:20) | agentes, despachador, ráfaga, fallos |
-| **15 min** | las 16 láminas, sin demostración en vivo (o con 2 min de la app) | — |
+| **5 min** | portada (0:20) · recorrido (0:40) · arquitectura (1:00) · tablero (1:00) · caída de un nodo (1:30) · reproducir (0:30) | todo lo demás |
+| **10 min** | portada (0:20) · problema (0:30) · recorrido (0:40) · arquitectura (1:00) · app (1:00) · protocolo (1:30) · tablero (1:30) · silencio (1:30) · caída (1:30) · reproducir (0:20) | agentes, trazas, modelo, verdad, despachador, réplica, ráfaga, fallos |
+| **15 min** | las 18 láminas, sin demostración en vivo (o con 2 min de la app) | — |
 
-La lámina de «lo que no cumplimos» **no se omite nunca**: es la que más crédito da. Si hay demostración en vivo, sustituye a la lámina correspondiente (app, tablero o caída), no se suma.
+Si hay demostración en vivo, sustituye a la lámina correspondiente (app, tablero, silencio o caída), no se suma.
 
 ## Los pasos
 
@@ -48,9 +48,9 @@ La lámina de «lo que no cumplimos» **no se omite nunca**: es la que más cré
 | 4 | 4:30–6:30 | **Condición adversa** (terminal): `PART=4 bash tool/demo.sh 42`. Se ve la partición, el `kill -9` con la ráfaga a medias («A acusó 8 de 26; los otros 18 conmutaron a B»), el reinicio con su RTO, la reconexión y «huellas idénticas». | «Mato un nodo en pleno trabajo. Lo que acusó sigue ahí al volver; el otro nodo siguió sirviendo.» | T09: RTO 2,3–3,7 s (JIT). T10: convergencia 3,1–3,6 s. |
 | 5 | 6:30–7:30 | En esa misma salida: **«dos coordinadores deciden a la vez, uno en cada nodo, y se contradicen»** → ambos nodos muestran el incidente «rechazada» con la discrepancia marcada. Y al final: «misma semilla ⇒ misma huella». | «Aislados, dos personas se contradijeron. No se pierde ninguna decisión; manda la más conservadora hasta que alguien la resuelva a propósito.» | T10 y T15. |
 | 6 | 7:30–8:30 | **El modelo falla.** Mostrar la tabla de `docs/resultados/t12.md` (o `dart run packages/sim/bin/t12.dart --reports 100`, ≈ 1 min): con el modelo colgado, el ACK p95 pasa de 9 a 17 ms; todas acusadas. Y la ráfaga de 5 000 con el modelo colgado y el límite de 1 024 descriptores: **antes el nodo moría**, ahora 0 fallidas (con un tope de consultas simultáneas; a cambio, la mayoría de los reportes con texto se quedan sólo con reglas). Y el reparto/relevo entre dos nodos. | «Si el modelo se cuelga, el sistema sigue con reglas. Y el trabajo caro se reparte entre nodos; si el dueño cae, otro lo toma.» | T12. **El modelo es falso: dígalo.** |
-| 7 | 8:30–9:30 | **Lo que no funciona.** La cifra de T06 (recall de P1 78,5 % frente a 95 %), el agrupamiento que casi no fusiona, T14 (la mejora es de ordenar, no de agrupar). | «Lo que no cumplimos, lo medimos y lo decimos. Esto es lo que el modelo y las personas tienen que resolver.» | `docs/resultados/b3.md`, `b5.md` §5 y §7. |
+| 7 | 8:30–9:30 | **Cómo se reproduce.** `bash tool/test_all.sh` (2 069 pruebas, ≈ 6 min; se muestra su última salida: `TODO EN VERDE`) y `bash tool/expo.sh` (la demostración con dos nodos y seis horas de historia). | «Cada cifra tiene su informe y el comando que la produce.» | `README.md`, `docs/resultados/`, [`demo-en-vivo.md`](demo-en-vivo.md). |
 
-## Un paso más, si hay un minuto: el Reto 4 con el modelo (lámina «Reto 4 con el modelo: medido, no adoptado»)
+## Material de apoyo para preguntas: el juez de modelo en el Reto 4 (ya no tiene lámina)
 
 **Hay dos rondas.** La segunda (semillas 706–713, umbral 0,85, criterio reescrito tras ver la primera: evidencia más débil) subió el recall de pares de 0,48 a 1,99 % con 175 de 178 uniones acertadas, pero la falsa fusión pasó de 0,00 a 0,92 %: bajo el 1 % absoluto y fuera de «reglas + 0,5 puntos»; no se adopta y la pregunta se cierra. Los 3 errores tienen justo 0,85.
 

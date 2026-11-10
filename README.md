@@ -46,7 +46,7 @@ El enunciado oficial es [`HackathonExpoASI2026.pdf`](HackathonExpoASI2026.pdf). 
 | **Demostración en vivo, reproducible**: qué teclear, qué debe verse, tiempos medidos y plan B | [`docs/pitch/demo-en-vivo.md`](docs/pitch/demo-en-vivo.md) |
 | **La planilla de evaluación y la evidencia de cada celda** (con brechas, sin puntajes) | [`docs/evaluacion.md`](docs/evaluacion.md) |
 | Guion de la demostración y del pitch | [`docs/pitch/guion.md`](docs/pitch/guion.md) |
-| Presentación del pitch (16 láminas, con capturas reales; fuentes en `docs/pitch/deck/`, se regenera con `python3 -I docs/pitch/build_pdf.py --pdf docs/pitch/SARD-pitch.pdf`) | [`docs/pitch/SARD-pitch.pdf`](docs/pitch/SARD-pitch.pdf) |
+| Presentación del pitch (18 láminas, con capturas reales; fuentes en `docs/pitch/deck/`, se regenera con `python3 -I docs/pitch/build_pdf.py --pdf docs/pitch/SARD-pitch.pdf`) | [`docs/pitch/SARD-pitch.pdf`](docs/pitch/SARD-pitch.pdf) |
 | Oráculo del códec (genera los vectores de prueba) | [`docs/src/tools/frame_size.py`](docs/src/tools/frame_size.py) |
 
 ## Los siete entregables
